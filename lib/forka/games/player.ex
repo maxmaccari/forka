@@ -1,5 +1,5 @@
 defmodule Forka.Games.Player do
-  defstruct id: nil, username: nil, score: 0
+  defstruct id: nil, username: nil
 
   # TODO: Temporary, as it will come from Ecto
   def new(username) when is_binary(username) do

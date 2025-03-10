@@ -99,6 +99,30 @@ defmodule Forka.Games.Word do
     |> Enum.all?(&(&1 in guessed_letters))
   end
 
+  @doc """
+  Counts how many times a letter appears in a word.
+
+  ## Parameters
+    - word: Word struct
+    - letter: Single letter to count occurrences of
+
+  ## Examples
+      iex> word = Word.new("hello", "greeting")
+      iex> Word.letters_count_in_word(word, "l")
+      2
+      iex> Word.letters_count_in_word(word, "x")
+      0
+  """
+  def letters_count_in_word(%__MODULE__{word: word}, letter) when is_binary(letter) do
+    downcase_letter = String.downcase(letter)
+
+    word
+    |> normalized_word()
+    |> String.graphemes()
+    |> Enum.filter(&(&1 == downcase_letter))
+    |> length()
+  end
+
   defp normalized_word(word) do
     word
     |> String.normalize(:nfd)

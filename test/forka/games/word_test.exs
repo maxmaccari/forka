@@ -33,4 +33,11 @@ defmodule Forka.Games.WordTest do
              :hidden
            ]
   end
+
+  test "letters_count_in_word/2 returns correct letter count" do
+    word = Word.new("hello", "greeting")
+    assert Word.letters_count_in_word(word, "l") == 2
+    assert Word.letters_count_in_word(word, "h") == 1
+    assert Word.letters_count_in_word(word, "z") == 0
+  end
 end

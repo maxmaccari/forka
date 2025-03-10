@@ -1,4 +1,4 @@
-defmodule Forka.Games.Guess do
+defmodule Forka.Games.Game.Guess do
   @moduledoc """
   This module represents a guess made by a player in the Forka game.
 
@@ -22,10 +22,10 @@ defmodule Forka.Games.Guess do
   end
 end
 
-defimpl Inspect, for: Forka.Games.Guess do
+defimpl Inspect, for: Forka.Games.Game.Guess do
   import Inspect.Algebra
 
-  def inspect(%Forka.Games.Guess{letter: letter, correct?: correct?}, _opts) do
+  def inspect(%Forka.Games.Game.Guess{letter: letter, correct?: correct?}, _opts) do
     status = if correct?, do: "✓", else: "✗"
     concat(["#Guess<\"", letter, "\" ", status, ">"])
   end

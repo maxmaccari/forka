@@ -1,4 +1,4 @@
-defmodule Forka.Games.GameWord do
+defmodule Forka.Games.Game.GameWord do
   @moduledoc """
   This module represents a word being played in a game session, tracking guesses and game state.
 
@@ -11,8 +11,8 @@ defmodule Forka.Games.GameWord do
   and managing the game state for a single word.
   """
 
-  alias Forka.Games.GameWord
-  alias Forka.Games.{Guess, Word}
+  alias Forka.Games.Game.{GameWord, Guess}
+  alias Forka.Games.Word
 
   defstruct word: nil, guesses: [], finished_by_id: nil
 
@@ -42,13 +42,12 @@ defmodule Forka.Games.GameWord do
     - guessed_by_player_id: ID of the player making the guess
 
   ## Returns
-    - `{:ok, updated_game_word}` if the guess was valid
+    - `{:ok, updated_game_word, guess}` if the guess was valid, where guess is the new Guess struct
     - `{:error, :letter_already_guessed}` if the letter was already guessed
 
   ## Examples
       iex> game_word = GameWord.new(Word.new("hello", "greeting"))
-      iex> {:ok, game_word} = GameWord.guess(game_word, "h", "player1")
-      iex> [guess] = game_word.guesses
+      iex> {:ok, game_word, guess} = GameWord.guess(game_word, "h", "player1")
       iex> guess
       #Guess<"h" ✓>
   """
@@ -58,7 +57,7 @@ defmodule Forka.Games.GameWord do
       guess = Guess.new(letter, guessed_by_player_id, correct?)
       new_guesses = [guess | guesses]
 
-      {:ok, check_finished(%{game_word | guesses: new_guesses}, guessed_by_player_id)}
+      {:ok, check_finished(%{game_word | guesses: new_guesses}, guessed_by_player_id), guess}
     else
       {:error, :letter_already_guessed}
     end
@@ -112,7 +111,7 @@ defmodule Forka.Games.GameWord do
   defp can_guess_letter?(guesses, letter),
     do: !Enum.any?(guesses, &(&1.letter == String.downcase(letter)))
 
-  defp check_finished(%GameWord{guesses: guesses, word: word} = game_word, finished_by_id) do
+  defp check_finished(%__MODULE__{guesses: guesses, word: word} = game_word, finished_by_id) do
     if Word.finished?(word, guessed_letters(guesses)) do
       %{game_word | finished_by_id: finished_by_id}
     else
@@ -123,13 +122,15 @@ defmodule Forka.Games.GameWord do
   defp guessed_letters(guesses), do: Enum.map(guesses, & &1.letter)
 end
 
-defimpl Inspect, for: Forka.Games.GameWord do
+defimpl Inspect, for: Forka.Games.Game.GameWord do
   import Inspect.Algebra
 
-  def inspect(%Forka.Games.GameWord{word: word, guesses: guesses} = game_word, opts) do
+  alias Forka.Games.Game.GameWord
+
+  def inspect(%GameWord{word: word, guesses: guesses} = game_word, opts) do
     # Computed fields
-    word_letters = Forka.Games.GameWord.display_word_letters(game_word)
-    finished? = Forka.Games.GameWord.finished?(game_word)
+    word_letters = GameWord.display_word_letters(game_word)
+    finished? = GameWord.finished?(game_word)
 
     word_display =
       word_letters
