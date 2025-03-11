@@ -47,7 +47,7 @@ defmodule Forka.Games.Game.GameWord do
 
   ## Examples
       iex> game_word = GameWord.new(Word.new("hello", "greeting"))
-      iex> {:ok, game_word, guess} = GameWord.guess(game_word, "h", "player1")
+      iex> {:ok, _game_word, guess} = GameWord.guess(game_word, "h", "player1")
       iex> guess
       #Guess<"h" ✓>
   """
@@ -74,7 +74,7 @@ defmodule Forka.Games.Game.GameWord do
 
   ## Examples
       iex> game_word = GameWord.new(Word.new("hello", "greeting"))
-      iex> {:ok, game_word} = GameWord.guess(game_word, "h", "player1")
+      iex> {:ok, game_word, _guess} = GameWord.guess(game_word, "h", "player1")
       iex> GameWord.display_word_letters(game_word)
       [{:found, "h"}, :hidden, :hidden, :hidden, :hidden]
   """

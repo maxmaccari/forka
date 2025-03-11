@@ -42,7 +42,7 @@ defmodule Forka.Games.Game.GamePlayer do
 
   @doc false
   def decrement_lives(%__MODULE__{status: :alive, lives: lives} = game_player) when lives == 0,
-    do: %{game_player | status: :died}
+    do: %{game_player | status: :dead}
 
   @doc false
   def decrement_lives(%__MODULE__{} = game_player), do: game_player
@@ -53,7 +53,7 @@ defmodule Forka.Games.Game.GamePlayer do
 
   @doc false
   def give_up(%__MODULE__{} = game_player),
-    do: %{game_player | status: :died, lives: 0}
+    do: %{game_player | status: :dead, lives: 0}
 
   @doc false
   def add_score(%__MODULE__{status: :alive, score: score} = game_player, points)
@@ -62,4 +62,12 @@ defmodule Forka.Games.Game.GamePlayer do
   end
 
   def add_score(%__MODULE__{} = game_player, points) when is_integer(points), do: game_player
+
+  @doc false
+  def died?(%__MODULE__{status: :dead}), do: true
+  def died?(%__MODULE__{}), do: false
+
+  @doc false
+  def alive?(%__MODULE__{status: :alive}), do: true
+  def alive?(%__MODULE__{}), do: false
 end

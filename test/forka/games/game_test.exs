@@ -2,6 +2,8 @@ defmodule Forka.Games.GameTest do
   use ExUnit.Case
   alias Forka.Games.{Game, Player, Word}
 
+  import Forka.Games.Game.Helpers
+
   describe "new/2" do
     test "creates a new game with valid parameters" do
       name = "Test Game"
@@ -91,7 +93,7 @@ defmodule Forka.Games.GameTest do
     test "connects player successfully", %{game: game, player: player} do
       {:ok, updated_game} = Game.connect_player(game, player)
 
-      {_idx, game_player} = find_player_by_id(updated_game.players, player.id)
+      {_idx, game_player} = find_game_player_by_id(updated_game, player.id)
       assert game_player.connection_status == :connected
     end
 
@@ -113,35 +115,13 @@ defmodule Forka.Games.GameTest do
     test "disconnects player successfully", %{game: game, player: player} do
       {:ok, updated_game} = Game.disconnect_player(game, player)
 
-      {_idx, game_player} = find_player_by_id(updated_game.players, player.id)
+      {_idx, game_player} = find_game_player_by_id(updated_game, player.id)
       assert game_player.connection_status == :disconnected
     end
 
     test "returns error when player not found", %{game: game} do
       unknown_player = Player.new("Unknown")
       assert {:error, :player_not_found} = Game.disconnect_player(game, unknown_player)
-    end
-  end
-
-  describe "give_up_player/2" do
-    setup do
-      game = Game.new("Test Game", 4)
-      player = Player.new("Player 1")
-      {:ok, game_with_player} = Game.add_player(game, player)
-      {:ok, game: game_with_player, player: player}
-    end
-
-    test "makes player give up successfully", %{game: game, player: player} do
-      {:ok, updated_game} = Game.give_up_player(game, player)
-
-      {_idx, game_player} = find_player_by_id(updated_game.players, player.id)
-      assert game_player.status == :died
-      assert game_player.lives == 0
-    end
-
-    test "returns error when player not found", %{game: game} do
-      unknown_player = Player.new("Unknown")
-      assert {:error, :player_not_found} = Game.give_up_player(game, unknown_player)
     end
   end
 
@@ -211,10 +191,5 @@ defmodule Forka.Games.GameTest do
 
       assert {:error, :game_not_ready} = Game.init_game(game_with_player)
     end
-  end
-
-  # Helper function to find player by ID
-  defp find_player_by_id(players, player_id) do
-    Enum.find(players, fn {_idx, game_player} -> game_player.player.id == player_id end)
   end
 end

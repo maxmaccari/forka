@@ -16,7 +16,8 @@ defmodule Forka.Games.GameSummary do
   sensitive details like the actual words being guessed.
   """
 
-  alias Forka.Games.Game.{GameState, GamePlayer, GameWord}
+  alias Forka.Games.Game
+  alias Forka.Games.Game.{GameState, GameWord}
   alias Forka.Games.GameSummary.WordSummary
 
   defstruct players: %{},
@@ -48,21 +49,23 @@ defmodule Forka.Games.GameSummary do
     }
   end
 
-  def from_game_state(%GameState{
-        players: players,
-        current_game_player_index: player_index,
-        words: words,
-        current_game_word_index: word_index,
-        status: status
-      }) do
-    %GamePlayer{player: player} = Map.get(players, player_index)
+  def from_game_state(
+        %GameState{
+          players: players,
+          words: words,
+          current_game_word_index: word_index,
+          status: status
+        } = game_state
+      ) do
+    current_player = Game.get_current_player(game_state)
+
     %GameWord{guesses: guesses, word: word} = game_word = Map.get(words, word_index)
     remaining_words = map_size(words) - word_index
     current_word_letters = GameWord.display_word_letters(game_word)
 
     %__MODULE__{
       players: players,
-      current_player_id: player.id,
+      current_player_id: current_player && current_player.id,
       guesses: guesses,
       remaining_words: remaining_words,
       current_word_summary: WordSummary.from_word(word),

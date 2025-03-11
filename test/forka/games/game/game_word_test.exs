@@ -1,8 +1,9 @@
-defmodule Forka.Games.GameWordTest do
+defmodule Forka.Games.Game.GameWordTest do
   use ExUnit.Case
-  alias Forka.Games.{GameWord, Word, Guess}
+  alias Forka.Games.Game.{GameWord, Guess}
+  alias Forka.Games.Word
 
-  doctest Forka.Games.GameWord
+  doctest Forka.Games.Game.GameWord
 
   setup do
     word = Word.new("hello", "greeting")

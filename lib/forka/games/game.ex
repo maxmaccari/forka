@@ -1,6 +1,9 @@
 defmodule Forka.Games.Game do
+  alias Forka.Games.Game.GameLogic
   alias Forka.Games.Player
   alias Forka.Games.Game.{GameState, GamePlayer, GameWord}
+
+  import Forka.Games.Game.Helpers
 
   @doc """
   Creates a new game state with the given name and maximum number of players.
@@ -122,35 +125,9 @@ defmodule Forka.Games.Game do
     do: update_player_status(game_state, player_id, &GamePlayer.disconnect/1)
 
   defp update_player_status(game_state, player_id, status_fn) do
-    case find_player_by_id(game_state.players, player_id) do
+    case find_game_player_by_id(game_state, player_id) do
       {idx, game_player} ->
         updated_player = status_fn.(game_player)
-        {:ok, %{game_state | players: Map.put(game_state.players, idx, updated_player)}}
-
-      nil ->
-        {:error, :player_not_found}
-    end
-  end
-
-  defp find_player_by_id(players, player_id) do
-    Enum.find(players, fn {_idx, game_player} -> game_player.player.id == player_id end)
-  end
-
-  @doc """
-  Makes a player give up in the game state, updating their status to :died and setting lives to 0.
-
-  ## Parameters
-    - game_state: The GameState struct to update
-    - player: The Player struct that is giving up
-
-  ## Returns
-    - `{:ok, game_state}` if player successfully gave up
-    - `{:error, :player_not_found}` if player is not in the game state
-  """
-  def give_up_player(%GameState{} = game_state, %Player{id: player_id}) do
-    case find_player_by_id(game_state.players, player_id) do
-      {idx, game_player} ->
-        updated_player = GamePlayer.give_up(game_player)
         {:ok, %{game_state | players: Map.put(game_state.players, idx, updated_player)}}
 
       nil ->
@@ -216,4 +193,45 @@ defmodule Forka.Games.Game do
     |> Enum.with_index()
     |> Map.new(fn {value, key} -> {key, transform.(value)} end)
   end
+
+  @doc """
+  Makes a guess for the current word in the game.
+
+  ## Parameters
+  - game_state: The current state of the game.
+  - letter: The letter being guessed.
+  - player: The player making the guess.
+
+  ## Returns
+  - {:ok, updated_game}: If the guess is successful and the game state is updated.
+  - {:error, reason}: If the guess is not successful. Possible reasons include:
+    - :not_player_turn: If it's not the player's turn to guess.
+    - :game_over: If the game is already over.
+    - :game_finished: If the game is already finished.
+  """
+  defdelegate guess(game_state, letter, player), to: GameLogic
+
+  @doc """
+  Makes a player give up in the game state, updating their status to :dead and setting lives to 0.
+
+  ## Parameters
+    - game_state: The GameState struct to update
+    - player: The Player struct that is giving up
+
+  ## Returns
+    - `{:ok, game_state}` if player successfully gave up
+    - `{:error, :player_not_found}` if player is not in the game state
+  """
+  defdelegate give_up_player(game_state, player), to: GameLogic
+
+  @doc """
+  Gets the current player in the game.
+
+  ## Parameters
+  - game_state: The current state of the game.
+
+  ## Returns
+  - current_player: The current player in the game.
+  """
+  defdelegate get_current_player(game_state), to: GameLogic
 end
