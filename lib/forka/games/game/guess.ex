@@ -21,12 +21,3 @@ defmodule Forka.Games.Game.Guess do
     }
   end
 end
-
-defimpl Inspect, for: Forka.Games.Game.Guess do
-  import Inspect.Algebra
-
-  def inspect(%Forka.Games.Game.Guess{letter: letter, correct?: correct?}, _opts) do
-    status = if correct?, do: "✓", else: "✗"
-    concat(["#Guess<\"", letter, "\" ", status, ">"])
-  end
-end

@@ -48,8 +48,8 @@ defmodule Forka.Games.Game.GameWord do
   ## Examples
       iex> game_word = GameWord.new(Word.new("hello", "greeting"))
       iex> {:ok, _game_word, guess} = GameWord.guess(game_word, "h", "player1")
-      iex> guess
-      #Guess<"h" ✓>
+      iex> Map.put(guess, :guessed_at, nil)
+      %Forka.Games.Game.Guess{letter: \"h\", guessed_by_player_id: \"player1\", correct?: true}
   """
   def guess(%__MODULE__{guesses: guesses, word: word} = game_word, letter, guessed_by_player_id) do
     if can_guess_letter?(guesses, letter) do
