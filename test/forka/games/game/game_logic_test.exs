@@ -11,8 +11,8 @@ defmodule Forka.Games.Game.GameLogicTest do
     player2 = Player.new("Player 2")
 
     # Create words
-    word1 = %Word{word: "cat", category: "Animals", hint: "Meows"}
-    word2 = %Word{word: "dog", category: "Animals", hint: "Barks"}
+    word1 = Word.new("cat", "animals", "Meows")
+    word2 = Word.new("dog", "animals", "Barks")
 
     # Create a game
     game = Game.new("Test Game", 4)

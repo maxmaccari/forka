@@ -165,7 +165,7 @@ defmodule Forka.Games.Game.GameLogic do
 
     updated_player =
       if GameWord.finished?(game_word) do
-        score = base_score + 50 + String.length(word.word) * 10
+        score = base_score + 50 + Word.letters_length(word) * 10
 
         player
         |> GamePlayer.add_score(score)

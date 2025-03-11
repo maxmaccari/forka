@@ -16,11 +16,11 @@ defmodule Forka.Games.GameSummary.WordSummary do
   defstruct letters: 0, category: nil, hint: nil
 
   @doc false
-  def from_word(%Word{word: word, category: category, hint: hint}) do
+  def from_word(%Word{} = word) do
     %__MODULE__{
-      letters: String.length(word),
-      category: category,
-      hint: hint
+      letters: Word.letters_length(word),
+      category: Word.category(word),
+      hint: Word.hint(word)
     }
   end
 end

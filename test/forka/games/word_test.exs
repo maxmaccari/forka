@@ -6,7 +6,7 @@ defmodule Forka.Games.WordTest do
 
   test "new/2 creates a new Word struct" do
     word = Word.new("hello", "greeting")
-    assert %Word{word: "hello", category: "greeting"} = word
+    assert %Word{text: "hello", category: "greeting"} = word
   end
 
   test "contain_letter?/2 checks if word contains a letter" do

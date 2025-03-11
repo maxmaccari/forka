@@ -15,8 +15,8 @@ defmodule Forka.Games.GameSummaryTest do
 
     # Set words
     words = [
-      %Word{word: "cat", category: "Animals", hint: "Meows"},
-      %Word{word: "dog", category: "Animals", hint: "Barks"}
+      Word.new("cat", "animals", "Meows"),
+      Word.new("dog", "animals", "Barks")
     ]
 
     {:ok, game_with_words} = Game.set_game_words(game_with_players, words)
@@ -53,7 +53,7 @@ defmodule Forka.Games.GameSummaryTest do
              map_size(game_state.words) - game_state.current_game_word_index
 
     assert summary.current_word_summary.letters ==
-             String.length(game_state.words[game_state.current_game_word_index].word.word)
+             Word.letters_length(game_state.words[game_state.current_game_word_index].word)
 
     assert summary.current_word_summary.category ==
              game_state.words[game_state.current_game_word_index].word.category
@@ -91,10 +91,10 @@ defmodule Forka.Games.GameSummaryTest do
              map_size(game_state.words) - game_state.current_game_word_index
 
     assert summary.current_word_summary.letters ==
-             String.length(game_state.words[game_state.current_game_word_index].word.word)
+             Word.letters_length(game_state.words[game_state.current_game_word_index].word)
 
     assert summary.current_word_summary.category ==
-             game_state.words[game_state.current_game_word_index].word.category
+             Word.category(game_state.words[game_state.current_game_word_index].word)
 
     assert summary.current_word_letters ==
              GameWord.display_word_letters(game_state.words[game_state.current_game_word_index])

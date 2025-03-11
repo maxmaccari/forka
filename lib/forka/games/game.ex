@@ -148,7 +148,7 @@ defmodule Forka.Games.Game do
   def set_game_words(%GameState{} = game_state, words) when is_list(words) do
     new_words =
       words
-      |> Enum.uniq_by(& &1.word)
+      |> Enum.uniq()
       |> indexed_map(&GameWord.new/1)
 
     {:ok, %{game_state | words: new_words}}

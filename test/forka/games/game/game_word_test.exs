@@ -12,7 +12,8 @@ defmodule Forka.Games.Game.GameWordTest do
   end
 
   test "new/1 creates a new GameWord struct", %{game_word: game_word} do
-    assert %GameWord{word: %Word{word: "hello"}, guesses: []} = game_word
+    expected_word = Word.new("hello", "greeting")
+    assert %GameWord{word: ^expected_word, guesses: []} = game_word
   end
 
   test "guess/3 processes a correct guess", %{game_word: game_word} do

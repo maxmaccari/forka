@@ -130,8 +130,8 @@ defmodule Forka.Games.GameTest do
       game = Game.new("Test Game", 4)
 
       words = [
-        %Word{word: "cat", category: "Animals", hint: "Meows"},
-        %Word{word: "dog", category: "Animals", hint: "Barks"}
+        Word.new("cat", "animals", "Meows"),
+        Word.new("dog", "animals", "Barks")
       ]
 
       {:ok, game: game, words: words}
@@ -160,7 +160,7 @@ defmodule Forka.Games.GameTest do
       game = Game.new("Test Game", 4)
       player1 = Player.new("Player 1")
       player2 = Player.new("Player 2")
-      word = %Word{word: "cat", category: "Animals", hint: "Meows"}
+      word = Word.new("cat", "Animals", "Meows")
 
       {:ok, game_with_player1} = Game.add_player(game, player1)
       {:ok, game_with_players} = Game.add_player(game_with_player1, player2)

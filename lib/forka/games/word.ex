@@ -11,7 +11,7 @@ defmodule Forka.Games.Word do
   The module handles special characters and accents in words automatically.
   """
 
-  defstruct word: nil, hint: nil, category: nil
+  defstruct text: nil, hint: nil, category: nil
 
   @doc """
   Creates a new Word struct.
@@ -28,9 +28,9 @@ defmodule Forka.Games.Word do
       iex> Word.new("café", "food", "Hot beverage")
       #Word<café (food)>
   """
-  def new(word, category, hint \\ nil) do
+  def new(text, category, hint \\ nil) do
     %__MODULE__{
-      word: String.downcase(word),
+      text: String.downcase(text),
       category: category,
       hint: hint
     }
@@ -49,11 +49,11 @@ defmodule Forka.Games.Word do
       iex> Word.check_word_letters(word, ["h", "x", "l"])
       [{:found, "h"}, :hidden, {:found, "l"}, {:found, "l"}, :hidden]
   """
-  def check_word_letters(%__MODULE__{word: word}, letters) when is_list(letters) do
-    normalized_word = word |> normalized_word() |> String.graphemes()
-    displayble_word = String.graphemes(word)
+  def check_word_letters(%__MODULE__{text: text}, letters) when is_list(letters) do
+    normalized_text = text |> normalized_text() |> String.graphemes()
+    displayable_text = String.graphemes(text)
 
-    for {letter, display_letter} <- Enum.zip(normalized_word, displayble_word) do
+    for {letter, display_letter} <- Enum.zip(normalized_text, displayable_text) do
       if letter in letters do
         {:found, display_letter}
       else
@@ -76,8 +76,8 @@ defmodule Forka.Games.Word do
       iex> Word.contain_letter?(word, "x")
       false
   """
-  def contain_letter?(%__MODULE__{word: word}, letter) when is_binary(letter),
-    do: String.downcase(letter) in unique_letters(word)
+  def contain_letter?(%__MODULE__{text: text}, letter) when is_binary(letter),
+    do: String.downcase(letter) in unique_letters(text)
 
   @doc """
   Checks if all letters in the word have been guessed.
@@ -93,8 +93,8 @@ defmodule Forka.Games.Word do
       iex> Word.finished?(word, ["h"])
       false
   """
-  def finished?(%__MODULE__{word: word}, guessed_letters) when is_list(guessed_letters) do
-    word
+  def finished?(%__MODULE__{text: text}, guessed_letters) when is_list(guessed_letters) do
+    text
     |> unique_letters()
     |> Enum.all?(&(&1 in guessed_letters))
   end
@@ -113,26 +113,67 @@ defmodule Forka.Games.Word do
       iex> Word.letters_count_in_word(word, "x")
       0
   """
-  def letters_count_in_word(%__MODULE__{word: word}, letter) when is_binary(letter) do
+  def letters_count_in_word(%__MODULE__{text: text}, letter) when is_binary(letter) do
     downcase_letter = String.downcase(letter)
 
-    word
-    |> normalized_word()
+    text
+    |> normalized_text()
     |> String.graphemes()
     |> Enum.filter(&(&1 == downcase_letter))
     |> length()
   end
 
-  defp normalized_word(word) do
-    word
+  @doc """
+  Returns the length of the word's text.
+
+  ## Parameters
+    - word: Word struct
+
+  ## Examples
+      iex> word = Word.new("hello", "greeting")
+      iex> Word.letters_length(word)
+      5
+  """
+  def letters_length(%__MODULE__{text: text}), do: String.length(text)
+
+  @doc """
+  Returns the category of the word.
+
+  ## Parameters
+    - word: Word struct
+
+  ## Examples
+      iex> word = Word.new("hello", "greeting")
+      iex> Word.category(word)
+      "greeting"
+  """
+  def category(%__MODULE__{category: category}), do: category
+
+  @doc """
+  Returns the hint for the word.
+
+  ## Parameters
+    - word: Word struct
+
+  ## Examples
+      iex> word = Word.new("hello", "greeting", "A common salutation")
+      iex> Word.hint(word)
+      "A common salutation"
+  """
+  def hint(%__MODULE__{hint: hint}), do: hint
+
+  # Helpers
+
+  defp normalized_text(text) do
+    text
     |> String.normalize(:nfd)
     |> String.replace(~r/[^\p{L}\s]/u, "")
     |> String.normalize(:nfc)
   end
 
-  defp unique_letters(word) do
-    word
-    |> normalized_word()
+  defp unique_letters(text) do
+    text
+    |> normalized_text()
     |> String.graphemes()
     |> Enum.uniq()
     |> Enum.sort()
@@ -140,13 +181,13 @@ defmodule Forka.Games.Word do
 end
 
 defimpl String.Chars, for: Forka.Games.Word do
-  def to_string(%Forka.Games.Word{word: word}), do: word
+  def to_string(%Forka.Games.Word{text: text}), do: text
 end
 
 defimpl Inspect, for: Forka.Games.Word do
   import Inspect.Algebra
 
-  def inspect(%Forka.Games.Word{word: word, category: category}, _opts) do
-    concat(["#Word<", word, " (", category, ")>"])
+  def inspect(%Forka.Games.Word{text: text, category: category}, _opts) do
+    concat(["#Word<", text, " (", category, ")>"])
   end
 end
