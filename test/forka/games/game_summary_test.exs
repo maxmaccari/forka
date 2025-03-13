@@ -53,7 +53,7 @@ defmodule Forka.Games.GameSummaryTest do
              map_size(game_state.words) - game_state.current_game_word_index
 
     assert summary.current_word_summary.letters ==
-             Word.letters_length(game_state.words[game_state.current_game_word_index].word)
+             Word.letters_count(game_state.words[game_state.current_game_word_index].word)
 
     assert summary.current_word_summary.category ==
              game_state.words[game_state.current_game_word_index].word.category
@@ -91,7 +91,7 @@ defmodule Forka.Games.GameSummaryTest do
              map_size(game_state.words) - game_state.current_game_word_index
 
     assert summary.current_word_summary.letters ==
-             Word.letters_length(game_state.words[game_state.current_game_word_index].word)
+             Word.letters_count(game_state.words[game_state.current_game_word_index].word)
 
     assert summary.current_word_summary.category ==
              Word.category(game_state.words[game_state.current_game_word_index].word)

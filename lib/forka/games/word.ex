@@ -29,16 +29,34 @@ defmodule Forka.Games.Word do
       #Word<café (food)>
   """
   def new(text, category, hint \\ nil) do
+    sanitized_text =
+      text
+      |> String.trim()
+      |> sanitize_text()
+      |> String.downcase()
+
     %__MODULE__{
-      text: String.downcase(text),
+      text: sanitized_text,
       category: category,
       hint: hint
     }
   end
 
+  defp sanitize_text(text) do
+    text
+    # Replace multiple spaces with a single space
+    |> String.replace(~r/\s{2,}/u, " ")
+    # Replace multiple hyphens with a single hyphen
+    |> String.replace(~r/-{2,}/u, "-")
+    # Remove special characters
+    |> String.replace(~r/[^\p{L}\s\-]+/u, "")
+  end
+
   @doc """
   Checks which letters from the given list are present in the word.
-  Returns a list of tuples indicating if each letter was found or hidden.
+  Returns a list of tuples indicating if each letter was found in the word or hidden.
+
+  The function considers letters in a case-insensitive manner and treats spaces and hyphens as found characters.
 
   ## Parameters
     - word: Word struct
@@ -48,13 +66,17 @@ defmodule Forka.Games.Word do
       iex> word = Word.new("hello", "greeting")
       iex> Word.check_word_letters(word, ["h", "x", "l"])
       [{:found, "h"}, :hidden, {:found, "l"}, {:found, "l"}, :hidden]
+
+      iex> word = Word.new("café", "food")
+      iex> Word.check_word_letters(word, ["c", "a", "f", "e", "x"])
+      [{:found, "c"}, {:found, "a"}, {:found, "f"}, {:found, "é"}]
   """
   def check_word_letters(%__MODULE__{text: text}, letters) when is_list(letters) do
     normalized_text = text |> normalized_text() |> String.graphemes()
     displayable_text = String.graphemes(text)
 
     for {letter, display_letter} <- Enum.zip(normalized_text, displayable_text) do
-      if letter in letters do
+      if letter in letters or letter in [" ", "-"] do
         {:found, display_letter}
       else
         :hidden
@@ -95,9 +117,12 @@ defmodule Forka.Games.Word do
   """
   def finished?(%__MODULE__{text: text}, guessed_letters) when is_list(guessed_letters) do
     text
+    |> remove_spaces_and_hyphens()
     |> unique_letters()
     |> Enum.all?(&(&1 in guessed_letters))
   end
+
+  defp remove_spaces_and_hyphens(text), do: String.replace(text, ~r/[\s\-]+/u, "")
 
   @doc """
   Counts how many times a letter appears in a word.
@@ -131,10 +156,11 @@ defmodule Forka.Games.Word do
 
   ## Examples
       iex> word = Word.new("hello", "greeting")
-      iex> Word.letters_length(word)
+      iex> Word.letters_count(word)
       5
   """
-  def letters_length(%__MODULE__{text: text}), do: String.length(text)
+  def letters_count(%__MODULE__{text: text}),
+    do: text |> remove_spaces_and_hyphens() |> String.length()
 
   @doc """
   Returns the category of the word.
@@ -167,7 +193,7 @@ defmodule Forka.Games.Word do
   defp normalized_text(text) do
     text
     |> String.normalize(:nfd)
-    |> String.replace(~r/[^\p{L}\s]/u, "")
+    |> String.replace(~r/[^\p{L}\s\-]/u, "")
     |> String.normalize(:nfc)
   end
 

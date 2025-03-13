@@ -18,7 +18,7 @@ defmodule Forka.Games.GameSummary.WordSummary do
   @doc false
   def from_word(%Word{} = word) do
     %__MODULE__{
-      letters: Word.letters_length(word),
+      letters: Word.letters_count(word),
       category: Word.category(word),
       hint: Word.hint(word)
     }
