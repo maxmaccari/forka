@@ -1,5 +1,5 @@
 defmodule Forka.Games.GameSummaryTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   alias Forka.Games.{Game, Player, Word, GameSummary}
   alias Forka.Games.Game.GameWord
 
