@@ -19,7 +19,7 @@ defmodule Forka.Games.GameSummaryTest do
       Word.new("dog", "animals", "Barks")
     ]
 
-    {:ok, game_with_words} = Game.set_game_words(game_with_players, words)
+    game_with_words = Game.set_words(game_with_players, words)
     {:ok, initialized_game} = Game.init_game(game_with_words)
 
     {:ok, lobby_game: game_with_words, initialized_game: initialized_game}

@@ -18,7 +18,7 @@ defmodule Forka.Games.Game.GameLogicTest do
     game = Game.new("Test Game", 4)
     {:ok, game_with_player1} = Game.add_player(game, player1)
     {:ok, game_with_players} = Game.add_player(game_with_player1, player2)
-    {:ok, game_with_words} = Game.set_game_words(game_with_players, [word1, word2])
+    game_with_words = Game.set_words(game_with_players, [word1, word2])
     {:ok, initialized_game} = Game.init_game(game_with_words)
 
     {:ok,

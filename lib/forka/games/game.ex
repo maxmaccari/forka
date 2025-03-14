@@ -142,18 +142,15 @@ defmodule Forka.Games.Game do
     - words: List of words to add to the game state
 
   ## Returns
-    - `{:ok, game_state}` with updated words
-    - `{:error, :no_words_provided}` if no words are provided
+    - - A GameState struct with words set
   """
-  def set_game_words(%GameState{}, []), do: {:error, :no_words_provided}
-
-  def set_game_words(%GameState{} = game_state, words) when is_list(words) do
+  def set_words(%GameState{} = game_state, words) when is_list(words) do
     new_words =
       words
       |> Enum.uniq()
       |> indexed_map(&GameWord.new/1)
 
-    {:ok, %{game_state | words: new_words}}
+    %{game_state | words: new_words}
   end
 
   @doc """
