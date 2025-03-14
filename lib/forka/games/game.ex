@@ -4,8 +4,6 @@ defmodule Forka.Games.Game do
   alias Forka.Games.Player
   alias Forka.Games.Game.{GameState, GamePlayer, GameWord}
 
-  import Forka.Games.Game.Helpers
-
   @doc """
   Creates a new game state with the given name and maximum number of players.
 
@@ -94,45 +92,6 @@ defmodule Forka.Games.Game do
   end
 
   def remove_player(_game_state, _player), do: {:error, :game_already_started}
-
-  @doc """
-  Connects a player to the game state, updating their status to :connected.
-
-  ## Parameters
-    - game_state: The GameState struct to update
-    - player: The Player struct to connect
-
-  ## Returns
-    - `{:ok, game_state}` if player was successfully connected
-    - `{:error, :player_not_found}` if player is not in the game state
-  """
-  def connect_player(%GameState{} = game_state, %Player{id: player_id}),
-    do: update_player_status(game_state, player_id, &GamePlayer.connect/1)
-
-  @doc """
-  Disconnects a player from the game state, updating their status to :disconnected.
-
-  ## Parameters
-    - game_state: The GameState struct to update
-    - player: The Player struct to disconnect
-
-  ## Returns
-    - `{:ok, game_state}` if player was successfully disconnected
-    - `{:error, :player_not_found}` if player is not in the game state
-  """
-  def disconnect_player(%GameState{} = game_state, %Player{id: player_id}),
-    do: update_player_status(game_state, player_id, &GamePlayer.disconnect/1)
-
-  defp update_player_status(game_state, player_id, status_fn) do
-    case find_game_player_by_id(game_state, player_id) do
-      {idx, game_player} ->
-        updated_player = status_fn.(game_player)
-        {:ok, %{game_state | players: Map.put(game_state.players, idx, updated_player)}}
-
-      nil ->
-        {:error, :player_not_found}
-    end
-  end
 
   @doc """
   Sets the words for the game state.

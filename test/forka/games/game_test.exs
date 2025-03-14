@@ -2,8 +2,6 @@ defmodule Forka.Games.GameTest do
   use ExUnit.Case
   alias Forka.Games.{Game, Player, Word}
 
-  import Forka.Games.Game.Helpers
-
   describe "new/2" do
     test "creates a new game with valid parameters" do
       name = "Test Game"
@@ -38,7 +36,6 @@ defmodule Forka.Games.GameTest do
       assert game_player.player.username == player.username
       assert game_player.status == :alive
       assert game_player.lives == 6
-      assert game_player.connection_status == :disconnected
       assert game_player.score == 0
     end
 
@@ -107,49 +104,6 @@ defmodule Forka.Games.GameTest do
     test "returns error when game already started", %{game: game, player: player} do
       game_started = %{game | status: :playing}
       assert {:error, :game_already_started} = Game.remove_player(game_started, player)
-    end
-  end
-
-  describe "connect_player/2" do
-    setup do
-      game = Game.new("Test Game", 4)
-      player = Player.new("Player 1")
-      {:ok, game_with_player} = Game.add_player(game, player)
-      {:ok, game: game_with_player, player: player}
-    end
-
-    test "connects player successfully", %{game: game, player: player} do
-      {:ok, updated_game} = Game.connect_player(game, player)
-
-      {_idx, game_player} = find_game_player_by_id(updated_game, player.id)
-      assert game_player.connection_status == :connected
-    end
-
-    test "returns error when player not found", %{game: game} do
-      unknown_player = Player.new("Unknown")
-      assert {:error, :player_not_found} = Game.connect_player(game, unknown_player)
-    end
-  end
-
-  describe "disconnect_player/2" do
-    setup do
-      game = Game.new("Test Game", 4)
-      player = Player.new("Player 1")
-      {:ok, game_with_player} = Game.add_player(game, player)
-      {:ok, connected_game} = Game.connect_player(game_with_player, player)
-      {:ok, game: connected_game, player: player}
-    end
-
-    test "disconnects player successfully", %{game: game, player: player} do
-      {:ok, updated_game} = Game.disconnect_player(game, player)
-
-      {_idx, game_player} = find_game_player_by_id(updated_game, player.id)
-      assert game_player.connection_status == :disconnected
-    end
-
-    test "returns error when player not found", %{game: game} do
-      unknown_player = Player.new("Unknown")
-      assert {:error, :player_not_found} = Game.disconnect_player(game, unknown_player)
     end
   end
 

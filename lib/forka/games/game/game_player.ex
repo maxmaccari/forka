@@ -21,20 +21,12 @@ defmodule Forka.Games.Game.GamePlayer do
   defstruct player: nil,
             status: :alive,
             lives: @initial_lives,
-            connection_status: :disconnected,
             score: 0
 
   @doc false
   def new(%Player{} = player) do
     %__MODULE__{player: player}
   end
-
-  @doc false
-  def connect(%__MODULE__{} = game_player), do: %{game_player | connection_status: :connected}
-
-  @doc false
-  def disconnect(%__MODULE__{} = game_player),
-    do: %{game_player | connection_status: :disconnected}
 
   @doc false
   def decrement_lives(%__MODULE__{status: :alive, lives: lives} = game_player) when lives > 0,
