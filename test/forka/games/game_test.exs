@@ -276,4 +276,51 @@ defmodule Forka.Games.GameTest do
       assert {:error, :game_in_progress} = Game.archive_game(game)
     end
   end
+
+  describe "transfer_ownership_to_player/2" do
+    setup %{owner: owner} do
+      game = Game.new(owner, "Test Game", 4)
+      player1 = Player.new("Player 1")
+      player2 = Player.new("Player 2")
+
+      {:ok, game_with_player1} = Game.add_player(game, player1)
+      {:ok, game_with_players} = Game.add_player(game_with_player1, player2)
+
+      {:ok, game: game_with_players, player1: player1, player2: player2, owner: owner}
+    end
+
+    test "transfers ownership successfully", %{game: game, player1: player1} do
+      {:ok, updated_game} = Game.transfer_ownership_to_player(game, player1.id)
+
+      assert updated_game.owner.id == player1.id
+      assert updated_game.owner.username == player1.username
+    end
+
+    test "returns error when player is not in the game", %{game: game} do
+      non_player = Player.new("Non Player")
+
+      assert {:error, :player_not_found} = Game.transfer_ownership_to_player(game, non_player.id)
+    end
+
+    test "returns error when player is already the owner", %{game: game, owner: owner} do
+      assert {:error, :already_owner} =
+               Game.transfer_ownership_to_player(game, owner.id)
+    end
+
+    test "works in any game state but archived", %{game: game, player2: player2} do
+      # Test in playing state
+      game_playing = %{game | status: :playing}
+      {:ok, updated_game} = Game.transfer_ownership_to_player(game_playing, player2.id)
+      assert updated_game.owner.id == player2.id
+
+      # Test in finished state
+      game_finished = %{game | status: :finished}
+      {:ok, updated_game} = Game.transfer_ownership_to_player(game_finished, player2.id)
+      assert updated_game.owner.id == player2.id
+
+      # Test in archived state
+      game_archived = %{game | status: :archived}
+      {:error, :game_archived} = Game.transfer_ownership_to_player(game_archived, player2.id)
+    end
+  end
 end

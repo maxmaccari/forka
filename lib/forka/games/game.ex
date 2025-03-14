@@ -313,4 +313,55 @@ defmodule Forka.Games.Game do
          words: %{}
      }}
   end
+
+  @doc """
+  Transfers ownership of the game to another player.
+
+  This function changes the owner of the game to a different player who is already
+  participating in the game.
+
+  ## Parameters
+    - game_state: The current GameState struct
+    - player_id: The ID of the player who will become the new owner
+
+  ## Returns
+    - {:ok, updated_game_state} if ownership was successfully transferred
+    - {:error, :player_not_found} if the specified player is not in the game
+    - {:error, :already_owner} if the specified player is already the owner
+    - {:error, :game_archived} if the game is in archived status
+  """
+  def transfer_ownership_to_player(%GameState{status: :archived} = _game_state, player_id)
+      when is_binary(player_id) do
+    {:error, :game_archived}
+  end
+
+  def transfer_ownership_to_player(%GameState{} = game_state, player_id)
+      when is_binary(player_id) do
+    # Check if player exists in the game
+    player_exists =
+      game_state.players
+      |> Map.values()
+      |> Enum.any?(fn game_player -> game_player.player.id == player_id end)
+
+    cond do
+      # If player is already the owner
+      game_state.owner.id == player_id ->
+        {:error, :already_owner}
+
+      # If player doesn't exist in the game
+      not player_exists ->
+        {:error, :player_not_found}
+
+      # Transfer ownership
+      true ->
+        # Find the player struct from players map
+        new_owner =
+          game_state.players
+          |> Map.values()
+          |> Enum.find(fn game_player -> game_player.player.id == player_id end)
+          |> Map.get(:player)
+
+        {:ok, %GameState{game_state | owner: new_owner}}
+    end
+  end
 end
