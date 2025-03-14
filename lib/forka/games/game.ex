@@ -1,4 +1,5 @@
 defmodule Forka.Games.Game do
+  alias Forka.Games.GameSummary
   alias Forka.Games.Game.GameLogic
   alias Forka.Games.Player
   alias Forka.Games.Game.{GameState, GamePlayer, GameWord}
@@ -142,7 +143,10 @@ defmodule Forka.Games.Game do
 
   ## Returns
     - `{:ok, game_state}` with updated words
+    - `{:error, :no_words_provided}` if no words are provided
   """
+  def set_game_words(%GameState{}, []), do: {:error, :no_words_provided}
+
   def set_game_words(%GameState{} = game_state, words) when is_list(words) do
     new_words =
       words
@@ -262,4 +266,20 @@ defmodule Forka.Games.Game do
   - current_player: The current player in the game.
   """
   defdelegate get_current_player(game_state), to: GameLogic
+
+  @doc """
+  Converts a GameState to a GameSummary.
+
+  This function creates a safe representation of the game state that can be shared with players,
+  containing only non-sensitive information. The GameSummary includes details like players,
+  current player's turn, guesses made, remaining words, and game status, while hiding
+  sensitive information like the actual words being guessed.
+
+  ## Parameters
+    - game_state: The GameState struct to convert
+
+  ## Returns
+    - A GameSummary struct containing shareable game information
+  """
+  def to_game_summary(%GameState{} = game_state), do: GameSummary.from_game_state(game_state)
 end
