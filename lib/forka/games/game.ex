@@ -75,13 +75,19 @@ defmodule Forka.Games.Game do
   @doc """
   Removes a player from the game state while in lobby state.
 
-  Returns:
-  - `{:ok, game_state}` if player was successfully removed
-  - `{:error, :game_already_started}` if game state is not in lobby state
+  ## Parameters
+    - game_state: The GameState struct
+    - player_id: The ID of the player to be removed
+
+  ## Returns
+    - `{:ok, game_state}` if player was successfully removed
+    - `{:error, :game_already_started}` if game state is not in lobby state
+
+  Players are reindexed after removal to maintain sequential ordering.
+  If the player is not found in the game, returns the unchanged game state.
   """
-  def remove_player(%GameState{status: :lobby, players: players} = game_state, %Player{
-        id: player_id
-      }) do
+  def remove_player(%GameState{status: :lobby, players: players} = game_state, player_id)
+      when is_binary(player_id) do
     new_players =
       players
       |> Map.values()
@@ -91,7 +97,7 @@ defmodule Forka.Games.Game do
     {:ok, %{game_state | players: new_players}}
   end
 
-  def remove_player(_game_state, _player), do: {:error, :game_already_started}
+  def remove_player(_game_state, _player_id), do: {:error, :game_already_started}
 
   @doc """
   Sets the words for the game state.
@@ -185,32 +191,37 @@ defmodule Forka.Games.Game do
   @doc """
   Makes a guess for the current word in the game.
 
+  This function processes a player's guess for the current word, updating the game state
+  accordingly. It validates that it's the player's turn and the game is in a valid state
+  for guessing.
+
   ## Parameters
-  - game_state: The current state of the game.
-  - letter: The letter being guessed.
-  - player: The player making the guess.
+    - game_state: The GameState struct representing the current state of the game
+    - letter: A single character string representing the letter being guessed
+    - player_id: The ID of the player making the guess (not the Player struct)
 
   ## Returns
-  - {:ok, updated_game}: If the guess is successful and the game state is updated.
-  - {:error, reason}: If the guess is not successful. Possible reasons include:
-    - :not_player_turn: If it's not the player's turn to guess.
-    - :game_over: If the game is already over.
-    - :game_finished: If the game is already finished.
+    - `{:ok, updated_game}`: If the guess is processed successfully
+    - `{:error, reason}`: If the guess cannot be processed. Possible reasons:
+      - `:not_player_turn`: The player attempting to guess is not the current player
+      - `:game_not_playing`: The game is not in playing state
+      - `:letter_already_guessed`: The letter has already been guessed for this word
   """
-  defdelegate guess(game_state, letter, player), to: GameLogic
+  defdelegate guess(game_state, letter, player_id), to: GameLogic
 
   @doc """
   Makes a player give up in the game state, updating their status to :dead and setting lives to 0.
 
   ## Parameters
     - game_state: The GameState struct to update
-    - player: The Player struct that is giving up
+    - player_id: The ID of the player that is giving up
 
   ## Returns
-    - `{:ok, game_state}` if player successfully gave up
+    - `{:ok, updated_game_state}` if player successfully gave up
     - `{:error, :player_not_found}` if player is not in the game state
+    - `{:error, :game_not_playing}` if the game is not in playing state
   """
-  defdelegate give_up_player(game_state, player), to: GameLogic
+  defdelegate give_up_player(game_state, player_id), to: GameLogic
 
   @doc """
   Gets the current player in the game.

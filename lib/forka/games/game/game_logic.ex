@@ -39,7 +39,8 @@ defmodule Forka.Games.Game.GameLogic do
     do: Map.get(players, index)
 
   @doc false
-  def give_up_player(%GameState{} = game_state, %Player{id: player_id}) do
+  def give_up_player(%GameState{status: :playing} = game_state, player_id)
+      when is_binary(player_id) do
     case find_game_player_by_id(game_state, player_id) do
       {idx, game_player} ->
         updated_player = GamePlayer.give_up(game_player)
@@ -51,6 +52,8 @@ defmodule Forka.Games.Game.GameLogic do
         {:error, :player_not_found}
     end
   end
+
+  def give_up_player(_game_state, _player_id), do: {:error, :game_not_playing}
 
   def guess(%GameState{status: :playing} = game_state, letter, %Player{id: player_id})
       when is_binary(letter) do
