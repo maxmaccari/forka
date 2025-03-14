@@ -73,6 +73,11 @@ defmodule Forka.Games.GameTest do
       player2 = Player.new("Player 2")
       assert {:error, :maximum_players} = Game.add_player(game_with_player, player2)
     end
+
+    test "returns error when game is archived", %{game: game, player: player} do
+      game_archived = %{game | status: :archived}
+      assert {:error, :game_archived} = Game.add_player(game_archived, player)
+    end
   end
 
   describe "remove_player/2" do
@@ -112,6 +117,11 @@ defmodule Forka.Games.GameTest do
       game_started = %{game | status: :playing}
       assert {:error, :game_already_started} = Game.remove_player(game_started, player.id)
     end
+
+    test "returns error when game is archived", %{game: game, player: player} do
+      game_archived = %{game | status: :archived}
+      assert {:error, :game_archived} = Game.remove_player(game_archived, player.id)
+    end
   end
 
   describe "set_words/2" do
@@ -141,6 +151,73 @@ defmodule Forka.Games.GameTest do
       duplicate_words = words ++ [List.first(words)]
       updated_game = Game.set_words(game, duplicate_words)
       assert map_size(updated_game.words) == 2
+    end
+
+    test "does not set words when game is not in lobby state", %{game: game, words: words} do
+      game_playing = %{game | status: :playing}
+      assert ^game_playing = Game.set_words(game_playing, words)
+
+      game_archived = %{game | status: :archived}
+      assert ^game_archived = Game.set_words(game_archived, words)
+    end
+  end
+
+  describe "shuffle_players/1" do
+    setup %{owner: owner} do
+      game = Game.new(owner, "Test Game", 10)
+
+      # Add multiple players to ensure we have enough for shuffling
+      players = for i <- 1..10, do: Player.new("Player #{i}")
+
+      # Add all players to the game
+      game_with_players =
+        Enum.reduce(players, game, fn player, acc_game ->
+          {:ok, updated_game} = Game.add_player(acc_game, player)
+          updated_game
+        end)
+
+      {:ok, game: game_with_players, players: players}
+    end
+
+    test "shuffles players only in lobby state", %{game: game} do
+      # Test in lobby state
+      shuffled_game = Game.shuffle_players(game)
+      assert shuffled_game.status == :lobby
+
+      # The player IDs should be the same, but potentially in different order
+      original_player_ids =
+        game.players |> Map.values() |> Enum.map(& &1.player.id) |> MapSet.new()
+
+      shuffled_player_ids =
+        shuffled_game.players |> Map.values() |> Enum.map(& &1.player.id) |> MapSet.new()
+
+      assert original_player_ids == shuffled_player_ids
+
+      # Verify player indices are sequential and start from 0
+      player_indices = shuffled_game.players |> Map.keys() |> Enum.sort()
+      assert player_indices == Enum.to_list(0..(map_size(shuffled_game.players) - 1))
+
+      # Test in playing state - should not shuffle
+      game_playing = %{game | status: :playing}
+      assert ^game_playing = Game.shuffle_players(game_playing)
+
+      # Test in archived state - should not shuffle
+      game_archived = %{game | status: :archived}
+      assert ^game_archived = Game.shuffle_players(game_archived)
+    end
+
+    test "maintains consistent state after shuffle", %{game: game} do
+      shuffled_game = Game.shuffle_players(game)
+
+      # Player count should remain the same
+      assert map_size(game.players) == map_size(shuffled_game.players)
+
+      # Each player should maintain their properties
+      Enum.each(shuffled_game.players, fn {_idx, game_player} ->
+        assert game_player.status == :alive
+        assert game_player.lives == 6
+        assert game_player.score == 0
+      end)
     end
   end
 
@@ -179,6 +256,11 @@ defmodule Forka.Games.GameTest do
       {:ok, game_with_player} = Game.add_player(game, player)
 
       assert {:error, :game_not_ready} = Game.init_game(game_with_player)
+    end
+
+    test "returns error when game is archived", %{game: game} do
+      game_archived = %{game | status: :archived}
+      assert {:error, :game_archived} = Game.init_game(game_archived)
     end
   end
 
@@ -240,6 +322,15 @@ defmodule Forka.Games.GameTest do
     test "returns error when game is in playing status", %{game_playing: game} do
       assert {:error, :game_in_progress} = Game.restart_game(game)
     end
+
+    test "returns error when game is archived", %{game_finished: game} do
+      # First archive the game
+      {:ok, archived_game} = Game.archive_game(game)
+      assert archived_game.status == :archived
+
+      # Then try to restart it
+      assert {:error, :game_archived} = Game.restart_game(archived_game)
+    end
   end
 
   describe "archive_game/1" do
@@ -274,6 +365,25 @@ defmodule Forka.Games.GameTest do
 
     test "returns error when game is in playing status", %{game_playing: game} do
       assert {:error, :game_in_progress} = Game.archive_game(game)
+    end
+
+    test "cannot modify an archived game", %{game_lobby: game} do
+      # First archive the game
+      {:ok, archived_game} = Game.archive_game(game)
+      assert archived_game.status == :archived
+
+      # Verify that archived games cannot be modified
+      player = Player.new("New Player")
+      word = Word.new("dog", "Animals", "Barks")
+
+      # Test various operations on archived game
+      assert {:error, :game_archived} = Game.add_player(archived_game, player)
+      assert {:error, :game_archived} = Game.remove_player(archived_game, "any_player_id")
+      assert archived_game == Game.set_words(archived_game, [word])
+      assert archived_game == Game.shuffle_players(archived_game)
+      assert {:error, :game_archived} = Game.init_game(archived_game)
+      assert {:error, :game_archived} = Game.guess(archived_game, "a", "any_player_id")
+      assert {:error, :game_archived} = Game.give_up_player(archived_game, "any_player_id")
     end
   end
 

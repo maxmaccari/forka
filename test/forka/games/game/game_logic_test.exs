@@ -86,6 +86,14 @@ defmodule Forka.Games.Game.GameLogicTest do
       unknown_player = Player.new("Unknown")
       assert {:error, :player_not_found} = GameLogic.give_up_player(game, unknown_player.id)
     end
+
+    test "returns error when game is archived", %{game_state: game, player1: player1} do
+      # Set game status to archived
+      archived_game = %{game | status: :archived}
+
+      # Try to give up in an archived game
+      assert {:error, :game_archived} = GameLogic.give_up_player(archived_game, player1.id)
+    end
   end
 
   describe "guess/3" do
@@ -149,6 +157,14 @@ defmodule Forka.Games.Game.GameLogicTest do
       # Set game status to game_over
       game_state = %{game_state | status: :game_over}
       assert {:error, :game_not_playing} = GameLogic.guess(game_state, "a", player1.id)
+    end
+
+    test "returns error when game is archived", %{game_state: game_state, player1: player1} do
+      # Set game status to archived
+      archived_game = %{game_state | status: :archived}
+
+      # Try to make a guess in an archived game
+      assert {:error, :game_archived} = GameLogic.guess(archived_game, "a", player1.id)
     end
   end
 

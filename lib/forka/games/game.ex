@@ -53,6 +53,7 @@ defmodule Forka.Games.Game do
   - `{:ok, game_state}` if player was successfully added
   - `{:error, :maximum_players}` if game state already has maximum number of players
   - `{:error, :game_already_started}` if game state is not in lobby state
+  - `{:error, :game_archived}` if game state is archived
 
   The player is converted to a GamePlayer and added to the game state's players map.
   """
@@ -65,6 +66,8 @@ defmodule Forka.Games.Game do
       {:error, :maximum_players}
     end
   end
+
+  def add_player(%GameState{status: :archived}, _player), do: {:error, :game_archived}
 
   def add_player(_game_state, _player), do: {:error, :game_already_started}
 
@@ -84,6 +87,7 @@ defmodule Forka.Games.Game do
   ## Returns
     - `{:ok, game_state}` if player was successfully removed
     - `{:error, :game_already_started}` if game state is not in lobby state
+    - `{:error, :game_archived}` if game state is archived
 
   Players are reindexed after removal to maintain sequential ordering.
   If the player is not found in the game, returns the unchanged game state.
@@ -99,6 +103,9 @@ defmodule Forka.Games.Game do
     {:ok, %{game_state | players: new_players}}
   end
 
+  def remove_player(%GameState{status: :archived}, player_id) when is_binary(player_id),
+    do: {:error, :game_archived}
+
   def remove_player(%GameState{}, player_id) when is_binary(player_id),
     do: {:error, :game_already_started}
 
@@ -110,9 +117,10 @@ defmodule Forka.Games.Game do
     - words: List of words to add to the game state
 
   ## Returns
-    - - A GameState struct with words set
+    - A GameState struct with words set if the game is in lobby state
+    - The unchanged game_state if the game is not in lobby state
   """
-  def set_words(%GameState{} = game_state, words) when is_list(words) do
+  def set_words(%GameState{status: :lobby} = game_state, words) when is_list(words) do
     new_words =
       words
       |> Enum.uniq()
@@ -121,6 +129,9 @@ defmodule Forka.Games.Game do
     %{game_state | words: new_words}
   end
 
+  def set_words(%GameState{} = game_state, words) when is_list(words),
+    do: game_state
+
   @doc """
   Shuffles the players in the game state.
 
@@ -128,17 +139,18 @@ defmodule Forka.Games.Game do
     - game_state: The GameState struct containing players to shuffle
 
   ## Returns
-    - A GameState struct with players in a randomized order
+    - A GameState struct with players in a randomized order if the game is in lobby state
+    - The unchanged game_state if the game is not in lobby state
 
   ## Examples
-      iex> game_state = %GameState{players: %{0 => player1, 1 => player2, 2 => player3}}
+      iex> game_state = %GameState{status: :lobby, players: %{0 => player1, 1 => player2, 2 => player3}}
       iex> shuffled = Game.shuffle_players(game_state)
       iex> Map.keys(shuffled.players) == Map.keys(game_state.players)
       true
       iex> Map.values(shuffled.players) |> Enum.sort() == Map.values(game_state.players) |> Enum.sort()
       true
   """
-  def shuffle_players(%GameState{players: players} = game_state) do
+  def shuffle_players(%GameState{players: players, status: :lobby} = game_state) do
     shuffled_players =
       players
       |> Map.values()
@@ -147,6 +159,9 @@ defmodule Forka.Games.Game do
 
     %{game_state | players: shuffled_players}
   end
+
+  def shuffle_players(%GameState{} = game_state),
+    do: game_state
 
   @doc """
   Initializes a game by transitioning it from lobby state to playing state.
@@ -158,6 +173,7 @@ defmodule Forka.Games.Game do
     - `{:ok, game_state}` with updated status if the game can be started
     - `{:error, :game_not_ready}` if there are not enough players or words
     - `{:error, :game_already_initialized}` if the game is not in lobby status
+    - `{:error, :game_archived}` if the game is archived
 
   ## Examples
       iex> game_state = %GameState{status: :lobby, players: %{0 => player1, 1 => player2}, words: %{0 => word1}}
@@ -179,6 +195,8 @@ defmodule Forka.Games.Game do
       {:error, :game_not_ready}
     end
   end
+
+  def init_game(%GameState{status: :archived}), do: {:error, :game_archived}
 
   def init_game(%GameState{}), do: {:error, :game_already_initialized}
 
@@ -209,6 +227,7 @@ defmodule Forka.Games.Game do
       - `:not_player_turn`: The player attempting to guess is not the current player
       - `:game_not_playing`: The game is not in playing state
       - `:letter_already_guessed`: The letter has already been guessed for this word
+      - `:game_archived`: The game is archived and cannot be modified
   """
   defdelegate guess(game_state, letter, player_id), to: GameLogic
 
@@ -223,6 +242,7 @@ defmodule Forka.Games.Game do
     - `{:ok, updated_game_state}` if player successfully gave up
     - `{:error, :player_not_found}` if player is not in the game state
     - `{:error, :game_not_playing}` if the game is not in playing state
+    - `{:error, :game_archived}` if the game is archived and cannot be modified
   """
   defdelegate give_up_player(game_state, player_id), to: GameLogic
 
@@ -260,6 +280,8 @@ defmodule Forka.Games.Game do
   and is no longer playable. This is useful when all players have given up or when
   the game has been completed.
 
+  Once a game is archived, it cannot be modified in any way.
+
   ## Parameters
     - game_state: The GameState struct to archive
 
@@ -288,9 +310,14 @@ defmodule Forka.Games.Game do
   ## Returns
     - {:ok, updated_game_state} if the game was successfully restarted
     - {:error, :game_in_progress} if the game is still in playing status
+    - {:error, :game_archived} if the game is archived
   """
   def restart_game(%GameState{status: :playing} = _game_state) do
     {:error, :game_in_progress}
+  end
+
+  def restart_game(%GameState{status: :archived} = _game_state) do
+    {:error, :game_archived}
   end
 
   def restart_game(%GameState{} = game_state) do

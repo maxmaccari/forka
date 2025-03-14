@@ -52,6 +52,9 @@ defmodule Forka.Games.Game.GameLogic do
     end
   end
 
+  def give_up_player(%GameState{status: :archived}, _player_id),
+    do: {:error, :game_archived}
+
   def give_up_player(%GameState{}, player_id) when is_binary(player_id),
     do: {:error, :game_not_playing}
 
@@ -65,6 +68,9 @@ defmodule Forka.Games.Game.GameLogic do
       {:error, :not_player_turn}
     end
   end
+
+  def guess(%GameState{status: :archived}, _letter, _player_id),
+    do: {:error, :game_archived}
 
   def guess(%GameState{}, letter, player_id) when is_binary(letter) and is_binary(player_id),
     do: {:error, :game_not_playing}
