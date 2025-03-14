@@ -1,7 +1,7 @@
 defmodule Forka.Games.Game.GameLogicTest do
   use ExUnit.Case
   alias Forka.Games.{Game, Player, Word}
-  alias Forka.Games.Game.{GameLogic, GameState, GameWord, GamePlayer}
+  alias Forka.Games.Game.{GameLogic, GameState, GamePlayer}
 
   import Forka.Games.Game.Helpers
 
@@ -20,17 +20,6 @@ defmodule Forka.Games.Game.GameLogicTest do
     {:ok, game_with_players} = Game.add_player(game_with_player1, player2)
     {:ok, game_with_words} = Game.set_game_words(game_with_players, [word1, word2])
     {:ok, initialized_game} = Game.init_game(game_with_words)
-
-    initialized_game = %{
-      initialized_game
-      | words: %{
-          0 => GameWord.new(word1),
-          1 => GameWord.new(word2)
-        }
-    }
-
-    %{player: player1} = Map.get(initialized_game.players, 0)
-    %{player: player2} = Map.get(initialized_game.players, 1)
 
     {:ok,
      game_state: initialized_game, player1: player1, player2: player2, word1: word1, word2: word2}

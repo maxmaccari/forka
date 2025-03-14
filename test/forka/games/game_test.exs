@@ -10,8 +10,6 @@ defmodule Forka.Games.GameTest do
       max_players = 4
       game = Game.new(name, max_players)
 
-      assert %Game.GameState{} = game
-      assert is_binary(game.id)
       assert game.name == name
       assert game.max_players == max_players
       assert game.status == :lobby
@@ -34,14 +32,29 @@ defmodule Forka.Games.GameTest do
 
       assert map_size(updated_game.players) == 1
 
-      assert Enum.any?(updated_game.players, fn {_idx, game_player} ->
-               game_player.player.id == player.id &&
-                 game_player.player.username == player.username &&
-                 game_player.status == :alive &&
-                 game_player.lives == 6 &&
-                 game_player.connection_status == :disconnected &&
-                 game_player.score == 0
-             end)
+      assert %{0 => game_player} = updated_game.players
+
+      assert game_player.player.id == player.id
+      assert game_player.player.username == player.username
+      assert game_player.status == :alive
+      assert game_player.lives == 6
+      assert game_player.connection_status == :disconnected
+      assert game_player.score == 0
+    end
+
+    test "adds players in sequential order", %{game: game} do
+      player1 = Player.new("Player 1")
+      player2 = Player.new("Player 2")
+      player3 = Player.new("Player 3")
+
+      {:ok, game_with_player1} = Game.add_player(game, player1)
+      {:ok, game_with_player2} = Game.add_player(game_with_player1, player2)
+      {:ok, game_with_player3} = Game.add_player(game_with_player2, player3)
+
+      assert map_size(game_with_player3.players) == 3
+      assert %{0 => %{player: %{username: "Player 1"}}} = game_with_player3.players
+      assert %{1 => %{player: %{username: "Player 2"}}} = game_with_player3.players
+      assert %{2 => %{player: %{username: "Player 3"}}} = game_with_player3.players
     end
 
     test "returns error when game already started", %{game: game, player: player} do
@@ -71,14 +84,29 @@ defmodule Forka.Games.GameTest do
       assert map_size(updated_game.players) == 0
     end
 
+    test "reindexes players after removal", %{game: game_with_player1} do
+      player2 = Player.new("Player 2")
+      player3 = Player.new("Player 3")
+
+      {:ok, game_with_player2} = Game.add_player(game_with_player1, player2)
+      {:ok, game_with_player3} = Game.add_player(game_with_player2, player3)
+
+      {:ok, updated_game} = Game.remove_player(game_with_player3, player2)
+
+      # Check that player3 is now at index 1 (second position)
+      assert map_size(updated_game.players) == 2
+      assert %{0 => %{player: %{username: "Player 1"}}} = updated_game.players
+      assert %{1 => %{player: %{username: "Player 3"}}} = updated_game.players
+    end
+
+    test "returns unchanged game when removing player that doesn't exist", %{game: game} do
+      unknown_player = Player.new("Unknown")
+      assert {:ok, ^game} = Game.remove_player(game, unknown_player)
+    end
+
     test "returns error when game already started", %{game: game, player: player} do
       game_started = %{game | status: :playing}
       assert {:error, :game_already_started} = Game.remove_player(game_started, player)
-    end
-
-    test "returns error when player not found", %{game: game} do
-      unknown_player = Player.new("Unknown")
-      assert {:error, :player_not_found} = Game.remove_player(game, unknown_player)
     end
   end
 

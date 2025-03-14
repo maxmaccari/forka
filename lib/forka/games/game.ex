@@ -54,7 +54,6 @@ defmodule Forka.Games.Game do
   - `{:error, :game_already_started}` if game state is not in lobby state
 
   The player is converted to a GamePlayer and added to the game state's players map.
-  Players will be shuffled when the game starts.
   """
   def add_player(%GameState{players: players, status: :lobby} = game_state, %Player{} = player) do
     new_players = add_game_player_to_map(players, player)
@@ -69,7 +68,7 @@ defmodule Forka.Games.Game do
   def add_player(_game_state, _player), do: {:error, :game_already_started}
 
   defp add_game_player_to_map(%{} = players, %Player{} = player) do
-    [GamePlayer.new(player) | Map.values(players)]
+    (Map.values(players) ++ [GamePlayer.new(player)])
     |> Enum.uniq_by(& &1.player.id)
     |> indexed_map()
   end
@@ -80,18 +79,17 @@ defmodule Forka.Games.Game do
   Returns:
   - `{:ok, game_state}` if player was successfully removed
   - `{:error, :game_already_started}` if game state is not in lobby state
-  - `{:error, :player_not_found}` if player is not in the game state
   """
   def remove_player(%GameState{status: :lobby, players: players} = game_state, %Player{
         id: player_id
       }) do
-    case Enum.find(players, fn {_idx, game_player} -> game_player.player.id == player_id end) do
-      {idx, _game_player} ->
-        {:ok, %{game_state | players: Map.delete(players, idx)}}
+    new_players =
+      players
+      |> Map.values()
+      |> Enum.reject(&(&1.player.id == player_id))
+      |> indexed_map()
 
-      nil ->
-        {:error, :player_not_found}
-    end
+    {:ok, %{game_state | players: new_players}}
   end
 
   def remove_player(_game_state, _player), do: {:error, :game_already_started}
@@ -154,25 +152,55 @@ defmodule Forka.Games.Game do
     {:ok, %{game_state | words: new_words}}
   end
 
+  @doc """
+  Shuffles the players in the game state.
+
+  ## Parameters
+    - game_state: The GameState struct containing players to shuffle
+
+  ## Returns
+    - A GameState struct with players in a randomized order
+
+  ## Examples
+      iex> game_state = %GameState{players: %{0 => player1, 1 => player2, 2 => player3}}
+      iex> shuffled = Game.shuffle_players(game_state)
+      iex> Map.keys(shuffled.players) == Map.keys(game_state.players)
+      true
+      iex> Map.values(shuffled.players) |> Enum.sort() == Map.values(game_state.players) |> Enum.sort()
+      true
+  """
+  def shuffle_players(%GameState{players: players} = game_state) do
+    shuffled_players =
+      players
+      |> Map.values()
+      |> Enum.shuffle()
+      |> indexed_map()
+
+    %{game_state | players: shuffled_players}
+  end
+
+  @doc """
+  Initializes a game by transitioning it from lobby state to playing state.
+
+  ## Parameters
+    - game_state: The GameState struct to initialize
+
+  ## Returns
+    - `{:ok, game_state}` with updated status if the game can be started
+    - `{:error, :game_not_ready}` if there are not enough players or words
+    - `{:error, :game_already_initialized}` if the game is not in lobby status
+
+  ## Examples
+      iex> game_state = %GameState{status: :lobby, players: %{0 => player1, 1 => player2}, words: %{0 => word1}}
+      iex> {:ok, updated_game} = Game.init_game(game_state)
+      iex> updated_game.status
+      :playing
+  """
   def init_game(%GameState{status: :lobby} = game_state) do
     if can_start?(game_state) do
-      shuffled_players =
-        game_state.players
-        |> Map.values()
-        |> Enum.shuffle()
-        |> indexed_map()
-
-      shuffled_words =
-        game_state.words
-        |> Map.values()
-        |> Enum.shuffle()
-        |> indexed_map()
-
       new_game_state = %{
         game_state
-        | players: shuffled_players,
-          words: shuffled_words,
-          current_game_word_index: 0,
+        | current_game_word_index: 0,
           current_game_player_index: 0,
           status: :playing
       }
