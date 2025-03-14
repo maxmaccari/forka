@@ -41,7 +41,7 @@ defmodule Forka.Games.Game.GamePlayer do
 
   @doc false
   def reset_lives(%__MODULE__{} = game_player),
-    do: %{game_player | lives: @initial_lives}
+    do: %{game_player | lives: @initial_lives, status: :alive}
 
   @doc false
   def give_up(%__MODULE__{} = game_player),

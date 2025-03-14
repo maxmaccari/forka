@@ -181,4 +181,99 @@ defmodule Forka.Games.GameTest do
       assert {:error, :game_not_ready} = Game.init_game(game_with_player)
     end
   end
+
+  describe "restart_game/1" do
+    setup %{owner: owner} do
+      game = Game.new(owner, "Test Game", 4)
+      player1 = Player.new("Player 1")
+      player2 = Player.new("Player 2")
+      word = Word.new("cat", "Animals", "Meows")
+
+      {:ok, game_with_player1} = Game.add_player(game, player1)
+      {:ok, game_with_players} = Game.add_player(game_with_player1, player2)
+      game_with_words = Game.set_words(game_with_players, [word])
+
+      {:ok, initialized_game} = Game.init_game(game_with_words)
+
+      # Create a finished game with some player state changes
+      finished_game = %{initialized_game | status: :finished}
+
+      # Simulate a player with reduced lives and dead status
+      updated_players =
+        Map.update!(
+          finished_game.players,
+          0,
+          fn player -> %{player | lives: 0, status: :dead} end
+        )
+
+      finished_game_with_player_changes = %{finished_game | players: updated_players}
+
+      {:ok,
+       game_lobby: game_with_words,
+       game_playing: initialized_game,
+       game_finished: finished_game_with_player_changes}
+    end
+
+    test "restarts game successfully when in finished status", %{game_finished: game} do
+      assert {:ok, restarted_game} = Game.restart_game(game)
+
+      # Check that game is back in lobby state
+      assert restarted_game.status == :lobby
+
+      # Check that player lives and status are reset
+      Enum.each(restarted_game.players, fn {_idx, player} ->
+        assert player.lives == 6
+        assert player.status == :alive
+      end)
+
+      # Check that game state is properly reset
+      assert restarted_game.current_game_player_index == nil
+      assert restarted_game.current_game_word_index == nil
+      assert restarted_game.words == %{}
+    end
+
+    test "restarts game successfully when in lobby status", %{game_lobby: game} do
+      assert {:ok, restarted_game} = Game.restart_game(game)
+      assert restarted_game.status == :lobby
+    end
+
+    test "returns error when game is in playing status", %{game_playing: game} do
+      assert {:error, :game_in_progress} = Game.restart_game(game)
+    end
+  end
+
+  describe "archive_game/1" do
+    setup %{owner: owner} do
+      game = Game.new(owner, "Test Game", 4)
+      player1 = Player.new("Player 1")
+      player2 = Player.new("Player 2")
+      word = Word.new("cat", "Animals", "Meows")
+
+      {:ok, game_with_player1} = Game.add_player(game, player1)
+      {:ok, game_with_players} = Game.add_player(game_with_player1, player2)
+      game_with_words = Game.set_words(game_with_players, [word])
+
+      {:ok, initialized_game} = Game.init_game(game_with_words)
+
+      # Create a finished game
+      finished_game = %{initialized_game | status: :finished}
+
+      {:ok,
+       game_lobby: game_with_words, game_playing: initialized_game, game_finished: finished_game}
+    end
+
+    test "archives game successfully when in lobby status", %{game_lobby: game} do
+      assert {:ok, archived_game} = Game.archive_game(game)
+      assert archived_game.status == :archived
+    end
+
+    test "archives game successfully when in finished status", %{game_finished: game} do
+      assert {:ok, archived_game} = Game.archive_game(game)
+      assert archived_game.status == :archived
+    end
+
+    test "returns error when game is in playing status", %{game_playing: game} do
+      assert {:error, :game_in_progress} = Game.archive_game(game)
+    end
+  end
 end

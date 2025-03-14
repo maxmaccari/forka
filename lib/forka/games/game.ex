@@ -252,4 +252,65 @@ defmodule Forka.Games.Game do
     - A GameSummary struct containing shareable game information
   """
   def to_game_summary(%GameState{} = game_state), do: GameSummary.from_game_state(game_state)
+
+  @doc """
+  Archives a game, marking it as completed and no longer active.
+
+  This function changes the game status to :archived, which indicates the game has ended
+  and is no longer playable. This is useful when all players have given up or when
+  the game has been completed.
+
+  ## Parameters
+    - game_state: The GameState struct to archive
+
+  ## Returns
+    - {:ok, updated_game_state} if the game was successfully archived
+    - {:error, :game_in_progress} if the game is still in playing status
+  """
+  def archive_game(%GameState{status: :playing} = _game_state) do
+    {:error, :game_in_progress}
+  end
+
+  def archive_game(%GameState{} = game_state) do
+    {:ok, %GameState{game_state | status: :archived}}
+  end
+
+  @doc """
+  Restarts a game, returning it to the lobby state.
+
+  This function resets the game to its lobby state, allowing players to start a new round.
+  It maintains the same players and game settings, but clears all game progress including
+  guesses, word selections, and player statuses.
+
+  ## Parameters
+    - game_state: The current GameState struct to restart
+
+  ## Returns
+    - {:ok, updated_game_state} if the game was successfully restarted
+    - {:error, :game_in_progress} if the game is still in playing status
+  """
+  def restart_game(%GameState{status: :playing} = _game_state) do
+    {:error, :game_in_progress}
+  end
+
+  def restart_game(%GameState{} = game_state) do
+    # Reset player lives and status
+    updated_players =
+      game_state.players
+      |> Enum.map(fn {idx, game_player} ->
+        {idx, GamePlayer.reset_lives(game_player)}
+      end)
+      |> Map.new()
+
+    # Return to lobby state
+    {:ok,
+     %GameState{
+       game_state
+       | status: :lobby,
+         players: updated_players,
+         current_game_player_index: nil,
+         current_game_word_index: nil,
+         words: %{}
+     }}
+  end
 end
