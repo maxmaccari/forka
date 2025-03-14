@@ -22,6 +22,7 @@ defmodule Forka.Games.Game.GameState do
             name: nil,
             words: %{},
             players: %{},
+            owner: nil,
             current_game_word_index: nil,
             current_game_player_index: nil,
             status: :lobby,

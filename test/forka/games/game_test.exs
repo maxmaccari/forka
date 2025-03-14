@@ -2,12 +2,19 @@ defmodule Forka.Games.GameTest do
   use ExUnit.Case
   alias Forka.Games.{Game, Player, Word}
 
+  setup do
+    owner = Player.new("Owner")
+
+    %{owner: owner}
+  end
+
   describe "new/2" do
-    test "creates a new game with valid parameters" do
+    test "creates a new game with valid parameters", %{owner: owner} do
       name = "Test Game"
       max_players = 4
-      game = Game.new(name, max_players)
+      game = Game.new(owner, name, max_players)
 
+      assert game.owner == owner
       assert game.name == name
       assert game.max_players == max_players
       assert game.status == :lobby
@@ -19,8 +26,8 @@ defmodule Forka.Games.GameTest do
   end
 
   describe "add_player/2" do
-    setup do
-      game = Game.new("Test Game", 4)
+    setup %{owner: owner} do
+      game = Game.new(owner, "Test Game", 4)
       player = Player.new("Player 1")
       {:ok, game: game, player: player}
     end
@@ -69,15 +76,15 @@ defmodule Forka.Games.GameTest do
   end
 
   describe "remove_player/2" do
-    setup do
-      game = Game.new("Test Game", 4)
+    setup %{owner: owner} do
+      game = Game.new(owner, "Test Game", 4)
       player = Player.new("Player 1")
       {:ok, game_with_player} = Game.add_player(game, player)
       {:ok, game: game_with_player, player: player}
     end
 
     test "removes player successfully when in lobby", %{game: game, player: player} do
-      {:ok, updated_game} = Game.remove_player(game, player)
+      {:ok, updated_game} = Game.remove_player(game, player.id)
       assert map_size(updated_game.players) == 0
     end
 
@@ -88,7 +95,7 @@ defmodule Forka.Games.GameTest do
       {:ok, game_with_player2} = Game.add_player(game_with_player1, player2)
       {:ok, game_with_player3} = Game.add_player(game_with_player2, player3)
 
-      {:ok, updated_game} = Game.remove_player(game_with_player3, player2)
+      {:ok, updated_game} = Game.remove_player(game_with_player3, player2.id)
 
       # Check that player3 is now at index 1 (second position)
       assert map_size(updated_game.players) == 2
@@ -98,18 +105,18 @@ defmodule Forka.Games.GameTest do
 
     test "returns unchanged game when removing player that doesn't exist", %{game: game} do
       unknown_player = Player.new("Unknown")
-      assert {:ok, ^game} = Game.remove_player(game, unknown_player)
+      assert {:ok, ^game} = Game.remove_player(game, unknown_player.id)
     end
 
     test "returns error when game already started", %{game: game, player: player} do
       game_started = %{game | status: :playing}
-      assert {:error, :game_already_started} = Game.remove_player(game_started, player)
+      assert {:error, :game_already_started} = Game.remove_player(game_started, player.id)
     end
   end
 
   describe "set_words/2" do
-    setup do
-      game = Game.new("Test Game", 4)
+    setup %{owner: owner} do
+      game = Game.new(owner, "Test Game", 4)
 
       words = [
         Word.new("cat", "animals", "Meows"),
@@ -138,8 +145,8 @@ defmodule Forka.Games.GameTest do
   end
 
   describe "init_game/1" do
-    setup do
-      game = Game.new("Test Game", 4)
+    setup %{owner: owner} do
+      game = Game.new(owner, "Test Game", 4)
       player1 = Player.new("Player 1")
       player2 = Player.new("Player 2")
       word = Word.new("cat", "Animals", "Meows")
@@ -166,8 +173,8 @@ defmodule Forka.Games.GameTest do
       assert {:error, :game_already_initialized} = Game.init_game(game_started)
     end
 
-    test "returns error when not enough players" do
-      game = Game.new("Test Game", 4)
+    test "returns error when not enough players", %{owner: owner} do
+      game = Game.new(owner, "Test Game", 4)
       player = Player.new("Player 1")
       {:ok, game_with_player} = Game.add_player(game, player)
 

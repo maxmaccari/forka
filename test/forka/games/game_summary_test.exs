@@ -4,8 +4,11 @@ defmodule Forka.Games.GameSummaryTest do
   alias Forka.Games.Game.GameWord
 
   setup do
+    # Create Owner
+    owner = Player.new("owner")
+
     # Create a new game
-    game = Game.new("Test Game", 4)
+    game = Game.new(owner, "Test Game", 4)
 
     # Add players
     player1 = Player.new("Player 1")

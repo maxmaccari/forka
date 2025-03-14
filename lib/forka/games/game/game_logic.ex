@@ -1,6 +1,5 @@
 defmodule Forka.Games.Game.GameLogic do
   alias Forka.Games.Word
-  alias Forka.Games.Player
   alias Forka.Games.Game.{GameState, GameWord, GamePlayer, Guess}
 
   import Forka.Games.Game.Helpers
@@ -53,10 +52,11 @@ defmodule Forka.Games.Game.GameLogic do
     end
   end
 
-  def give_up_player(_game_state, _player_id), do: {:error, :game_not_playing}
+  def give_up_player(%GameState{}, player_id) when is_binary(player_id),
+    do: {:error, :game_not_playing}
 
-  def guess(%GameState{status: :playing} = game_state, letter, %Player{id: player_id})
-      when is_binary(letter) do
+  def guess(%GameState{status: :playing} = game_state, letter, player_id)
+      when is_binary(letter) and is_binary(player_id) do
     if current_player?(game_state, player_id) do
       game_state
       |> ensure_current_or_next_alive_player()
@@ -66,7 +66,8 @@ defmodule Forka.Games.Game.GameLogic do
     end
   end
 
-  def guess(_game_state, _letter, _guess), do: {:error, :game_not_playing}
+  def guess(%GameState{}, letter, player_id) when is_binary(letter) and is_binary(player_id),
+    do: {:error, :game_not_playing}
 
   defp current_player?(game_state, player_id) do
     %GameState{players: players, current_game_player_index: player_index} = game_state

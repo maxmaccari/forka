@@ -32,10 +32,12 @@ defmodule Forka.Games.Game do
         current_game_player_index: nil
       }
   """
-  def new(name, max_players) when is_binary(name) and is_integer(max_players) do
+  def new(%Player{} = owner, name, max_players)
+      when is_binary(name) and is_integer(max_players) do
     %GameState{
       id: UUID.uuid4(),
       name: name,
+      owner: owner,
       max_players: max_players
     }
   end
@@ -97,7 +99,8 @@ defmodule Forka.Games.Game do
     {:ok, %{game_state | players: new_players}}
   end
 
-  def remove_player(_game_state, _player_id), do: {:error, :game_already_started}
+  def remove_player(%GameState{}, player_id) when is_binary(player_id),
+    do: {:error, :game_already_started}
 
   @doc """
   Sets the words for the game state.
