@@ -35,10 +35,19 @@ defmodule ForkaWeb.CategoryLive do
         ]
       },
       words: %{
-        module: Backpex.Fields.HasMany,
+        module: Backpex.Fields.InlineCRUD,
+        type: :assoc,
         label: "Words",
-        display_field: :text,
-        live_resource: ForkaWeb.WordLive
+        child_fields: [
+          text: %{
+            module: Backpex.Field.Text,
+            label: "Text"
+          },
+          hint: %{
+            module: Backpex.Field.Text,
+            label: "Hint"
+          }
+        ]
       }
     ]
   end

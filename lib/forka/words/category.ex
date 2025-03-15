@@ -10,7 +10,9 @@ defmodule Forka.Words.Category do
     field :name, :string
     field :language, :string, default: "en"
 
-    has_many :words, Word
+    field :words_order, {:array, :string}, virtual: true
+    field :words_delete, {:array, :string}, virtual: true
+    has_many :words, Word, on_replace: :delete, on_delete: :delete_all
 
     timestamps(type: :utc_datetime)
   end
@@ -25,6 +27,11 @@ defmodule Forka.Words.Category do
     |> validate_format(:language, ~r/^[a-z]{2}(-[A-Z]{2})?$/,
       message:
         "must be a valid ISO language code (two lowercase letters, optionally followed by a hyphen and two uppercase letters for region)"
+    )
+    |> cast_assoc(:words,
+      sort_param: :words_order,
+      drop_param: :words_delete,
+      with: &Word.changeset/2
     )
   end
 end
