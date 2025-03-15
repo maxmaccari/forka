@@ -58,7 +58,8 @@ defmodule Forka.MixProject do
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.1.1"},
       {:bandit, "~> 1.5"},
-      {:uuid, "~> 1.1"}
+      {:uuid, "~> 1.1"},
+      {:ex_machina, "~> 2.8.0", only: :test}
     ]
   end
 
