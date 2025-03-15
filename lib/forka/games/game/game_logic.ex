@@ -34,8 +34,12 @@ defmodule Forka.Games.Game.GameLogic do
     end
   end
 
-  def get_current_player(%GameState{players: players, current_game_player_index: index}),
-    do: Map.get(players, index)
+  def get_current_player(%GameState{players: players, current_game_player_index: index}) do
+    case Map.get(players, index) do
+      %GamePlayer{player: player} -> player
+      nil -> nil
+    end
+  end
 
   @doc false
   def give_up_player(%GameState{status: :playing} = game_state, player_id)
