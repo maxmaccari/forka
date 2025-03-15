@@ -34,7 +34,7 @@ defmodule Forka.Words do
     # Group words by category
     words_by_category =
       Enum.group_by(words_data, fn word_data ->
-        String.capitalize(word_data["category"] || word_data[:category])
+        String.downcase(word_data["category"] || word_data[:category])
       end)
 
     # 1. Insert the categories using insert_all. Just use on_conflict: :nothing
@@ -48,7 +48,7 @@ defmodule Forka.Words do
         language = first_word["language"] || first_word[:language] || "en"
 
         %{
-          name: category_name,
+          name: first_word["category"] || first_word[:category],
           language: language,
           inserted_at: DateTime.utc_now() |> DateTime.truncate(:second),
           updated_at: DateTime.utc_now() |> DateTime.truncate(:second),
@@ -68,7 +68,7 @@ defmodule Forka.Words do
     all_category_names = Map.keys(words_by_category)
 
     # Get names of categories that were successfully inserted
-    inserted_category_names = Enum.map(inserted_categories, & &1.name)
+    inserted_category_names = Enum.map(inserted_categories, &String.downcase(&1.name))
 
     # Find category names that need to be fetched from the database
     categories_to_fetch = all_category_names -- inserted_category_names
@@ -78,14 +78,16 @@ defmodule Forka.Words do
       if Enum.empty?(categories_to_fetch) do
         []
       else
-        Repo.all(from c in Category, where: c.name in ^categories_to_fetch)
+        Repo.all(from c in Category, where: fragment("lower(?)", c.name) in ^categories_to_fetch)
       end
 
     # Combine newly inserted and existing categories
     categories = inserted_categories ++ existing_categories
 
     words_to_insert =
-      for category <- categories, word <- words_by_category[category.name] do
+      for category <- categories, word <- words_by_category[String.downcase(category.name)] do
+        dbg(word)
+
         # Extract word data and prepare for insertion
         word_name = word["name"] || word[:name]
         word_hint = word["hint"] || word[:hint]

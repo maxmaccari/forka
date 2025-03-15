@@ -60,7 +60,8 @@ defmodule Forka.MixProject do
       {:bandit, "~> 1.5"},
       {:uuid, "~> 1.1"},
       {:ex_machina, "~> 2.8.0", only: :test},
-      {:backpex, "~> 0.11.0"}
+      {:backpex, "~> 0.11.0"},
+      {:csv, "~> 3.2"}
     ]
   end
 

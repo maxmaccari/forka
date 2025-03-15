@@ -1,3 +1,4 @@
+category,language,name,hint
 Tecnologia,pt,cibernética,Estudo de sistemas computacionais
 Tecnologia,pt,blockchain,Tecnologia de registro distribuído
 Tecnologia,pt,computação quântica,Processamento baseado em mecânica quântica
@@ -133,7 +134,6 @@ Psicologia,pt,educacional,Psicologia aplicada à educação
 Psicologia,pt,clínica,Diagnóstico e tratamento de transtornos
 Psicologia,pt,comunitária,Intervenções em nível comunitário
 Psicologia,pt,intercultural,Influência cultural na psicologia
-
 Linguística,pt,fonologia,Padrões sonoros na linguagem
 Linguística,pt,morfologia,Estudo da formação das palavras
 Linguística,pt,sintaxe,Regras de organização das frases
@@ -504,7 +504,7 @@ Medicina,pt,psiquiatria,Tratamento de transtornos mentais
 Esportes,pt,futebol,Esporte com bola nos pés
 Esportes,pt,basquete,Esporte com cesta e bola
 Esportes,pt,natação,Deslocamento na água
-Esportes,pt,atletismo,Corrida, saltos e lançamentos
+Esportes,pt,atletismo,"Corrida, saltos e lançamentos"
 Esportes,pt,ciclismo,Esporte com bicicleta
 Música,pt,sinfonia,Composição para orquestra
 Música,pt,jazz,Gênero musical improvisado
