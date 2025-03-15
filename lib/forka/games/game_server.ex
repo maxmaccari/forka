@@ -365,7 +365,8 @@ defmodule Forka.Games.GameServer do
       Word.new("avião", "transporte", "Veículo aéreo.")
     ]
 
-    game_with_words = Game.set_words(game, words |> Enum.shuffle() |> Enum.take(5))
+    words_count = map_size(game.players) * 2
+    game_with_words = Game.set_words(game, words |> Enum.shuffle() |> Enum.take(words_count))
 
     case game_with_words |> Game.shuffle_players() |> Game.init_game() do
       {:ok, new_game} ->
