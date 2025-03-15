@@ -408,6 +408,49 @@ defmodule Forka.Games.Game do
   end
 
   @doc """
+  Sets the language for words in the game.
+
+  ## Parameters
+    - game_state: The current GameState struct
+    - lang: The language code (e.g., "pt", "en")
+
+  ## Returns
+    - {:ok, updated_game_state} if the language was successfully set
+    - {:error, :game_not_in_lobby} if the game is not in lobby status
+  """
+  def set_word_lang(%GameState{status: :lobby} = game_state, lang)
+      when is_binary(lang) do
+    {:ok, %GameState{game_state | words_lang: lang, last_event: {:words_lang_set, lang}}}
+  end
+
+  def set_word_lang(%GameState{} = _game_state, lang) when is_binary(lang),
+    do: {:error, :game_not_in_lobby}
+
+  @doc """
+  Sets the category IDs for words in the game.
+
+  ## Parameters
+    - game_state: The current GameState struct
+    - category_ids: A list of category IDs to filter words by
+
+  ## Returns
+    - {:ok, updated_game_state} if the categories were successfully set
+    - {:error, :game_not_in_lobby} if the game is not in lobby status
+  """
+  def set_word_category_ids(%GameState{status: :lobby} = game_state, category_ids)
+      when is_list(category_ids) do
+    {:ok,
+     %GameState{
+       game_state
+       | word_category_ids: category_ids,
+         last_event: {:word_category_ids_set, category_ids}
+     }}
+  end
+
+  def set_word_category_ids(%GameState{} = _game_state, _category_ids),
+    do: {:error, :game_not_in_lobby}
+
+  @doc """
   Converts the last_event tuple into a human-readable description.
 
   ## Parameters

@@ -442,6 +442,55 @@ defmodule Forka.Games.GameTest do
     end
   end
 
+  describe "set_word_lang/2" do
+    setup %{owner: owner} do
+      game = Game.new(owner, "Test Game", 4)
+      {:ok, game: game}
+    end
+
+    test "sets language successfully when in lobby state", %{game: game} do
+      {:ok, updated_game} = Game.set_word_lang(game, "pt")
+
+      assert updated_game.words_lang == "pt"
+      assert updated_game.last_event == {:words_lang_set, "pt"}
+    end
+
+    test "returns error when not in lobby state", %{game: game} do
+      # Test in playing state
+      game_playing = %{game | status: :playing}
+      assert {:error, :game_not_in_lobby} = Game.set_word_lang(game_playing, "en")
+
+      # Test in archived state
+      game_archived = %{game | status: :archived}
+      assert {:error, :game_not_in_lobby} = Game.set_word_lang(game_archived, "pt")
+    end
+  end
+
+  describe "set_word_category_ids/2" do
+    setup %{owner: owner} do
+      game = Game.new(owner, "Test Game", 4)
+      {:ok, game: game}
+    end
+
+    test "sets category IDs successfully when in lobby state", %{game: game} do
+      category_ids = [1, 2, 3]
+      {:ok, updated_game} = Game.set_word_category_ids(game, category_ids)
+
+      assert updated_game.word_category_ids == category_ids
+      assert updated_game.last_event == {:word_category_ids_set, category_ids}
+    end
+
+    test "returns error when not in lobby state", %{game: game} do
+      # Test in playing state
+      game_playing = %{game | status: :playing}
+      assert {:error, :game_not_in_lobby} = Game.set_word_category_ids(game_playing, [1, 2])
+
+      # Test in archived state
+      game_archived = %{game | status: :archived}
+      assert {:error, :game_not_in_lobby} = Game.set_word_category_ids(game_archived, [3, 4])
+    end
+  end
+
   describe "to_game_summary/1" do
     setup %{owner: owner} do
       # Create a new game
