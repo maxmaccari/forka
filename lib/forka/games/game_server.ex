@@ -19,7 +19,6 @@ defmodule Forka.Games.GameServer do
   alias Forka.Games.Word
   alias Forka.Games.Game
   alias Forka.Games.Game.GameState
-  alias Forka.Games.GameSummary
 
   @pubsub_topic_prefix "game"
   @message_tagger :game_updated
@@ -36,7 +35,7 @@ defmodule Forka.Games.GameServer do
       - max_players: The maximum number of players allowed in the game (default: 2).
 
   ## Returns
-    - `{:ok, game_state}` if the server is started successfully.
+    - `{:ok, pid}` if the server is started successfully.
   """
   def start_link(%GameState{} = game_state) do
     GenServer.start_link(__MODULE__, game_state, name: global_name(game_state.id))
@@ -99,7 +98,8 @@ defmodule Forka.Games.GameServer do
     - player: The player to add.
 
   ## Returns
-    See `Forka.Games.Game.add_player/2` for return values.
+    - `{:ok, game_state}` if successful.
+    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.add_player/2` for possible error reasons.
   """
   def add_player(game_id, %Player{} = player) when is_binary(game_id) do
     GenServer.call(global_name(game_id), {:add_player, player})
@@ -115,7 +115,8 @@ defmodule Forka.Games.GameServer do
     - player_id: The ID of the player to remove.
 
   ## Returns
-    See `Forka.Games.Game.remove_player/2` for return values.
+    - `{:ok, game_state}` if successful.
+    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.remove_player/2` for possible error reasons.
   """
   def remove_player(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
     GenServer.call(global_name(game_id), {:remove_player, player_id})
@@ -130,7 +131,8 @@ defmodule Forka.Games.GameServer do
     - game_id: The ID of the game.
 
   ## Returns
-    See `Forka.Games.Game.init_game/1` for return values.
+    - `{:ok, game_state}` if successful.
+    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.init_game/1` for possible error reasons.
   """
   def init_game(game_id) when is_binary(game_id) do
     GenServer.call(global_name(game_id), :init_game)
@@ -146,7 +148,8 @@ defmodule Forka.Games.GameServer do
     - player_id: The ID of the player who is giving up.
 
   ## Returns
-    See `Forka.Games.Game.give_up_player/2` for return values.
+    - `{:ok, game_state}` if successful.
+    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.give_up_player/2` for possible error reasons.
   """
   def give_up_player(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
     GenServer.call(global_name(game_id), {:give_up, player_id})
@@ -163,7 +166,8 @@ defmodule Forka.Games.GameServer do
     - player_id: The ID of the player making the guess.
 
   ## Returns
-    See `Forka.Games.Game.guess/3` for return values.
+    - `{:ok, game_state}` if successful.
+    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.guess/3` for possible error reasons.
   """
   def guess(game_id, letter, player_id)
       when is_binary(game_id) and is_binary(letter) and is_binary(player_id) do
@@ -180,7 +184,8 @@ defmodule Forka.Games.GameServer do
     - player_id: The ID of the player who will become the new owner.
 
   ## Returns
-    See `Forka.Games.Game.transfer_ownership_to_player/2` for return values.
+    - `{:ok, game_state}` if successful.
+    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.transfer_ownership_to_player/2` for possible error reasons.
   """
   def transfer_ownership(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
     GenServer.call(global_name(game_id), {:transfer_ownership, player_id})
@@ -195,7 +200,8 @@ defmodule Forka.Games.GameServer do
     - game_id: The ID of the game.
 
   ## Returns
-    See `Forka.Games.Game.restart_game/1` for return values.
+    - `{:ok, game_state}` if successful.
+    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.restart_game/1` for possible error reasons.
   """
   def restart_game(game_id) when is_binary(game_id) do
     GenServer.call(global_name(game_id), :restart_game)
@@ -211,7 +217,8 @@ defmodule Forka.Games.GameServer do
     - game_id: The ID of the game.
 
   ## Returns
-    See `Forka.Games.Game.archive_game/1` for return values.
+    - `{:ok, game_state}` if successful.
+    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.archive_game/1` for possible error reasons.
   """
   def archive_game(game_id) when is_binary(game_id) do
     GenServer.call(global_name(game_id), :archive_game)
@@ -265,10 +272,9 @@ defmodule Forka.Games.GameServer do
   def handle_call({:add_player, player}, _from, game) do
     case Game.add_player(game, player) do
       {:ok, new_game} ->
-        game_summary = Game.to_game_summary(new_game)
-        broadcast!(game.id, game_summary)
+        broadcast!(new_game)
 
-        {:reply, {:ok, game_summary}, new_game}
+        {:reply, :ok, new_game}
 
       {:error, error} ->
         {:reply, {:error, error}, game}
@@ -279,10 +285,9 @@ defmodule Forka.Games.GameServer do
   def handle_call({:remove_player, player_id}, _from, game) do
     case Game.remove_player(game, player_id) do
       {:ok, new_game} ->
-        game_summary = Game.to_game_summary(new_game)
-        broadcast!(game.id, game_summary)
+        broadcast!(new_game)
 
-        {:reply, {:ok, game_summary}, new_game}
+        {:reply, :ok, new_game}
 
       {:error, error} ->
         {:reply, {:error, error}, game}
@@ -364,10 +369,9 @@ defmodule Forka.Games.GameServer do
 
     case game_with_words |> Game.shuffle_players() |> Game.init_game() do
       {:ok, new_game} ->
-        game_summary = Game.to_game_summary(new_game)
-        broadcast!(game.id, game_summary)
+        broadcast!(new_game)
 
-        {:reply, {:ok, game_summary}, new_game}
+        {:reply, :ok, new_game}
 
       {:error, error} ->
         {:reply, {:error, error}, game}
@@ -378,10 +382,9 @@ defmodule Forka.Games.GameServer do
   def handle_call({:give_up, player_id}, _from, game) do
     case Game.give_up_player(game, player_id) do
       {:ok, new_game} ->
-        game_summary = Game.to_game_summary(new_game)
-        broadcast!(game.id, game_summary)
+        broadcast!(new_game)
 
-        {:reply, {:ok, game_summary}, new_game}
+        {:reply, :ok, new_game}
 
       {:error, error} ->
         {:reply, {:error, error}, game}
@@ -392,8 +395,7 @@ defmodule Forka.Games.GameServer do
   def handle_call({:guess, letter, player_id}, _from, game) do
     case Game.guess(game, letter, player_id) do
       {:ok, new_game} ->
-        game_summary = Game.to_game_summary(new_game)
-        broadcast!(game.id, game_summary)
+        broadcast!(new_game)
 
         {:reply, {:ok, Game.to_game_summary(new_game)}, new_game}
 
@@ -406,10 +408,9 @@ defmodule Forka.Games.GameServer do
   def handle_call({:transfer_ownership, player_id}, _from, game) do
     case Game.transfer_ownership_to_player(game, player_id) do
       {:ok, new_game} ->
-        game_summary = Game.to_game_summary(new_game)
-        broadcast!(game.id, game_summary)
+        broadcast!(new_game)
 
-        {:reply, {:ok, game_summary}, new_game}
+        {:reply, :ok, new_game}
 
       {:error, error} ->
         {:reply, {:error, error}, game}
@@ -420,10 +421,9 @@ defmodule Forka.Games.GameServer do
   def handle_call(:restart_game, _from, game) do
     case Game.restart_game(game) do
       {:ok, new_game} ->
-        game_summary = Game.to_game_summary(new_game)
-        broadcast!(game.id, game_summary)
+        broadcast!(new_game)
 
-        {:reply, {:ok, game_summary}, new_game}
+        {:reply, :ok, new_game}
 
       {:error, error} ->
         {:reply, {:error, error}, game}
@@ -434,10 +434,9 @@ defmodule Forka.Games.GameServer do
   def handle_call(:archive_game, _from, game) do
     case Game.archive_game(game) do
       {:ok, new_game} ->
-        game_summary = Game.to_game_summary(new_game)
-        broadcast!(game.id, game_summary)
-        # Return the game summary and stop the GenServer with normal reason
-        {:stop, :normal, {:ok, game_summary}, new_game}
+        broadcast!(new_game)
+        # Return the response and stop the GenServer with normal reason
+        {:stop, :normal, :ok, new_game}
 
       {:error, error} ->
         {:reply, {:error, error}, game}
@@ -448,6 +447,8 @@ defmodule Forka.Games.GameServer do
 
   defp topic(game_id), do: "#{@pubsub_topic_prefix}:#{game_id}"
 
-  defp broadcast!(game_id, %GameSummary{} = game_summary),
-    do: PubSub.broadcast!(Forka.PubSub, topic(game_id), {@message_tagger, game_summary})
+  defp broadcast!(%GameState{id: game_id} = game_state) do
+    game_summary = Game.to_game_summary(game_state)
+    PubSub.broadcast!(Forka.PubSub, topic(game_id), {@message_tagger, game_summary})
+  end
 end
