@@ -9,5 +9,7 @@ defmodule Forka.Repo.Migrations.CreateCategories do
 
       timestamps(type: :utc_datetime)
     end
+
+    create index(:categories, [:language])
   end
 end
