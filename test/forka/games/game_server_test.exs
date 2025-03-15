@@ -343,6 +343,54 @@ defmodule Forka.Games.GameServerTest do
     end
   end
 
+  describe "timeout handling" do
+    test "archives the game and terminates the server after timeout", %{game: game, pid: pid} do
+      # Send a timeout message directly to the server process
+      # This simulates what would happen after 30 minutes of inactivity
+      send(pid, :timeout)
+
+      # Verify we receive a game update with archived status
+      assert_receive {:game_updated, game_summary}
+      assert game_summary.game_status == :archived
+
+      # Give time for the process to terminate
+      Process.sleep(100)
+
+      # Verify the server was terminated
+      refute GameServer.exists?(game.id)
+    end
+
+    test "archives the game and terminates the server after timeout when in playing state", %{
+      game: game,
+      pid: pid
+    } do
+      # We will put the game in playing state
+      player1 = Player.new("Player 1")
+      player2 = Player.new("Player 2")
+      :ok = GameServer.join_game(game.id, player1)
+      :ok = GameServer.join_game(game.id, player2)
+      :ok = GameServer.start_game(game.id)
+
+      # Clear message inbox from game start
+      flush_messages()
+
+      # Send a timeout message directly to the server process
+      # This simulates what would happen after 30 minutes of inactivity
+      send(pid, :timeout)
+
+      # Verify we receive a game update with archived status
+      # We don't receive any message because the game is in playing state
+      # and Game.archive_game/1 returns {:error, :game_in_progress}
+      refute_receive {:game_updated, _}
+
+      # Give time for the process to terminate
+      Process.sleep(100)
+
+      # Verify the server was terminated
+      refute GameServer.exists?(game.id)
+    end
+  end
+
   # Helper function to clear the message inbox
   defp flush_messages do
     receive do

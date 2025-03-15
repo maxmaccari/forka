@@ -22,6 +22,8 @@ defmodule Forka.Games.GameServer do
 
   @pubsub_topic_prefix "game"
   @message_tagger :game_updated
+  # 30 minutes in milliseconds
+  @timeout_ms 30 * 60 * 1000
 
   # Public API
 
@@ -260,12 +262,12 @@ defmodule Forka.Games.GameServer do
   # Callbacks
   @impl true
   def init(%GameState{} = game_state) do
-    {:ok, game_state}
+    {:ok, game_state, @timeout_ms}
   end
 
   @impl true
   def handle_call(:get_game, _from, game) do
-    {:reply, Game.to_game_summary(game), game}
+    {:reply, Game.to_game_summary(game), game, @timeout_ms}
   end
 
   @impl true
@@ -274,10 +276,10 @@ defmodule Forka.Games.GameServer do
       {:ok, new_game} ->
         broadcast!(new_game)
 
-        {:reply, :ok, new_game}
+        {:reply, :ok, new_game, @timeout_ms}
 
       {:error, error} ->
-        {:reply, {:error, error}, game}
+        {:reply, {:error, error}, game, @timeout_ms}
     end
   end
 
@@ -287,10 +289,10 @@ defmodule Forka.Games.GameServer do
       {:ok, new_game} ->
         broadcast!(new_game)
 
-        {:reply, :ok, new_game}
+        {:reply, :ok, new_game, @timeout_ms}
 
       {:error, error} ->
-        {:reply, {:error, error}, game}
+        {:reply, {:error, error}, game, @timeout_ms}
     end
   end
 
@@ -372,10 +374,10 @@ defmodule Forka.Games.GameServer do
       {:ok, new_game} ->
         broadcast!(new_game)
 
-        {:reply, :ok, new_game}
+        {:reply, :ok, new_game, @timeout_ms}
 
       {:error, error} ->
-        {:reply, {:error, error}, game}
+        {:reply, {:error, error}, game, @timeout_ms}
     end
   end
 
@@ -385,10 +387,10 @@ defmodule Forka.Games.GameServer do
       {:ok, new_game} ->
         broadcast!(new_game)
 
-        {:reply, :ok, new_game}
+        {:reply, :ok, new_game, @timeout_ms}
 
       {:error, error} ->
-        {:reply, {:error, error}, game}
+        {:reply, {:error, error}, game, @timeout_ms}
     end
   end
 
@@ -398,10 +400,10 @@ defmodule Forka.Games.GameServer do
       {:ok, new_game} ->
         broadcast!(new_game)
 
-        {:reply, :ok, new_game}
+        {:reply, :ok, new_game, @timeout_ms}
 
       {:error, error} ->
-        {:reply, {:error, error}, game}
+        {:reply, {:error, error}, game, @timeout_ms}
     end
   end
 
@@ -411,10 +413,10 @@ defmodule Forka.Games.GameServer do
       {:ok, new_game} ->
         broadcast!(new_game)
 
-        {:reply, :ok, new_game}
+        {:reply, :ok, new_game, @timeout_ms}
 
       {:error, error} ->
-        {:reply, {:error, error}, game}
+        {:reply, {:error, error}, game, @timeout_ms}
     end
   end
 
@@ -424,10 +426,10 @@ defmodule Forka.Games.GameServer do
       {:ok, new_game} ->
         broadcast!(new_game)
 
-        {:reply, :ok, new_game}
+        {:reply, :ok, new_game, @timeout_ms}
 
       {:error, error} ->
-        {:reply, {:error, error}, game}
+        {:reply, {:error, error}, game, @timeout_ms}
     end
   end
 
@@ -440,7 +442,21 @@ defmodule Forka.Games.GameServer do
         {:stop, :normal, :ok, new_game}
 
       {:error, error} ->
-        {:reply, {:error, error}, game}
+        {:reply, {:error, error}, game, @timeout_ms}
+    end
+  end
+
+  @impl true
+  def handle_info(:timeout, game) do
+    # Server has been inactive for the timeout period, archive the game and terminate
+    case Game.archive_game(game) do
+      {:ok, new_game} ->
+        broadcast!(new_game)
+        {:stop, :normal, new_game}
+
+      {:error, _error} ->
+        # Even if archiving fails, we should terminate the server
+        {:stop, :normal, game}
     end
   end
 
