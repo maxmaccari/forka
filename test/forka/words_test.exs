@@ -91,13 +91,21 @@ defmodule Forka.WordsTest do
 
     test "create_word/1 with valid data creates a word" do
       category = insert(:category)
-      valid_attrs = %{text: "some text", category_id: category.id}
+      valid_attrs = %{text: "some text", hint: "my hint", category_id: category.id}
 
       assert {:ok, %Word{} = word} = Words.create_word(valid_attrs)
       assert word.text == "some text"
     end
 
-    test "create_category/1 using a name that already exists for a category returns an error" do
+    test "create_word/1 downcases the text" do
+      category = insert(:category)
+      valid_attrs = %{text: "SOME TEXT", category_id: category.id}
+
+      assert {:ok, %Word{} = word} = Words.create_word(valid_attrs)
+      assert word.text == "some text"
+    end
+
+    test "create_word/1 using a name that already exists for a category returns an error" do
       category = insert(:category)
       valid_attrs = %{text: "some text", category_id: category.id}
 
