@@ -73,4 +73,57 @@ defmodule Forka.WordsTest do
       assert %Ecto.Changeset{} = Words.change_category(category)
     end
   end
+
+  describe "words" do
+    alias Forka.Words.Word
+
+    @invalid_attrs %{text: nil}
+
+    test "list_words/0 returns all words" do
+      word = insert(:word)
+      assert Words.list_words() == [word]
+    end
+
+    test "get_word!/1 returns the word with given id" do
+      word = insert(:word)
+      assert Words.get_word!(word.id) == word
+    end
+
+    test "create_word/1 with valid data creates a word" do
+      category = insert(:category)
+      valid_attrs = %{text: "some text", category_id: category.id}
+
+      assert {:ok, %Word{} = word} = Words.create_word(valid_attrs)
+      assert word.text == "some text"
+    end
+
+    test "create_word/1 with invalid data returns error changeset" do
+      assert {:error, %Ecto.Changeset{}} = Words.create_word(@invalid_attrs)
+    end
+
+    test "update_word/2 with valid data updates the word" do
+      word = insert(:word)
+      update_attrs = %{text: "some updated text"}
+
+      assert {:ok, %Word{} = word} = Words.update_word(word, update_attrs)
+      assert word.text == "some updated text"
+    end
+
+    test "update_word/2 with invalid data returns error changeset" do
+      word = insert(:word)
+      assert {:error, %Ecto.Changeset{}} = Words.update_word(word, @invalid_attrs)
+      assert word == Words.get_word!(word.id)
+    end
+
+    test "delete_word/1 deletes the word" do
+      word = insert(:word)
+      assert {:ok, %Word{}} = Words.delete_word(word)
+      assert_raise Ecto.NoResultsError, fn -> Words.get_word!(word.id) end
+    end
+
+    test "change_word/1 returns a word changeset" do
+      word = insert(:word)
+      assert %Ecto.Changeset{} = Words.change_word(word)
+    end
+  end
 end
