@@ -24,7 +24,8 @@ defmodule ForkaWeb.CategoryLive do
     [
       name: %{
         module: Backpex.Fields.Text,
-        label: "Name"
+        label: "Name",
+        searchable: true
       },
       language: %{
         module: Backpex.Fields.Select,
@@ -48,6 +49,16 @@ defmodule ForkaWeb.CategoryLive do
             label: "Hint"
           }
         ]
+      }
+    ]
+  end
+
+  @impl Backpex.LiveResource
+  def filters do
+    [
+      language: %{
+        module: ForkaWeb.Filters.CategoryLanguageSelect,
+        label: "Language"
       }
     ]
   end

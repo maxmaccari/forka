@@ -24,7 +24,8 @@ defmodule ForkaWeb.WordLive do
     [
       text: %{
         module: Backpex.Fields.Text,
-        label: "Text"
+        label: "Text",
+        searchable: true
       },
       category: %{
         module: Backpex.Fields.BelongsTo,
@@ -34,7 +35,18 @@ defmodule ForkaWeb.WordLive do
       },
       hint: %{
         module: Backpex.Fields.Text,
-        label: "Hint"
+        label: "Hint",
+        searchable: true
+      }
+    ]
+  end
+
+  @impl Backpex.LiveResource
+  def filters do
+    [
+      category_id: %{
+        module: ForkaWeb.Filters.WordLanguageSelect,
+        label: "Category"
       }
     ]
   end
