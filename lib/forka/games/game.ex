@@ -61,7 +61,7 @@ defmodule Forka.Games.Game do
     new_players = add_game_player_to_map(players, player)
 
     if map_size(new_players) <= game_state.max_players do
-      {:ok, %{game_state | players: new_players}}
+      {:ok, %{game_state | players: new_players, last_event: {:player_joined, player}}}
     else
       {:error, :maximum_players}
     end
@@ -94,13 +94,22 @@ defmodule Forka.Games.Game do
   """
   def leave_game(%GameState{status: :lobby, players: players} = game_state, player_id)
       when is_binary(player_id) do
-    new_players =
-      players
-      |> Map.values()
-      |> Enum.reject(&(&1.player.id == player_id))
-      |> indexed_map()
+    left_player =
+      Enum.find_value(players, fn {_, game_player} ->
+        if game_player.player.id == player_id, do: game_player.player
+      end)
 
-    {:ok, %{game_state | players: new_players}}
+    if left_player do
+      new_players =
+        players
+        |> Map.values()
+        |> Enum.reject(&(&1.player.id == player_id))
+        |> indexed_map()
+
+      {:ok, %{game_state | players: new_players, last_event: {:player_left, left_player}}}
+    else
+      {:ok, game_state}
+    end
   end
 
   def leave_game(%GameState{status: :archived}, player_id) when is_binary(player_id),
@@ -126,7 +135,7 @@ defmodule Forka.Games.Game do
       |> Enum.uniq()
       |> indexed_map(&GameWord.new/1)
 
-    %{game_state | words: new_words}
+    %{game_state | words: new_words, last_event: {:words_set, length(words)}}
   end
 
   def set_words(%GameState{} = game_state, words) when is_list(words),
@@ -157,7 +166,7 @@ defmodule Forka.Games.Game do
       |> Enum.shuffle()
       |> indexed_map()
 
-    %{game_state | players: shuffled_players}
+    %{game_state | players: shuffled_players, last_event: :players_shuffled}
   end
 
   def shuffle_players(%GameState{} = game_state),
@@ -187,7 +196,8 @@ defmodule Forka.Games.Game do
         game_state
         | current_game_word_index: 0,
           current_game_player_index: 0,
-          status: :playing
+          status: :playing,
+          last_event: :game_started
       }
 
       {:ok, new_game_state}
@@ -294,7 +304,7 @@ defmodule Forka.Games.Game do
   end
 
   def archive_game(%GameState{} = game_state) do
-    {:ok, %GameState{game_state | status: :archived}}
+    {:ok, %GameState{game_state | status: :archived, last_event: :game_archived}}
   end
 
   @doc """
@@ -337,7 +347,8 @@ defmodule Forka.Games.Game do
          players: updated_players,
          current_game_player_index: nil,
          current_game_word_index: nil,
-         words: %{}
+         words: %{},
+         last_event: :game_restarted
      }}
   end
 
@@ -388,7 +399,12 @@ defmodule Forka.Games.Game do
           |> Enum.find(fn game_player -> game_player.player.id == player_id end)
           |> Map.get(:player)
 
-        {:ok, %GameState{game_state | owner: new_owner}}
+        {:ok,
+         %GameState{
+           game_state
+           | owner: new_owner,
+             last_event: {:ownership_transferred_to, new_owner}
+         }}
     end
   end
 end

@@ -64,6 +64,8 @@ defmodule Forka.Games.Game.GameLogicTest do
     test "makes player give up successfully", %{game_state: game, player1: player} do
       {:ok, updated_game} = GameLogic.give_up_game(game, player.id)
 
+      assert updated_game.last_event == {:player_gave_up, player}
+
       {_idx, game_player} = find_game_player_by_id(updated_game, player.id)
       assert game_player.status == :dead
       assert game_player.lives == 0
@@ -144,6 +146,10 @@ defmodule Forka.Games.Game.GameLogicTest do
       # Player should get points for correct guess
       player = get_current_player(updated_game)
       assert player.score > 0
+
+      # Check if correct guess was processed correctly
+      [guess] = current_word.guesses
+      assert updated_game.last_event == {:player_guessed, guess}
     end
 
     test "processes incorrect guess successfully", %{game_state: game_state, player1: player1} do
@@ -164,6 +170,10 @@ defmodule Forka.Games.Game.GameLogicTest do
       # Turn should move to next player
       current_player = get_current_player(updated_game)
       refute current_player.player.id == player1.id
+
+      # Check if incorrect guess was processed correctly
+      [guess] = current_word.guesses
+      assert updated_game.last_event == {:player_guessed, guess}
     end
 
     test "returns error for already guessed letter", %{game_state: game_state, player1: player1} do

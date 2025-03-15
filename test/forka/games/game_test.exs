@@ -36,6 +36,7 @@ defmodule Forka.Games.GameTest do
       {:ok, updated_game} = Game.join_game(game, player)
 
       assert map_size(updated_game.players) == 1
+      assert updated_game.last_event == {:player_joined, player}
 
       assert %{0 => game_player} = updated_game.players
 
@@ -91,6 +92,7 @@ defmodule Forka.Games.GameTest do
     test "removes player successfully when in lobby", %{game: game, player: player} do
       {:ok, updated_game} = Game.leave_game(game, player.id)
       assert map_size(updated_game.players) == 0
+      assert updated_game.last_event == {:player_left, player}
     end
 
     test "reindexes players after removal", %{game: game_with_player1} do
@@ -139,6 +141,7 @@ defmodule Forka.Games.GameTest do
     test "sets words successfully", %{game: game, words: words} do
       assert updated_game = Game.set_words(game, words)
       assert map_size(updated_game.words) == 2
+      assert updated_game.last_event == {:words_set, 2}
 
       Enum.each(updated_game.words, fn {_idx, game_word} ->
         assert %Game.GameWord{} = game_word
@@ -183,6 +186,7 @@ defmodule Forka.Games.GameTest do
       # Test in lobby state
       shuffled_game = Game.shuffle_players(game)
       assert shuffled_game.status == :lobby
+      assert shuffled_game.last_event == :players_shuffled
 
       # The player IDs should be the same, but potentially in different order
       original_player_ids =
@@ -243,6 +247,7 @@ defmodule Forka.Games.GameTest do
       assert initialized_game.current_game_player_index == 0
       assert map_size(initialized_game.players) == 2
       assert map_size(initialized_game.words) == 1
+      assert initialized_game.last_event == :game_started
     end
 
     test "returns error when game not in lobby", %{game: game} do
@@ -312,6 +317,7 @@ defmodule Forka.Games.GameTest do
       assert restarted_game.current_game_player_index == nil
       assert restarted_game.current_game_word_index == nil
       assert restarted_game.words == %{}
+      assert restarted_game.last_event == :game_restarted
     end
 
     test "restarts game successfully when in lobby status", %{game_lobby: game} do
@@ -356,6 +362,7 @@ defmodule Forka.Games.GameTest do
     test "archives game successfully when in lobby status", %{game_lobby: game} do
       assert {:ok, archived_game} = Game.archive_game(game)
       assert archived_game.status == :archived
+      assert archived_game.last_event == :game_archived
     end
 
     test "archives game successfully when in finished status", %{game_finished: game} do
@@ -404,6 +411,7 @@ defmodule Forka.Games.GameTest do
 
       assert updated_game.owner.id == player1.id
       assert updated_game.owner.username == player1.username
+      assert updated_game.last_event == {:ownership_transferred_to, player1}
     end
 
     test "returns error when player is not in the game", %{game: game} do

@@ -27,7 +27,8 @@ defmodule Forka.Games.GameSummary do
             remaining_words: nil,
             current_word_summary: nil,
             current_word_letters: nil,
-            game_status: nil
+            game_status: nil,
+            last_event: nil
 
   @doc """
   Creates a GameSummary from a GameState.
@@ -46,7 +47,8 @@ defmodule Forka.Games.GameSummary do
           owner: owner,
           words: words,
           current_game_word_index: word_index,
-          status: :playing
+          status: :playing,
+          last_event: last_event
         } = game_state
       ) do
     current_player = Game.get_current_player(game_state)
@@ -63,19 +65,22 @@ defmodule Forka.Games.GameSummary do
       remaining_words: remaining_words,
       current_word_summary: WordSummary.from_word(word),
       current_word_letters: current_word_letters,
-      game_status: :playing
+      game_status: :playing,
+      last_event: last_event
     }
   end
 
   def from_game_state(%GameState{
         status: status,
         players: players,
-        owner: owner
+        owner: owner,
+        last_event: last_event
       }) do
     %__MODULE__{
       players: players,
       owner: owner,
-      game_status: status
+      game_status: status,
+      last_event: last_event
     }
   end
 end

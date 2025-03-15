@@ -47,7 +47,12 @@ defmodule Forka.Games.Game.GameLogic do
     case find_game_player_by_id(game_state, player_id) do
       {idx, game_player} ->
         updated_player = GamePlayer.give_up(game_player)
-        new_game_state = %{game_state | players: Map.put(game_state.players, idx, updated_player)}
+
+        new_game_state = %{
+          game_state
+          | players: Map.put(game_state.players, idx, updated_player),
+            last_event: {:player_gave_up, game_player.player}
+        }
 
         {:ok, ensure_current_or_next_alive_player(new_game_state)}
 
@@ -153,13 +158,15 @@ defmodule Forka.Games.Game.GameLogic do
     |> handle_player_score(new_game_word, guess)
     |> update_game_state_with_guess(new_game_word)
     |> maybe_handle_word_completion(new_game_word)
+    |> put_guess_event(guess)
   end
 
-  defp handle_guess_result(game_state, new_game_word, %Guess{correct?: false}) do
+  defp handle_guess_result(game_state, new_game_word, %Guess{correct?: false} = guess) do
     game_state
     |> update_game_state_with_guess(new_game_word)
     |> reduce_player_lives()
     |> handle_next_player()
+    |> put_guess_event(guess)
   end
 
   defp maybe_handle_word_completion(game_state, game_word) do
@@ -241,6 +248,10 @@ defmodule Forka.Games.Game.GameLogic do
         # As a fallback, unless this it can make it stuck in an infinite loop
         game_over(new_game_state)
     end
+  end
+
+  defp put_guess_event(game_state, guess) do
+    %{game_state | last_event: {:player_guessed, guess}}
   end
 
   defp update_game_state_with_guess(game_state, new_game_word) do

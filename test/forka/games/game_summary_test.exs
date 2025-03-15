@@ -67,6 +67,7 @@ defmodule Forka.Games.GameSummaryTest do
              GameWord.display_word_letters(game_state.words[game_state.current_game_word_index])
 
     assert summary.game_status == :playing
+    assert summary.last_event == game_state.last_event
   end
 
   test "creates a game summary and skips dead player", %{initialized_game: game_state} do
@@ -105,6 +106,7 @@ defmodule Forka.Games.GameSummaryTest do
              GameWord.display_word_letters(game_state.words[game_state.current_game_word_index])
 
     assert summary.game_status == :playing
+    assert summary.last_event == game_state.last_event
   end
 
   test "creates a game summary for game_over state", %{initialized_game: game_state} do
@@ -145,7 +147,7 @@ defmodule Forka.Games.GameSummaryTest do
 
   test "creates a game summary for archived state", %{initialized_game: game_state} do
     # Set game to archived state
-    archived_state = %{game_state | status: :archived}
+    archived_state = %{game_state | status: :archived, last_event: :game_archived}
 
     summary = GameSummary.from_game_state(archived_state)
 
@@ -153,5 +155,6 @@ defmodule Forka.Games.GameSummaryTest do
     assert summary.players == archived_state.players
     assert summary.owner == archived_state.owner
     assert summary.game_status == :archived
+    assert summary.last_event == :game_archived
   end
 end
