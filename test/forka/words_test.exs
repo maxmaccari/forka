@@ -4,10 +4,6 @@ defmodule Forka.WordsTest do
   alias Forka.Words
 
   describe "categories" do
-    alias Forka.Words.Category
-
-    @invalid_attrs %{name: "", language: "non iso character"}
-
     test "list_categories/0 returns all categories" do
       category = insert(:category)
       assert Words.list_categories() == [category]
@@ -21,133 +17,141 @@ defmodule Forka.WordsTest do
       assert Words.list_categories(language: "en") == [en_category]
       assert Words.list_categories(language: "EN") == [en_category]
     end
-
-    test "get_category!/1 returns the category with given id" do
-      category = insert(:category)
-      assert Words.get_category!(category.id) == category
-    end
-
-    test "create_category/1 with valid data creates a category" do
-      valid_attrs = %{name: "some name", language: "en"}
-
-      assert {:ok, %Category{} = category} = Words.create_category(valid_attrs)
-      assert category.name == "some name"
-      assert category.language == "en"
-    end
-
-    test "create_category/1 using a category name that already exists for that language returns an error" do
-      valid_attrs = %{name: "some name", language: "en"}
-
-      assert {:ok, %Category{}} = Words.create_category(valid_attrs)
-      assert {:error, %Ecto.Changeset{}} = Words.create_category(valid_attrs)
-      assert {:ok, %Category{}} = Words.create_category(%{valid_attrs | language: "pt"})
-    end
-
-    test "create_category/1 with invalid data returns error changeset" do
-      assert {:error, %Ecto.Changeset{}} = Words.create_category(@invalid_attrs)
-    end
-
-    test "update_category/2 with valid data updates the category" do
-      category = insert(:category)
-      update_attrs = %{name: "some updated name", language: "pt"}
-
-      assert {:ok, %Category{} = category} = Words.update_category(category, update_attrs)
-      assert category.name == "some updated name"
-      assert category.language == "pt"
-    end
-
-    test "update_category/2 with invalid data returns error changeset" do
-      category = insert(:category)
-      assert {:error, %Ecto.Changeset{}} = Words.update_category(category, @invalid_attrs)
-      assert category == Words.get_category!(category.id)
-    end
-
-    test "delete_category/1 deletes the category" do
-      category = insert(:category)
-      assert {:ok, %Category{}} = Words.delete_category(category)
-      assert_raise Ecto.NoResultsError, fn -> Words.get_category!(category.id) end
-    end
-
-    test "change_category/1 returns a category changeset" do
-      category = insert(:category)
-      assert %Ecto.Changeset{} = Words.change_category(category)
-    end
   end
 
-  describe "words" do
+  describe "import_words/1" do
     alias Forka.Words.Word
 
-    @invalid_attrs %{text: nil}
+    test "imports words from a list of maps with string keys" do
+      words_data = [
+        %{
+          "category" => "Animal",
+          "name" => "horse",
+          "hint" => "Used as transportation"
+        },
+        %{
+          "category" => "Animal",
+          "name" => "thrush",
+          "hint" => "Sings beautifully"
+        },
+        %{
+          "category" => "Vehicle",
+          "name" => "airplane",
+          "hint" => "Flies"
+        }
+      ]
 
-    test "list_words/0 returns all words" do
-      word = insert(:word)
-      assert Words.list_words() == [word]
+      assert {:ok, imported_words} = Words.import_words(words_data)
+      assert length(imported_words) == 3
+
+      # Check that categories were created
+      categories = Words.list_categories()
+      assert Enum.any?(categories, &(&1.name == "Animal"))
+      assert Enum.any?(categories, &(&1.name == "Vehicle"))
+
+      # Check that words were created with correct attributes
+      animal_category = Enum.find(categories, &(&1.name == "Animal"))
+      vehicle_category = Enum.find(categories, &(&1.name == "Vehicle"))
+
+      assert Repo.exists?(
+               from w in Word, where: w.text == "horse" and w.category_id == ^animal_category.id
+             )
+
+      assert Repo.exists?(
+               from w in Word, where: w.text == "thrush" and w.category_id == ^animal_category.id
+             )
+
+      assert Repo.exists?(
+               from w in Word,
+                 where: w.text == "airplane" and w.category_id == ^vehicle_category.id
+             )
     end
 
-    test "get_word!/1 returns the word with given id" do
-      word = insert(:word)
-      assert Words.get_word!(word.id) == word
+    test "imports words from a list of maps with atom keys" do
+      words_data = [
+        %{
+          category: "Fruit",
+          name: "banana",
+          hint: "Yellow"
+        },
+        %{
+          category: "Fruit",
+          name: "apple",
+          hint: "Red"
+        }
+      ]
+
+      assert {:ok, imported_words} = Words.import_words(words_data)
+      assert length(imported_words) == 2
+
+      # Check that category was created
+      categories = Words.list_categories()
+      assert Enum.any?(categories, &(&1.name == "Fruit"))
+
+      # Check that words were created with correct attributes
+      fruit_category = Enum.find(categories, &(&1.name == "Fruit"))
+
+      assert Repo.exists?(
+               from w in Word, where: w.text == "banana" and w.category_id == ^fruit_category.id
+             )
+
+      assert Repo.exists?(
+               from w in Word, where: w.text == "apple" and w.category_id == ^fruit_category.id
+             )
     end
 
-    test "create_word/1 with valid data creates a word" do
-      category = insert(:category)
-      valid_attrs = %{text: "some text", hint: "my hint"}
+    test "skips words that already exist in a category" do
+      # Create a category and word first
+      category = insert(:category, name: "Color")
+      insert(:word, text: "blue", category: category)
 
-      assert {:ok, %Word{} = word} = Words.create_word(category, valid_attrs)
-      assert word.text == "some text"
+      words_data = [
+        %{
+          "category" => "Color",
+          "name" => "blue",
+          "hint" => "Color of the sky"
+        },
+        %{
+          "category" => "Color",
+          "name" => "green",
+          "hint" => "Color of plants"
+        }
+      ]
+
+      assert {:ok, imported_words} = Words.import_words(words_data)
+      assert length(imported_words) == 1
+
+      # Only the new word should be added
+      assert Enum.any?(imported_words, &(&1.text == "green"))
+      refute Enum.any?(imported_words, &(&1.text == "blue"))
     end
 
-    test "create_word/1 downcases the text" do
-      category = insert(:category)
-      valid_attrs = %{text: "SOME TEXT"}
+    test "handles case insensitivity correctly" do
+      # Create a category and word first
+      category = insert(:category, name: "Color")
+      insert(:word, text: "blue", category: category)
 
-      assert {:ok, %Word{} = word} = Words.create_word(category, valid_attrs)
-      assert word.text == "some text"
-    end
+      words_data = [
+        %{
+          "category" => "Color",
+          # Different case
+          "name" => "BLUE",
+          "hint" => "Color of the sky"
+        },
+        %{
+          # Different case for category
+          "category" => "color",
+          "name" => "green",
+          "hint" => "Color of plants"
+        }
+      ]
 
-    test "create_word/1 using a name that already exists for a category returns an error" do
-      category = insert(:category)
-      valid_attrs = %{text: "some text", category_id: category.id}
+      assert {:ok, imported_words} = Words.import_words(words_data)
+      assert length(imported_words) == 1
 
-      assert {:ok, %Word{}} = Words.create_word(category, valid_attrs)
-      assert {:error, %Ecto.Changeset{}} = Words.create_word(category, valid_attrs)
-
-      # It works case insensitive
-      case_different_attrs = %{text: String.upcase(valid_attrs.text)}
-      assert {:error, %Ecto.Changeset{}} = Words.create_word(category, case_different_attrs)
-
-      # But I can create for other categories
-      assert {:ok, %Word{}} = Words.create_word(insert(:category), valid_attrs)
-    end
-
-    test "create_word/1 with invalid data returns error changeset" do
-      category = insert(:category)
-      assert {:error, %Ecto.Changeset{}} = Words.create_word(category, @invalid_attrs)
-    end
-
-    test "update_word/2 with valid data updates the word" do
-      word = insert(:word)
-      update_attrs = %{text: "some updated text"}
-
-      assert {:ok, %Word{} = word} = Words.update_word(word, update_attrs)
-      assert word.text == "some updated text"
-    end
-
-    test "update_word/2 with invalid data returns error changeset" do
-      word = insert(:word)
-      assert {:error, %Ecto.Changeset{}} = Words.update_word(word, @invalid_attrs)
-      assert word == Words.get_word!(word.id)
-    end
-
-    test "delete_word/1 deletes the word" do
-      word = insert(:word)
-      assert {:ok, %Word{}} = Words.delete_word(word)
-      assert_raise Ecto.NoResultsError, fn -> Words.get_word!(word.id) end
-    end
-
-    test "change_word/1 returns a word changeset" do
-      word = insert(:word)
-      assert %Ecto.Changeset{} = Words.change_word(word)
+      # Only the new word should be added
+      assert Enum.any?(imported_words, &(&1.text == "green"))
+      refute Enum.any?(imported_words, &(&1.text == "blue"))
     end
   end
 end

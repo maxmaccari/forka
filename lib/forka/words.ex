@@ -7,6 +7,103 @@ defmodule Forka.Words do
   alias Forka.Repo
 
   alias Forka.Words.Category
+  alias Forka.Words.Word
+
+  @doc """
+  Imports words from a list of maps.
+
+  Each map should contain "category", "name" (word text), and optionally "hint".
+  Keys can be provided as strings or atoms.
+  If the category exists, it adds words to it. If not, it creates the category.
+  Words that already exist in a category are ignored.
+
+  ## Examples
+
+      iex> import_words([
+      ...>   %{"category" => "Animal", "name" => "horse", "hint" => "Used as transportation", "language" => "en"}
+      ...> ])
+      {:ok, [%Word{}]}
+
+      iex> import_words([
+      ...>   %{category: "Animal", name: "cavalo", hint: "Usado como meio de transporte", language: "pt"}
+      ...> ])
+      {:ok, [%Word{}]}
+
+  """
+  def import_words(words_data) when is_list(words_data) do
+    # Group words by category
+    words_by_category =
+      Enum.group_by(words_data, fn word_data ->
+        String.capitalize(word_data["category"] || word_data[:category])
+      end)
+
+    # 1. Insert the categories using insert_all. Just use on_conflict: :nothing
+    # Extract unique category names and prepare for insertion
+    categories_to_insert =
+      words_by_category
+      |> Map.keys()
+      |> Enum.map(fn category_name ->
+        # Get the first word data for this category to extract language
+        first_word = words_by_category[category_name] |> List.first()
+        language = first_word["language"] || first_word[:language] || "en"
+
+        %{
+          name: category_name,
+          language: language,
+          inserted_at: DateTime.utc_now() |> DateTime.truncate(:second),
+          updated_at: DateTime.utc_now() |> DateTime.truncate(:second),
+          id: Ecto.UUID.generate()
+        }
+      end)
+
+    # Insert all categories at once, ignoring conflicts and return the inserted records
+    {_, inserted_categories} =
+      Repo.insert_all(Category, categories_to_insert,
+        on_conflict: :nothing,
+        returning: true
+      )
+
+    # 2. Find existing categories for the ones that weren't inserted
+    # Get all category names from the data
+    all_category_names = Map.keys(words_by_category)
+
+    # Get names of categories that were successfully inserted
+    inserted_category_names = Enum.map(inserted_categories, & &1.name)
+
+    # Find category names that need to be fetched from the database
+    categories_to_fetch = all_category_names -- inserted_category_names
+
+    # Fetch existing categories from the database
+    existing_categories =
+      if Enum.empty?(categories_to_fetch) do
+        []
+      else
+        Repo.all(from c in Category, where: c.name in ^categories_to_fetch)
+      end
+
+    # Combine newly inserted and existing categories
+    categories = inserted_categories ++ existing_categories
+
+    words_to_insert =
+      for category <- categories, word <- words_by_category[category.name] do
+        # Extract word data and prepare for insertion
+        word_name = word["name"] || word[:name]
+        word_hint = word["hint"] || word[:hint]
+
+        %{
+          text: String.downcase(word_name),
+          hint: word_hint,
+          category_id: category.id,
+          inserted_at: DateTime.utc_now() |> DateTime.truncate(:second),
+          updated_at: DateTime.utc_now() |> DateTime.truncate(:second),
+          id: Ecto.UUID.generate()
+        }
+      end
+
+    {_, words} = Repo.insert_all(Word, words_to_insert, on_conflict: :nothing, returning: true)
+
+    {:ok, Repo.preload(words, :category)}
+  end
 
   @doc """
   Returns the list of categories.
@@ -18,8 +115,8 @@ defmodule Forka.Words do
 
       iex> list_categories(language: "en")
       [%Category{language: "en"}, ...]
-
   """
+
   def list_categories(opts \\ []) do
     language = Keyword.get(opts, :language)
 
@@ -27,183 +124,5 @@ defmodule Forka.Words do
       nil -> Repo.all(Category)
       lang -> Repo.all(from c in Category, where: c.language == ^lang)
     end
-  end
-
-  @doc """
-  Gets a single category.
-
-  Raises `Ecto.NoResultsError` if the Category does not exist.
-
-  ## Examples
-
-      iex> get_category!(123)
-      %Category{}
-
-      iex> get_category!(456)
-      ** (Ecto.NoResultsError)
-
-  """
-  def get_category!(id), do: Repo.get!(Category, id)
-
-  @doc """
-  Creates a category.
-
-  ## Examples
-
-      iex> create_category(%{field: value})
-      {:ok, %Category{}}
-
-      iex> create_category(%{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def create_category(attrs \\ %{}) do
-    %Category{}
-    |> Category.changeset(attrs)
-    |> Repo.insert()
-  end
-
-  @doc """
-  Updates a category.
-
-  ## Examples
-
-      iex> update_category(category, %{field: new_value})
-      {:ok, %Category{}}
-
-      iex> update_category(category, %{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def update_category(%Category{} = category, attrs) do
-    category
-    |> Category.changeset(attrs)
-    |> Repo.update()
-  end
-
-  @doc """
-  Deletes a category.
-
-  ## Examples
-
-      iex> delete_category(category)
-      {:ok, %Category{}}
-
-      iex> delete_category(category)
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def delete_category(%Category{} = category) do
-    Repo.delete(category)
-  end
-
-  @doc """
-  Returns an `%Ecto.Changeset{}` for tracking category changes.
-
-  ## Examples
-
-      iex> change_category(category)
-      %Ecto.Changeset{data: %Category{}}
-
-  """
-  def change_category(%Category{} = category, attrs \\ %{}) do
-    Category.changeset(category, attrs)
-  end
-
-  alias Forka.Words.Word
-
-  @doc """
-  Returns the list of words.
-
-  ## Examples
-
-      iex> list_words()
-      [%Word{}, ...]
-
-  """
-  def list_words do
-    Repo.all(Word)
-  end
-
-  @doc """
-  Gets a single word.
-
-  Raises `Ecto.NoResultsError` if the Word does not exist.
-
-  ## Examples
-
-      iex> get_word!(123)
-      %Word{}
-
-      iex> get_word!(456)
-      ** (Ecto.NoResultsError)
-
-  """
-  def get_word!(id), do: Repo.get!(Word, id)
-
-  @doc """
-  Creates a word associated with a category.
-
-  ## Examples
-
-      iex> create_word(category, %{text: "example"})
-      {:ok, %Word{}}
-
-      iex> create_word(category, %{text: nil})
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def create_word(%Category{} = category, attrs \\ %{}) do
-    category
-    |> Ecto.build_assoc(:words)
-    |> Word.changeset(attrs)
-    |> Repo.insert()
-  end
-
-  @doc """
-  Updates a word.
-
-  ## Examples
-
-      iex> update_word(word, %{field: new_value})
-      {:ok, %Word{}}
-
-      iex> update_word(word, %{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def update_word(%Word{} = word, attrs) do
-    word
-    |> Word.changeset(attrs)
-    |> Repo.update()
-  end
-
-  @doc """
-  Deletes a word.
-
-  ## Examples
-
-      iex> delete_word(word)
-      {:ok, %Word{}}
-
-      iex> delete_word(word)
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def delete_word(%Word{} = word) do
-    Repo.delete(word)
-  end
-
-  @doc """
-  Returns an `%Ecto.Changeset{}` for tracking word changes.
-
-  ## Examples
-
-      iex> change_word(word)
-      %Ecto.Changeset{data: %Word{}}
-
-  """
-  def change_word(%Word{} = word, attrs \\ %{}) do
-    Word.changeset(word, attrs)
   end
 end

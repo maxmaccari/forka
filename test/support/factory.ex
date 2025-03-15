@@ -10,7 +10,7 @@ defmodule Forka.Factory do
   def word_factory do
     %Forka.Words.Word{
       text: sequence(:word, &"Word #{&1}"),
-      category_id: insert(:category).id
+      category: insert(:category)
     }
   end
 end
