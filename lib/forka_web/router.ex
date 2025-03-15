@@ -1,6 +1,8 @@
 defmodule ForkaWeb.Router do
   use ForkaWeb, :router
 
+  import Backpex.Router
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -8,6 +10,10 @@ defmodule ForkaWeb.Router do
     plug :put_root_layout, html: {ForkaWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+  end
+
+  pipeline :admin do
+    plug Backpex.ThemeSelectorPlug
   end
 
   pipeline :api do
@@ -18,6 +24,18 @@ defmodule ForkaWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+  end
+
+  scope "/admin", ForkaWeb do
+    pipe_through [:browser, :admin]
+
+    backpex_routes()
+
+    get "/", RedirectController, :redirect_to_categories
+
+    live_session :default, on_mount: Backpex.InitAssigns do
+      live_resources "/categories", CategoryLive
+    end
   end
 
   # Other scopes may use custom stacks.

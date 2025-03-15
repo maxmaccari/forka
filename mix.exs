@@ -59,7 +59,8 @@ defmodule Forka.MixProject do
       {:dns_cluster, "~> 0.1.1"},
       {:bandit, "~> 1.5"},
       {:uuid, "~> 1.1"},
-      {:ex_machina, "~> 2.8.0", only: :test}
+      {:ex_machina, "~> 2.8.0", only: :test},
+      {:backpex, "~> 0.11.0"}
     ]
   end
 

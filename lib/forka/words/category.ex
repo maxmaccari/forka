@@ -16,7 +16,7 @@ defmodule Forka.Words.Category do
   end
 
   @doc false
-  def changeset(category, attrs) do
+  def changeset(category, attrs, _metadata \\ []) do
     category
     |> cast(attrs, [:name, :language])
     |> validate_required([:name])
