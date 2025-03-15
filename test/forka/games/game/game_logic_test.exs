@@ -99,12 +99,12 @@ defmodule Forka.Games.Game.GameLogicTest do
   describe "guess/3" do
     test "returns error when not player's turn", %{game_state: game_state, player2: player2} do
       # Player 2 tries to guess but it's player 1's turn
-      assert {:error, :not_player_turn} = GameLogic.guess(game_state, "a", player2.id)
+      assert {:error, :not_player_turn} = GameLogic.guess(game_state, player2.id, "a")
     end
 
     test "processes correct guess successfully", %{game_state: game_state, player1: player1} do
       # Player 1 guesses 'c' in 'cat'
-      assert {:ok, updated_game} = GameLogic.guess(game_state, "c", player1.id)
+      assert {:ok, updated_game} = GameLogic.guess(game_state, player1.id, "c")
 
       # Check that the guess was recorded
       current_word = get_current_word(updated_game)
@@ -120,7 +120,7 @@ defmodule Forka.Games.Game.GameLogicTest do
 
     test "processes incorrect guess successfully", %{game_state: game_state, player1: player1} do
       # Player 1 guesses 'z' which is not in 'cat'
-      assert {:ok, updated_game} = GameLogic.guess(game_state, "z", player1.id)
+      assert {:ok, updated_game} = GameLogic.guess(game_state, player1.id, "z")
 
       # Check that the guess was recorded
       current_word = get_current_word(updated_game)
@@ -140,10 +140,10 @@ defmodule Forka.Games.Game.GameLogicTest do
 
     test "returns error for already guessed letter", %{game_state: game_state, player1: player1} do
       # Player 1 guesses 'c'
-      {:ok, updated_game} = GameLogic.guess(game_state, "c", player1.id)
+      {:ok, updated_game} = GameLogic.guess(game_state, player1.id, "c")
 
       # Player 1 tries to guess 'c' again
-      assert {:error, :letter_already_guessed} = GameLogic.guess(updated_game, "c", player1.id)
+      assert {:error, :letter_already_guessed} = GameLogic.guess(updated_game, player1.id, "c")
     end
 
     test "returns error when game is not in playing status", %{
@@ -152,11 +152,11 @@ defmodule Forka.Games.Game.GameLogicTest do
     } do
       # Set game status to finished
       game_state = %{game_state | status: :finished}
-      assert {:error, :game_not_playing} = GameLogic.guess(game_state, "a", player1.id)
+      assert {:error, :game_not_playing} = GameLogic.guess(game_state, player1.id, "a")
 
       # Set game status to game_over
       game_state = %{game_state | status: :game_over}
-      assert {:error, :game_not_playing} = GameLogic.guess(game_state, "a", player1.id)
+      assert {:error, :game_not_playing} = GameLogic.guess(game_state, player1.id, "a")
     end
 
     test "returns error when game is archived", %{game_state: game_state, player1: player1} do
@@ -164,7 +164,7 @@ defmodule Forka.Games.Game.GameLogicTest do
       archived_game = %{game_state | status: :archived}
 
       # Try to make a guess in an archived game
-      assert {:error, :game_archived} = GameLogic.guess(archived_game, "a", player1.id)
+      assert {:error, :game_archived} = GameLogic.guess(archived_game, player1.id, "a")
     end
   end
 
@@ -174,9 +174,9 @@ defmodule Forka.Games.Game.GameLogicTest do
       player1: player1
     } do
       # Player 1 guesses all letters in 'cat'
-      {:ok, game_after_c} = GameLogic.guess(game_state, "c", player1.id)
-      {:ok, game_after_a} = GameLogic.guess(game_after_c, "a", player1.id)
-      {:ok, game_after_t} = GameLogic.guess(game_after_a, "t", player1.id)
+      {:ok, game_after_c} = GameLogic.guess(game_state, player1.id, "c")
+      {:ok, game_after_a} = GameLogic.guess(game_after_c, player1.id, "a")
+      {:ok, game_after_t} = GameLogic.guess(game_after_a, player1.id, "t")
 
       # Check that we moved to the next word
       assert game_after_t.current_game_word_index == 1
@@ -195,14 +195,14 @@ defmodule Forka.Games.Game.GameLogicTest do
       player1: player1
     } do
       # Complete first word 'cat'
-      {:ok, game_after_c} = GameLogic.guess(game_state, "c", player1.id)
-      {:ok, game_after_a} = GameLogic.guess(game_after_c, "a", player1.id)
-      {:ok, game_after_t} = GameLogic.guess(game_after_a, "t", player1.id)
+      {:ok, game_after_c} = GameLogic.guess(game_state, player1.id, "c")
+      {:ok, game_after_a} = GameLogic.guess(game_after_c, player1.id, "a")
+      {:ok, game_after_t} = GameLogic.guess(game_after_a, player1.id, "t")
 
       # Complete second word 'dog'
-      {:ok, game_after_d} = GameLogic.guess(game_after_t, "d", player1.id)
-      {:ok, game_after_o} = GameLogic.guess(game_after_d, "o", player1.id)
-      {:ok, game_after_g} = GameLogic.guess(game_after_o, "g", player1.id)
+      {:ok, game_after_d} = GameLogic.guess(game_after_t, player1.id, "d")
+      {:ok, game_after_o} = GameLogic.guess(game_after_d, player1.id, "o")
+      {:ok, game_after_g} = GameLogic.guess(game_after_o, player1.id, "g")
 
       # Game should be finished
       assert game_after_g.status == :finished
@@ -214,42 +214,42 @@ defmodule Forka.Games.Game.GameLogicTest do
       player2: player2
     } do
       # Player 1 makes incorrect guesses and loses turn
-      {:ok, game_after_z} = GameLogic.guess(game_state, "z", player1.id)
+      {:ok, game_after_z} = GameLogic.guess(game_state, player1.id, "z")
 
       # Now it's player 2's turn
       # Player 2 makes 6 incorrect guesses and dies
-      {:ok, game_after_x} = GameLogic.guess(game_after_z, "x", player2.id)
-      {:ok, game_after_v} = GameLogic.guess(game_after_x, "v", player1.id)
-      {:ok, game_after_b} = GameLogic.guess(game_after_v, "b", player2.id)
-      {:ok, game_after_n} = GameLogic.guess(game_after_b, "n", player1.id)
-      {:ok, game_after_m} = GameLogic.guess(game_after_n, "m", player2.id)
-      {:ok, game_after_q} = GameLogic.guess(game_after_m, "q", player1.id)
-      {:ok, game_after_w} = GameLogic.guess(game_after_q, "w", player2.id)
-      {:ok, game_after_e} = GameLogic.guess(game_after_w, "e", player1.id)
-      {:ok, game_after_r} = GameLogic.guess(game_after_e, "r", player2.id)
+      {:ok, game_after_x} = GameLogic.guess(game_after_z, player2.id, "x")
+      {:ok, game_after_v} = GameLogic.guess(game_after_x, player1.id, "v")
+      {:ok, game_after_b} = GameLogic.guess(game_after_v, player2.id, "b")
+      {:ok, game_after_n} = GameLogic.guess(game_after_b, player1.id, "n")
+      {:ok, game_after_m} = GameLogic.guess(game_after_n, player2.id, "m")
+      {:ok, game_after_q} = GameLogic.guess(game_after_m, player1.id, "q")
+      {:ok, game_after_w} = GameLogic.guess(game_after_q, player2.id, "w")
+      {:ok, game_after_e} = GameLogic.guess(game_after_w, player1.id, "e")
+      {:ok, game_after_r} = GameLogic.guess(game_after_e, player2.id, "r")
       # Player 1 complete to earn more lives, and win player 2
-      {:ok, game_after_c} = GameLogic.guess(game_after_r, "c", player1.id)
-      {:ok, game_after_a} = GameLogic.guess(game_after_c, "a", player1.id)
-      {:ok, game_after_t} = GameLogic.guess(game_after_a, "t", player1.id)
+      {:ok, game_after_c} = GameLogic.guess(game_after_r, player1.id, "c")
+      {:ok, game_after_a} = GameLogic.guess(game_after_c, player1.id, "a")
+      {:ok, game_after_t} = GameLogic.guess(game_after_a, player1.id, "t")
       # Player 2 loose in another word
-      {:ok, game_after_x} = GameLogic.guess(game_after_t, "x", player1.id)
-      {:ok, game_after_y} = GameLogic.guess(game_after_x, "y", player2.id)
-      {:ok, game_after_z} = GameLogic.guess(game_after_y, "z", player1.id)
-      {:ok, game_after_a} = GameLogic.guess(game_after_z, "a", player2.id)
+      {:ok, game_after_x} = GameLogic.guess(game_after_t, player1.id, "x")
+      {:ok, game_after_y} = GameLogic.guess(game_after_x, player2.id, "y")
+      {:ok, game_after_z} = GameLogic.guess(game_after_y, player1.id, "z")
+      {:ok, game_after_a} = GameLogic.guess(game_after_z, player2.id, "a")
 
       # Player 2 should be dead
       player2_state = get_player_by_id(game_after_a, player2.id)
       assert player2_state.status == :dead
 
       # Player 1 completes the words and wins
-      {:ok, game_after_c} = GameLogic.guess(game_after_m, "c", player1.id)
-      {:ok, game_after_a} = GameLogic.guess(game_after_c, "a", player1.id)
-      {:ok, game_after_t} = GameLogic.guess(game_after_a, "t", player1.id)
+      {:ok, game_after_c} = GameLogic.guess(game_after_m, player1.id, "c")
+      {:ok, game_after_a} = GameLogic.guess(game_after_c, player1.id, "a")
+      {:ok, game_after_t} = GameLogic.guess(game_after_a, player1.id, "t")
 
       # Complete second word 'dog'
-      {:ok, game_after_d} = GameLogic.guess(game_after_t, "d", player1.id)
-      {:ok, game_after_o} = GameLogic.guess(game_after_d, "o", player1.id)
-      {:ok, game_after_g} = GameLogic.guess(game_after_o, "g", player1.id)
+      {:ok, game_after_d} = GameLogic.guess(game_after_t, player1.id, "d")
+      {:ok, game_after_o} = GameLogic.guess(game_after_d, player1.id, "o")
+      {:ok, game_after_g} = GameLogic.guess(game_after_o, player1.id, "g")
 
       # Game should be finished with player 1 as winner
       assert game_after_g.status == :finished
@@ -263,24 +263,24 @@ defmodule Forka.Games.Game.GameLogicTest do
       # Make both players die by making 6 incorrect guesses each
 
       # Player 1 makes incorrect guesses
-      {:ok, game_after_z1} = GameLogic.guess(game_state, "z", player1.id)
+      {:ok, game_after_z1} = GameLogic.guess(game_state, player1.id, "z")
 
       # Player 2 makes incorrect guesses
-      {:ok, game_after_x1} = GameLogic.guess(game_after_z1, "x", player2.id)
+      {:ok, game_after_x1} = GameLogic.guess(game_after_z1, player2.id, "x")
 
       # Continue alternating incorrect guesses
-      {:ok, game_after_v1} = GameLogic.guess(game_after_x1, "v", player1.id)
-      {:ok, game_after_b1} = GameLogic.guess(game_after_v1, "b", player2.id)
-      {:ok, game_after_n1} = GameLogic.guess(game_after_b1, "n", player1.id)
-      {:ok, game_after_m1} = GameLogic.guess(game_after_n1, "m", player2.id)
-      {:ok, game_after_q1} = GameLogic.guess(game_after_m1, "q", player1.id)
-      {:ok, game_after_w1} = GameLogic.guess(game_after_q1, "w", player2.id)
-      {:ok, game_after_e1} = GameLogic.guess(game_after_w1, "e", player1.id)
-      {:ok, game_after_r1} = GameLogic.guess(game_after_e1, "r", player2.id)
-      {:ok, game_after_y1} = GameLogic.guess(game_after_r1, "y", player1.id)
-      {:ok, game_after_u1} = GameLogic.guess(game_after_y1, "u", player2.id)
-      {:ok, game_after_i1} = GameLogic.guess(game_after_u1, "i", player1.id)
-      {:ok, game_after_o1} = GameLogic.guess(game_after_i1, "o", player2.id)
+      {:ok, game_after_v1} = GameLogic.guess(game_after_x1, player1.id, "v")
+      {:ok, game_after_b1} = GameLogic.guess(game_after_v1, player2.id, "b")
+      {:ok, game_after_n1} = GameLogic.guess(game_after_b1, player1.id, "n")
+      {:ok, game_after_m1} = GameLogic.guess(game_after_n1, player2.id, "m")
+      {:ok, game_after_q1} = GameLogic.guess(game_after_m1, player1.id, "q")
+      {:ok, game_after_w1} = GameLogic.guess(game_after_q1, player2.id, "w")
+      {:ok, game_after_e1} = GameLogic.guess(game_after_w1, player1.id, "e")
+      {:ok, game_after_r1} = GameLogic.guess(game_after_e1, player2.id, "r")
+      {:ok, game_after_y1} = GameLogic.guess(game_after_r1, player1.id, "y")
+      {:ok, game_after_u1} = GameLogic.guess(game_after_y1, player2.id, "u")
+      {:ok, game_after_i1} = GameLogic.guess(game_after_u1, player1.id, "i")
+      {:ok, game_after_o1} = GameLogic.guess(game_after_i1, player2.id, "o")
 
       # Game should be over
       assert game_after_o1.status == :game_over
@@ -309,10 +309,10 @@ defmodule Forka.Games.Game.GameLogicTest do
       }
 
       # Try to guess with player 1 (who is now dead)
-      {:error, :not_player_turn} = GameLogic.guess(game_with_dead_player, "a", player1.id)
+      {:error, :not_player_turn} = GameLogic.guess(game_with_dead_player, player1.id, "a")
 
       # Try to guess with player 2
-      assert {:ok, _game_} = GameLogic.guess(game_with_dead_player, "a", player2.id)
+      assert {:ok, _game_} = GameLogic.guess(game_with_dead_player, player2.id, "a")
     end
   end
 

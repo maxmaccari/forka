@@ -62,21 +62,21 @@ defmodule Forka.Games.Game.GameLogic do
   def give_up_player(%GameState{}, player_id) when is_binary(player_id),
     do: {:error, :game_not_playing}
 
-  def guess(%GameState{status: :playing} = game_state, letter, player_id)
+  def guess(%GameState{status: :playing} = game_state, player_id, letter)
       when is_binary(letter) and is_binary(player_id) do
     if current_player?(game_state, player_id) do
       game_state
       |> ensure_current_or_next_alive_player()
-      |> process_guess(letter, player_id)
+      |> process_guess(player_id, letter)
     else
       {:error, :not_player_turn}
     end
   end
 
-  def guess(%GameState{status: :archived}, _letter, _player_id),
+  def guess(%GameState{status: :archived}, _player_id, _letter),
     do: {:error, :game_archived}
 
-  def guess(%GameState{}, letter, player_id) when is_binary(letter) and is_binary(player_id),
+  def guess(%GameState{}, player_id, letter) when is_binary(letter) and is_binary(player_id),
     do: {:error, :game_not_playing}
 
   defp current_player?(game_state, player_id) do
@@ -131,11 +131,11 @@ defmodule Forka.Games.Game.GameLogic do
     }
   end
 
-  defp process_guess(%GameState{status: status} = game_state, _letter, _player_id)
+  defp process_guess(%GameState{status: status} = game_state, _player_id, _letter)
        when status in @finished_statuses,
        do: {:ok, game_state}
 
-  defp process_guess(game_state, letter, player_id) do
+  defp process_guess(game_state, player_id, letter) do
     game_word = current_word(game_state)
 
     case GameWord.guess(game_word, letter, player_id) do

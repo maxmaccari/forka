@@ -382,7 +382,7 @@ defmodule Forka.Games.GameTest do
       assert archived_game == Game.set_words(archived_game, [word])
       assert archived_game == Game.shuffle_players(archived_game)
       assert {:error, :game_archived} = Game.init_game(archived_game)
-      assert {:error, :game_archived} = Game.guess(archived_game, "a", "any_player_id")
+      assert {:error, :game_archived} = Game.guess(archived_game, "any_player_id", "a")
       assert {:error, :game_archived} = Game.give_up_player(archived_game, "any_player_id")
     end
   end

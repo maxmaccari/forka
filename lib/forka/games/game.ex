@@ -218,8 +218,8 @@ defmodule Forka.Games.Game do
 
   ## Parameters
     - game_state: The GameState struct representing the current state of the game
-    - letter: A single character string representing the letter being guessed
     - player_id: The ID of the player making the guess (not the Player struct)
+    - letter: A single character string representing the letter being guessed
 
   ## Returns
     - `{:ok, updated_game}`: If the guess is processed successfully
@@ -229,7 +229,7 @@ defmodule Forka.Games.Game do
       - `:letter_already_guessed`: The letter has already been guessed for this word
       - `:game_archived`: The game is archived and cannot be modified
   """
-  defdelegate guess(game_state, letter, player_id), to: GameLogic
+  defdelegate guess(game_state, player_id, letter), to: GameLogic
 
   @doc """
   Makes a player give up in the game state, updating their status to :dead and setting lives to 0.

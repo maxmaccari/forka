@@ -95,13 +95,13 @@ defmodule Forka.Games do
 
   ## Parameters
     - game_id: The ID of the game.
-    - letter: The letter being guessed.
     - player_id: The ID of the player making the guess.
+    - letter: The letter being guessed.
 
   ## Returns
     See `Forka.Games.GameServer.guess/3` for return values.
   """
-  defdelegate guess(game_id, letter, player_id), to: Forka.Games.GameServer
+  defdelegate guess(game_id, player_id, letter), to: Forka.Games.GameServer
 
   @doc """
   Transfers ownership of the game to another player.

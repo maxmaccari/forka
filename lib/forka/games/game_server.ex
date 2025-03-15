@@ -162,14 +162,14 @@ defmodule Forka.Games.GameServer do
 
   ## Parameters
     - game_id: The ID of the game.
-    - letter: The letter being guessed.
     - player_id: The ID of the player making the guess.
+    - letter: The letter being guessed.
 
   ## Returns
     - `{:ok, game_state}` if successful.
     - `{:error, term}` if unsuccessful. See `Forka.Games.Game.guess/3` for possible error reasons.
   """
-  def guess(game_id, letter, player_id)
+  def guess(game_id, player_id, letter)
       when is_binary(game_id) and is_binary(letter) and is_binary(player_id) do
     GenServer.call(global_name(game_id), {:guess, letter, player_id})
   end
@@ -393,7 +393,7 @@ defmodule Forka.Games.GameServer do
 
   @impl true
   def handle_call({:guess, letter, player_id}, _from, game) do
-    case Game.guess(game, letter, player_id) do
+    case Game.guess(game, player_id, letter) do
       {:ok, new_game} ->
         broadcast!(new_game)
 
