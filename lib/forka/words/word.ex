@@ -8,6 +8,7 @@ defmodule Forka.Words.Word do
   @foreign_key_type :binary_id
   schema "words" do
     field :text, :string
+    field :hint, :string
 
     belongs_to :category, Category
 
@@ -17,7 +18,7 @@ defmodule Forka.Words.Word do
   @doc false
   def changeset(word, attrs, _metadata \\ []) do
     word
-    |> cast(attrs, [:text, :category_id])
+    |> cast(attrs, [:text, :hint, :category_id])
     |> validate_required([:text, :category_id])
     |> unique_constraint([:text, :category_id])
   end

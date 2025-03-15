@@ -31,6 +31,10 @@ defmodule ForkaWeb.WordLive do
         label: "Category",
         display_field: :name,
         live_resource: ForkaWeb.CategoryLive
+      },
+      hint: %{
+        module: Backpex.Fields.Text,
+        label: "Hint"
       }
     ]
   end
