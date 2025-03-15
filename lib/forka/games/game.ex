@@ -1,8 +1,7 @@
 defmodule Forka.Games.Game do
-  alias Forka.Games.GameSummary
-  alias Forka.Games.Game.GameLogic
   alias Forka.Games.Player
-  alias Forka.Games.Game.{GameState, GamePlayer, GameWord}
+  alias Forka.Games.GameSummary
+  alias Forka.Games.Game.{GameState, GamePlayer, GameWord, Guess, GameLogic}
 
   @doc """
   Creates a new game state with the given name and maximum number of players.
@@ -406,5 +405,62 @@ defmodule Forka.Games.Game do
              last_event: {:ownership_transferred_to, new_owner}
          }}
     end
+  end
+
+  @doc """
+  Converts the last_event tuple into a human-readable description.
+
+  ## Parameters
+    - game_state: The current GameState struct
+
+  ## Returns
+    - A string with a friendly description of the last event
+    - nil if there's no last event
+  """
+  def last_event_description(%GameState{last_event: nil}), do: nil
+
+  def last_event_description(%GameState{last_event: {:player_joined, player}}) do
+    "#{player.username} joined the game"
+  end
+
+  def last_event_description(%GameState{last_event: {:player_left, player}}) do
+    "#{player.username} left the game"
+  end
+
+  def last_event_description(%GameState{last_event: {:game_started, _owner}}) do
+    "Game started"
+  end
+
+  def last_event_description(%GameState{
+        last_event: {:player_guessed, %Guess{letter: letter, correct?: true}}
+      }) do
+    "Player correctly guessed the letter '#{letter}'"
+  end
+
+  def last_event_description(%GameState{
+        last_event: {:player_guessed, %Guess{letter: letter, correct?: false}}
+      }) do
+    "Player incorrectly guessed the letter '#{letter}'"
+  end
+
+  def last_event_description(%GameState{last_event: {:player_gave_up, player}}) do
+    "#{player.username} gave up"
+  end
+
+  def last_event_description(%GameState{last_event: {:ownership_transferred_to, player}}) do
+    "Game ownership transferred to #{player.username}"
+  end
+
+  def last_event_description(%GameState{last_event: :game_archived}) do
+    "Game was archived"
+  end
+
+  def last_event_description(%GameState{last_event: :game_restarted}) do
+    "Game was restarted"
+  end
+
+  # Fallback for any unhandled event types
+  def last_event_description(%GameState{last_event: event}) do
+    "Unknown event: #{inspect(event)}"
   end
 end

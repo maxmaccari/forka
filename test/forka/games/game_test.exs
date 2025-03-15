@@ -456,4 +456,29 @@ defmodule Forka.Games.GameTest do
       assert %Forka.Games.GameSummary{} = summary
     end
   end
+
+  describe "last_event_description/1" do
+    test "returns human-readable descriptions for various events" do
+      owner = Player.new("Owner")
+      player = Player.new("Player")
+      game = Game.new(owner, "Test Game", 4)
+
+      # Test nil event
+      assert Game.last_event_description(%{game | last_event: nil}) == nil
+
+      # Test player joined event
+      game_with_join = %{game | last_event: {:player_joined, player}}
+      assert Game.last_event_description(game_with_join) == "Player joined the game"
+
+      # Test player left event
+      game_with_left = %{game | last_event: {:player_left, player}}
+      assert Game.last_event_description(game_with_left) == "Player left the game"
+
+      # Test ownership transfer event
+      game_with_transfer = %{game | last_event: {:ownership_transferred_to, player}}
+
+      assert Game.last_event_description(game_with_transfer) ==
+               "Game ownership transferred to Player"
+    end
+  end
 end
