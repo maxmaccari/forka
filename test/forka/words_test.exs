@@ -97,6 +97,22 @@ defmodule Forka.WordsTest do
       assert word.text == "some text"
     end
 
+    test "create_category/1 using a name that already exists for a category returns an error" do
+      category = insert(:category)
+      valid_attrs = %{text: "some text", category_id: category.id}
+
+      assert {:ok, %Word{}} = Words.create_word(valid_attrs)
+      assert {:error, %Ecto.Changeset{}} = Words.create_word(valid_attrs)
+
+      # It works case insensitive
+      case_different_attrs = %{text: String.upcase(valid_attrs.text), category_id: category.id}
+      assert {:error, %Ecto.Changeset{}} = Words.create_word(case_different_attrs)
+
+      # But I can create for other categories
+      assert {:ok, %Word{}} =
+               Words.create_word(%{valid_attrs | category_id: insert(:category).id})
+    end
+
     test "create_word/1 with invalid data returns error changeset" do
       assert {:error, %Ecto.Changeset{}} = Words.create_word(@invalid_attrs)
     end

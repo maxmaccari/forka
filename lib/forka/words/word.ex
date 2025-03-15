@@ -19,5 +19,6 @@ defmodule Forka.Words.Word do
     word
     |> cast(attrs, [:text, :category_id])
     |> validate_required([:text, :category_id])
+    |> unique_constraint([:text, :category_id])
   end
 end
