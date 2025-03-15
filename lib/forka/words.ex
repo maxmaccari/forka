@@ -139,13 +139,13 @@ defmodule Forka.Words do
   ## Examples
 
       iex> get_random_words(3)
-      [%Word{}, %Word{}, %Word{}]
+      [%{text: "word1", hint: "hint1", category: "Category1", language: "en"}, ...]
 
       iex> get_random_words(5, language: "en")
-      [%Word{}, %Word{}, %Word{}, %Word{}, %Word{}]
+      [%{text: "word1", hint: "hint1", category: "Category1", language: "en"}, ...]
 
       iex> get_random_words(2, category_ids: ["uuid1", "uuid2"])
-      [%Word{}, %Word{}]
+      [%{text: "word1", hint: "hint1", category: "Category1", language: "en"}, ...]
   """
   def get_random_words(count \\ 5, opts \\ []) do
     import Ecto.Query
@@ -156,7 +156,12 @@ defmodule Forka.Words do
     query =
       from w in Forka.Words.Word,
         join: c in assoc(w, :category),
-        preload: [category: c]
+        select: %{
+          text: w.text,
+          category: c.name,
+          hint: w.hint,
+          language: c.language
+        }
 
     query =
       if language do
