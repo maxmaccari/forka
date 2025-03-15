@@ -142,19 +142,20 @@ defmodule Forka.Words do
   def get_word!(id), do: Repo.get!(Word, id)
 
   @doc """
-  Creates a word.
+  Creates a word associated with a category.
 
   ## Examples
 
-      iex> create_word(%{field: value})
+      iex> create_word(category, %{text: "example"})
       {:ok, %Word{}}
 
-      iex> create_word(%{field: bad_value})
+      iex> create_word(category, %{text: nil})
       {:error, %Ecto.Changeset{}}
 
   """
-  def create_word(attrs \\ %{}) do
-    %Word{}
+  def create_word(%Category{} = category, attrs \\ %{}) do
+    category
+    |> Ecto.build_assoc(:words)
     |> Word.changeset(attrs)
     |> Repo.insert()
   end

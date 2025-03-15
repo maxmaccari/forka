@@ -12,7 +12,7 @@ defmodule Forka.Words.WordTest do
 
     test "validates required fields" do
       changeset = Word.changeset(%Word{}, %{})
-      assert %{text: ["can't be blank"], category_id: ["can't be blank"]} = errors_on(changeset)
+      assert %{text: ["can't be blank"]} = errors_on(changeset)
     end
 
     test "validates with valid attributes", %{category: category} do
@@ -25,8 +25,8 @@ defmodule Forka.Words.WordTest do
       {:ok, _} = Repo.insert(%Word{text: "unique word", category_id: category.id})
 
       {:error, changeset} =
-        %Word{}
-        |> Word.changeset(%{text: "unique word", category_id: category.id})
+        %Word{category_id: category.id}
+        |> Word.changeset(%{text: "unique word"})
         |> Repo.insert()
 
       assert %{text: ["has already been taken"]} = errors_on(changeset)
@@ -34,7 +34,7 @@ defmodule Forka.Words.WordTest do
       # Different category should work
       {:ok, other_category} = Repo.insert(%Category{name: "Other Category", language: "pt"})
 
-      changeset = Word.changeset(%Word{}, %{text: "unique word", category_id: other_category.id})
+      changeset = Word.changeset(%Word{category_id: other_category.id}, %{text: "unique word"})
       assert changeset.valid?
     end
   end

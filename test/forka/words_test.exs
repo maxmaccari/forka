@@ -91,17 +91,17 @@ defmodule Forka.WordsTest do
 
     test "create_word/1 with valid data creates a word" do
       category = insert(:category)
-      valid_attrs = %{text: "some text", hint: "my hint", category_id: category.id}
+      valid_attrs = %{text: "some text", hint: "my hint"}
 
-      assert {:ok, %Word{} = word} = Words.create_word(valid_attrs)
+      assert {:ok, %Word{} = word} = Words.create_word(category, valid_attrs)
       assert word.text == "some text"
     end
 
     test "create_word/1 downcases the text" do
       category = insert(:category)
-      valid_attrs = %{text: "SOME TEXT", category_id: category.id}
+      valid_attrs = %{text: "SOME TEXT"}
 
-      assert {:ok, %Word{} = word} = Words.create_word(valid_attrs)
+      assert {:ok, %Word{} = word} = Words.create_word(category, valid_attrs)
       assert word.text == "some text"
     end
 
@@ -109,20 +109,20 @@ defmodule Forka.WordsTest do
       category = insert(:category)
       valid_attrs = %{text: "some text", category_id: category.id}
 
-      assert {:ok, %Word{}} = Words.create_word(valid_attrs)
-      assert {:error, %Ecto.Changeset{}} = Words.create_word(valid_attrs)
+      assert {:ok, %Word{}} = Words.create_word(category, valid_attrs)
+      assert {:error, %Ecto.Changeset{}} = Words.create_word(category, valid_attrs)
 
       # It works case insensitive
-      case_different_attrs = %{text: String.upcase(valid_attrs.text), category_id: category.id}
-      assert {:error, %Ecto.Changeset{}} = Words.create_word(case_different_attrs)
+      case_different_attrs = %{text: String.upcase(valid_attrs.text)}
+      assert {:error, %Ecto.Changeset{}} = Words.create_word(category, case_different_attrs)
 
       # But I can create for other categories
-      assert {:ok, %Word{}} =
-               Words.create_word(%{valid_attrs | category_id: insert(:category).id})
+      assert {:ok, %Word{}} = Words.create_word(insert(:category), valid_attrs)
     end
 
     test "create_word/1 with invalid data returns error changeset" do
-      assert {:error, %Ecto.Changeset{}} = Words.create_word(@invalid_attrs)
+      category = insert(:category)
+      assert {:error, %Ecto.Changeset{}} = Words.create_word(category, @invalid_attrs)
     end
 
     test "update_word/2 with valid data updates the word" do
