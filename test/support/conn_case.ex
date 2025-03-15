@@ -28,6 +28,8 @@ defmodule ForkaWeb.ConnCase do
       import Plug.Conn
       import Phoenix.ConnTest
       import ForkaWeb.ConnCase
+
+      import Forka.Factory
     end
   end
 
