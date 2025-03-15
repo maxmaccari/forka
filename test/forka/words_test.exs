@@ -154,4 +154,41 @@ defmodule Forka.WordsTest do
       refute Enum.any?(imported_words, &(&1.text == "blue"))
     end
   end
+
+  describe "get_random_words/2" do
+    test "returns the specified number of random words" do
+      # Create categories and words
+      category1 = insert(:category, name: "Animals", language: "en")
+      category2 = insert(:category, name: "Colors", language: "en")
+      category3 = insert(:category, name: "Animais", language: "pt")
+
+      insert(:word, text: "dog", category: category1)
+      insert(:word, text: "cat", category: category1)
+      insert(:word, text: "blue", category: category2)
+      insert(:word, text: "red", category: category2)
+      insert(:word, text: "cachorro", category: category3)
+
+      # Test default count
+      words = Words.get_random_words()
+      assert length(words) == 5
+
+      # Test with specific count
+      words = Words.get_random_words(2)
+      assert length(words) == 2
+
+      # Test with language filter
+      en_words = Words.get_random_words(5, language: "en")
+      assert length(en_words) == 4
+      assert Enum.all?(en_words, fn word -> word.category.language == "en" end)
+
+      pt_words = Words.get_random_words(5, language: "pt")
+      assert length(pt_words) == 1
+      assert Enum.all?(pt_words, fn word -> word.category.language == "pt" end)
+
+      # Test with category_ids filter
+      category_words = Words.get_random_words(5, category_ids: [category1.id])
+      assert length(category_words) == 2
+      assert Enum.all?(category_words, fn word -> word.category_id == category1.id end)
+    end
+  end
 end

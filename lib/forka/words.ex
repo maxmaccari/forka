@@ -125,4 +125,59 @@ defmodule Forka.Words do
       lang -> Repo.all(from c in Category, where: c.language == ^lang)
     end
   end
+
+  @doc """
+  Returns a list of random words from the database.
+
+  ## Parameters
+
+    * `count` - The number of words to return (default: 5)
+    * `opts` - Additional options:
+      * `:language` - Filter words by category language (e.g., "en", "pt")
+      * `:category_ids` - Filter words by specific category IDs (list)
+
+  ## Examples
+
+      iex> get_random_words(3)
+      [%Word{}, %Word{}, %Word{}]
+
+      iex> get_random_words(5, language: "en")
+      [%Word{}, %Word{}, %Word{}, %Word{}, %Word{}]
+
+      iex> get_random_words(2, category_ids: ["uuid1", "uuid2"])
+      [%Word{}, %Word{}]
+  """
+  def get_random_words(count \\ 5, opts \\ []) do
+    import Ecto.Query
+
+    language = Keyword.get(opts, :language)
+    category_ids = Keyword.get(opts, :category_ids)
+
+    query =
+      from w in Forka.Words.Word,
+        join: c in assoc(w, :category),
+        preload: [category: c]
+
+    query =
+      if language do
+        from [w, c] in query, where: c.language == ^String.downcase(language)
+      else
+        query
+      end
+
+    query =
+      if category_ids && !Enum.empty?(category_ids) do
+        from w in query, where: w.category_id in ^category_ids
+      else
+        query
+      end
+
+    # Order by random and limit to requested count
+    query =
+      from q in query,
+        order_by: fragment("RANDOM()"),
+        limit: ^count
+
+    Repo.all(query)
+  end
 end
