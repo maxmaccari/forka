@@ -40,6 +40,7 @@ defmodule Forka.Games.GameSummaryTest do
     assert summary.current_word_summary == nil
     assert summary.current_word_letters == nil
     assert summary.game_status == :lobby
+    assert summary.word_options == [language: "en"]
   end
 
   test "creates a game summary from playing state", %{initialized_game: game_state} do
@@ -68,6 +69,7 @@ defmodule Forka.Games.GameSummaryTest do
 
     assert summary.game_status == :playing
     assert summary.last_event == game_state.last_event
+    assert summary.word_options == [language: "en"]
   end
 
   test "creates a game summary and skips dead player", %{initialized_game: game_state} do

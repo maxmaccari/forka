@@ -8,12 +8,16 @@ defmodule Forka.Games.Game.GameState do
   - Words being played (as a map of GameWord structs)
   - Players participating (as a map of GamePlayer structs)
   - Current word and player indices
-  - Game status (:lobby, :playing, :finished)
+  - Game status (:lobby, :playing, :finished, :archived)
   - Maximum number of allowed players
+  - Game owner (the player who created the game)
+  - Last event that occurred in the game
+  - Word options for filtering words (language, category_ids)
 
   The game starts in :lobby status where players can join/leave.
   Once started, it tracks the current word being guessed and which
-  player's turn it is.
+  player's turn it is. When all players give up or the game is completed,
+  it transitions to :finished status. Games can also be archived.
   """
 
   # TODO: In the future, this will be an Ecto module referencing to "games" table
@@ -28,6 +32,5 @@ defmodule Forka.Games.Game.GameState do
             status: :lobby,
             max_players: 0,
             last_event: nil,
-            words_lang: "en",
-            word_category_ids: []
+            word_options: [language: "en"]
 end

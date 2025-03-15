@@ -14,9 +14,9 @@ defmodule Forka.Games.GameServer do
 
   use GenServer
 
+  alias Forka.Games.WordsRepo
   alias Phoenix.PubSub
   alias Forka.Games.Player
-  alias Forka.Games.Word
   alias Forka.Games.Game
   alias Forka.Games.Game.GameState
 
@@ -122,6 +122,23 @@ defmodule Forka.Games.GameServer do
   """
   def leave_game(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
     GenServer.call(global_name(game_id), {:leave_game, player_id})
+  end
+
+  @doc """
+  Sets the word options for the game.
+
+  Delegates to `Forka.Games.Game.set_word_options/2`.
+
+  ## Parameters
+    - game_id: The ID of the game.
+    - options: Keyword list of options (e.g., [language: "en", category_ids: ["uuid1"]])
+
+  ## Returns
+    - `{:ok, game_state}` if successful.
+    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.set_word_options/2` for possible error reasons.
+  """
+  def set_word_options(game_id, options) when is_binary(game_id) and is_list(options) do
+    GenServer.call(global_name(game_id), {:set_word_options, options})
   end
 
   @doc """
@@ -297,78 +314,23 @@ defmodule Forka.Games.GameServer do
   end
 
   @impl true
-  def handle_call(:start_game, _from, game) do
-    words = [
-      # Animals
-      Word.new("cachorro", "animal", "O melhor amigo do homem."),
-      Word.new("gato", "animal", "Animal doméstico peludo."),
-      Word.new("cao", "animal", "Outra palavra para cachorro."),
-      Word.new("passaro", "animal", "Animal que voa."),
-      Word.new("peixe", "animal", "Animal aquático."),
-      # Food
-      Word.new("laranja", "comida", "Fruta cítrica popular."),
-      Word.new("banana", "comida", "Fruta amarela tropical."),
-      Word.new("pizza", "comida", "Prato italiano popular."),
-      Word.new("feijao", "comida", "Legume básico brasileiro."),
-      Word.new("arroz", "comida", "Alimento básico mundial."),
-      # Family
-      Word.new("mae", "familia", "Pessoa que nos dá vida."),
-      Word.new("pai", "familia", "Chefe da família."),
-      Word.new("irmao", "familia", "Parente masculino próximo."),
-      Word.new("irma", "familia", "Parente feminina próxima."),
-      Word.new("avô", "familia", "Pai do pai ou mãe."),
-      # Objects
-      Word.new("mesa", "objeto", "Mobília para colocar coisas."),
-      Word.new("cadeira", "objeto", "Furniture para sentar."),
-      Word.new("livro", "objeto", "Material para leitura."),
-      Word.new("caneta", "objeto", "Instrumento para escrever."),
-      Word.new("telefone", "objeto", "Dispositivo para comunicação."),
-      # Places
-      Word.new("casa", "lugar", "Local onde moramos."),
-      Word.new("praia", "lugar", "Área junto ao mar."),
-      Word.new("parque", "lugar", "Espaço verde público."),
-      Word.new("escola", "lugar", "Local de aprendizado."),
-      Word.new("hospital", "lugar", "Local de tratamento médico."),
-      # Actions
-      Word.new("correr", "acao", "Movimentar-se rápido."),
-      Word.new("dançar", "acao", "Mover-se ao ritmo da música."),
-      Word.new("cantar", "acao", "Produzir sons musicais."),
-      Word.new("ler", "acao", "Interpretar texto escrito."),
-      Word.new("escrever", "acao", "Registrar por escrito."),
-      # Numbers
-      Word.new("um", "numero", "Primeiro número natural."),
-      Word.new("dois", "numero", "Número seguinte a um."),
-      Word.new("tres", "numero", "Número seguinte a dois."),
-      Word.new("quatro", "numero", "Número seguinte a três."),
-      Word.new("cinco", "numero", "Número seguinte a quatro."),
-      # Colors
-      Word.new("azul", "cor", "Cor do céu em dia limpo."),
-      Word.new("verde", "cor", "Cor da natureza."),
-      Word.new("amarelo", "cor", "Cor do sol."),
-      Word.new("vermelho", "cor", "Cor do sangue."),
-      Word.new("roxo", "cor", "Cor da uva madura."),
-      # Weather
-      Word.new("sol", "clima", "Astro que ilumina o dia."),
-      Word.new("chuva", "clima", "Precipitação atmosférica."),
-      Word.new("vento", "clima", "Movimento do ar."),
-      Word.new("neve", "clima", "Precipitação gelada."),
-      Word.new("nuvem", "clima", "Acúmulo de vapor d'água."),
-      # Body Parts
-      Word.new("cabeça", "parte_corporal", "Parte superior do corpo."),
-      Word.new("olho", "parte_corporal", "Órgão da visão."),
-      Word.new("nariz", "parte_corporal", "Órgão do olfato."),
-      Word.new("boca", "parte_corporal", "Abertura para alimentação."),
-      Word.new("orelha", "parte_corporal", "Órgão da audição."),
-      # Transportation
-      Word.new("carro", "transporte", "Veículo terrestre motorizado."),
-      Word.new("bicicleta", "transporte", "Veículo pedalado."),
-      Word.new("onibus", "transporte", "Transporte público coletivo."),
-      Word.new("trem", "transporte", "Meio de transporte ferroviário."),
-      Word.new("avião", "transporte", "Veículo aéreo.")
-    ]
+  def handle_call({:set_word_options, options}, _from, game) do
+    case Game.set_word_options(game, options) do
+      {:ok, new_game} ->
+        broadcast!(new_game)
 
+        {:reply, :ok, new_game, @timeout_ms}
+
+      {:error, error} ->
+        {:reply, {:error, error}, game, @timeout_ms}
+    end
+  end
+
+  @impl true
+  def handle_call(:start_game, _from, game) do
     words_count = map_size(game.players) * 2
-    game_with_words = Game.set_words(game, words |> Enum.shuffle() |> Enum.take(words_count))
+    words = WordsRepo.get_random_words(words_count, game.word_options)
+    game_with_words = Game.set_words(game, words)
 
     case game_with_words |> Game.shuffle_players() |> Game.start_game() do
       {:ok, new_game} ->

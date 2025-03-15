@@ -7,8 +7,13 @@ defmodule Forka.Games.Game do
   Creates a new game state with the given name and maximum number of players.
 
   ## Parameters
+    - owner: The player who created the game
     - name: The name of the game (string)
     - max_players: Maximum number of players allowed (integer)
+    - opts: Optional parameters:
+      - word_options: Options for word selection:
+        - language: Language for the game words (default: "en")
+        - category_ids: List of category IDs to filter words (default: [])
 
   ## Returns
   A new GameState struct with:
@@ -17,9 +22,10 @@ defmodule Forka.Games.Game do
   - Default empty values for words and players
   - Initial :lobby status
   - No current word or player selected
+  - Specified options for words (defaults to language: "en")
 
   ## Examples
-      iex> GameState.new("Fun Game", 4)
+      iex> GameState.new(owner, "Fun Game", 4)
       %Forka.Games.GameState{
         id: "550e8400-e29b-41d4-a716-446655440000",
         name: "Fun Game",
@@ -28,16 +34,33 @@ defmodule Forka.Games.Game do
         words: %{},
         players: %{},
         current_game_word_index: nil,
-        current_game_player_index: nil
+        current_game_player_index: nil,
+        word_options: [language: "en"]
+      }
+
+      iex> GameState.new(owner, "Jogo Divertido", 4, word_options: [language: "pt", category_ids: ["uuid1", "uuid2"]])
+      %Forka.Games.GameState{
+        id: "550e8400-e29b-41d4-a716-446655440000",
+        name: "Jogo Divertido",
+        max_players: 4,
+        status: :lobby,
+        words: %{},
+        players: %{},
+        current_game_word_index: nil,
+        current_game_player_index: nil,
+        word_options: [language: "pt", category_ids: ["uuid1", "uuid2"]]
       }
   """
-  def new(%Player{} = owner, name, max_players)
+  def new(%Player{} = owner, name, max_players, opts \\ [])
       when is_binary(name) and is_integer(max_players) do
+    word_options = Keyword.get(opts, :word_options, language: "en")
+
     %GameState{
       id: UUID.uuid4(),
       name: name,
       owner: owner,
-      max_players: max_players
+      max_players: max_players,
+      word_options: word_options
     }
   end
 
@@ -408,46 +431,22 @@ defmodule Forka.Games.Game do
   end
 
   @doc """
-  Sets the language for words in the game.
+  Sets the word options for the game.
 
   ## Parameters
     - game_state: The current GameState struct
-    - lang: The language code (e.g., "pt", "en")
+    - options: Keyword list of options (e.g., [language: "en", category_ids: ["uuid1"]])
 
   ## Returns
-    - {:ok, updated_game_state} if the language was successfully set
+    - {:ok, updated_game_state} if the options were successfully set
     - {:error, :game_not_in_lobby} if the game is not in lobby status
   """
-  def set_word_lang(%GameState{status: :lobby} = game_state, lang)
-      when is_binary(lang) do
-    {:ok, %GameState{game_state | words_lang: lang, last_event: {:words_lang_set, lang}}}
-  end
-
-  def set_word_lang(%GameState{} = _game_state, lang) when is_binary(lang),
-    do: {:error, :game_not_in_lobby}
-
-  @doc """
-  Sets the category IDs for words in the game.
-
-  ## Parameters
-    - game_state: The current GameState struct
-    - category_ids: A list of category IDs to filter words by
-
-  ## Returns
-    - {:ok, updated_game_state} if the categories were successfully set
-    - {:error, :game_not_in_lobby} if the game is not in lobby status
-  """
-  def set_word_category_ids(%GameState{status: :lobby} = game_state, category_ids)
-      when is_list(category_ids) do
+  def set_word_options(%GameState{status: :lobby} = game_state, options) when is_list(options) do
     {:ok,
-     %GameState{
-       game_state
-       | word_category_ids: category_ids,
-         last_event: {:word_category_ids_set, category_ids}
-     }}
+     %GameState{game_state | word_options: options, last_event: {:words_options_set, options}}}
   end
 
-  def set_word_category_ids(%GameState{} = _game_state, _category_ids),
+  def set_word_options(%GameState{} = _game_state, _options),
     do: {:error, :game_not_in_lobby}
 
   @doc """
@@ -500,6 +499,25 @@ defmodule Forka.Games.Game do
 
   def last_event_description(%GameState{last_event: :game_restarted}) do
     "Game was restarted"
+  end
+
+  def last_event_description(%GameState{last_event: {:word_options_set, options}}) do
+    language = Keyword.get(options, :language)
+    categories = Keyword.get(options, :category_ids, [])
+
+    language_text =
+      case language do
+        nil -> ""
+        language -> " to language '#{language}'"
+      end
+
+    categories_text =
+      case categories do
+        [] -> ""
+        ids -> " with #{length(ids)} categories"
+      end
+
+    "Word options set#{language_text}#{categories_text}"
   end
 
   # Fallback for any unhandled event types
