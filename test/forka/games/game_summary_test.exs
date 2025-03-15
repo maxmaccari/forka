@@ -106,4 +106,52 @@ defmodule Forka.Games.GameSummaryTest do
 
     assert summary.game_status == :playing
   end
+
+  test "creates a game summary for game_over state", %{initialized_game: game_state} do
+    # Set game to game_over state
+    game_over_state = %{
+      game_state
+      | status: :game_over,
+        current_game_player_index: nil,
+        current_game_word_index: nil
+    }
+
+    summary = GameSummary.from_game_state(game_over_state)
+
+    assert %GameSummary{} = summary
+    assert summary.players == game_over_state.players
+    assert summary.owner == game_over_state.owner
+    assert summary.current_player_id == nil
+    assert summary.game_status == :game_over
+  end
+
+  test "creates a game summary for finished state", %{initialized_game: game_state} do
+    # Set game to finished state
+    finished_state = %{
+      game_state
+      | status: :finished,
+        current_game_player_index: nil,
+        current_game_word_index: nil
+    }
+
+    summary = GameSummary.from_game_state(finished_state)
+
+    assert %GameSummary{} = summary
+    assert summary.players == finished_state.players
+    assert summary.owner == finished_state.owner
+    assert summary.current_player_id == nil
+    assert summary.game_status == :finished
+  end
+
+  test "creates a game summary for archived state", %{initialized_game: game_state} do
+    # Set game to archived state
+    archived_state = %{game_state | status: :archived}
+
+    summary = GameSummary.from_game_state(archived_state)
+
+    assert %GameSummary{} = summary
+    assert summary.players == archived_state.players
+    assert summary.owner == archived_state.owner
+    assert summary.game_status == :archived
+  end
 end

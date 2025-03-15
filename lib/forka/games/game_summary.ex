@@ -40,25 +40,13 @@ defmodule Forka.Games.GameSummary do
   When in :lobby status, only includes basic game information.
   When in :playing status, includes additional game progress information.
   """
-  def from_game_state(%GameState{
-        status: :lobby,
-        players: players,
-        owner: owner
-      }) do
-    %__MODULE__{
-      players: players,
-      owner: owner,
-      game_status: :lobby
-    }
-  end
-
   def from_game_state(
         %GameState{
           players: players,
           owner: owner,
           words: words,
           current_game_word_index: word_index,
-          status: status
+          status: :playing
         } = game_state
       ) do
     current_player = Game.get_current_player(game_state)
@@ -75,6 +63,18 @@ defmodule Forka.Games.GameSummary do
       remaining_words: remaining_words,
       current_word_summary: WordSummary.from_word(word),
       current_word_letters: current_word_letters,
+      game_status: :playing
+    }
+  end
+
+  def from_game_state(%GameState{
+        status: status,
+        players: players,
+        owner: owner
+      }) do
+    %__MODULE__{
+      players: players,
+      owner: owner,
       game_status: status
     }
   end

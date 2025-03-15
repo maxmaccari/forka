@@ -67,12 +67,12 @@ defmodule Forka.Games.GameServer do
 
   ## Returns
     - The PID of the game server if it exists.
-    - `:undefined` if the game server does not exist.
+    - `nil` if the game server does not exist.
   """
   def whereis(game_id) do
     game_id
     |> global_name()
-    |> :global.whereis_name()
+    |> GenServer.whereis()
   end
 
   @doc """
@@ -398,7 +398,7 @@ defmodule Forka.Games.GameServer do
       {:ok, new_game} ->
         broadcast!(new_game)
 
-        {:reply, {:ok, Game.to_game_summary(new_game)}, new_game}
+        {:reply, :ok, new_game}
 
       {:error, error} ->
         {:reply, {:error, error}, game}

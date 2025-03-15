@@ -82,6 +82,34 @@ defmodule Forka.Games.Game.GameLogicTest do
       assert current_player_id == player2.id
     end
 
+    test "game is over when all players give up", %{
+      game_state: game_state,
+      player1: player1,
+      player2: player2
+    } do
+      # Player 1 gives up
+      {:ok, game_after_p1} = GameLogic.give_up_game(game_state, player1.id)
+
+      # Game should still be playing with one player left
+      assert game_after_p1.status == :playing
+
+      # Player 2 gives up
+      {:ok, game_after_p2} = GameLogic.give_up_game(game_after_p1, player2.id)
+
+      # Game should now be over since all players gave up
+      assert game_after_p2.status == :game_over
+
+      # Both players should be marked as dead
+      {_, player1_state} = find_game_player_by_id(game_after_p2, player1.id)
+      {_, player2_state} = find_game_player_by_id(game_after_p2, player2.id)
+      assert player1_state.status == :dead
+      assert player2_state.status == :dead
+
+      # Current player and word indices should be nil in game over state
+      assert game_after_p2.current_game_player_index == nil
+      assert game_after_p2.current_game_word_index == nil
+    end
+
     test "returns error when player not found", %{game_state: game} do
       unknown_player = Player.new("Unknown")
       assert {:error, :player_not_found} = GameLogic.give_up_game(game, unknown_player.id)

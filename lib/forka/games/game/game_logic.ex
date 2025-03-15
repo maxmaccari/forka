@@ -112,14 +112,15 @@ defmodule Forka.Games.Game.GameLogic do
   end
 
   defp find_next_alive_game_player_index(%GameState{players: players}, current_index) do
-    player_count = map_size(players)
+    result =
+      Enum.find(players, fn {index, game_player} ->
+        game_player.status == :alive && index > current_index
+      end)
 
-    Stream.iterate(current_index + 1, &(&1 + 1))
-    |> Stream.map(&rem(&1, player_count))
-    |> Enum.find(fn index ->
-      %GamePlayer{status: status} = Map.get(players, index)
-      status == :alive
-    end)
+    case result do
+      {index, _game_player} -> index
+      nil -> nil
+    end
   end
 
   defp game_over(game_state) do
