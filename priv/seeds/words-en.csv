@@ -1,0 +1,156 @@
+category,language,text,hint
+Science,en,photosynthesis,Process plants use sunlight
+Science,en,biodiversity,Variety of species in ecosystems
+Science,en,metamorphosis,Complete biological transformation
+Science,en,sustainability,Meeting present needs without compromising future
+Science,en,ecosystemic,Complete biological communities
+Science,en,biodegradable,Breaks down naturally
+Science,en,ecotoxicology,Pollution effects on ecosystems
+Biology,en,microbiological,Dealing with tiny life forms
+Biology,en,genomics,DNA sequence analysis
+Biology,en,chromosomal,Related to DNA structure
+Biology,en,genetics,Study of heredity and genes
+Biology,en,microbiology,Study of microscopic organisms
+Biology,en,ecology,Study of relationships between organisms
+Biology,en,zoology,Study of animals
+Physics,en,relativistic,Theory about space and time
+Physics,en,thermodynamic,Heat energy relationships
+Physics,en,quantum mechanics,Study of subatomic particles
+Physics,en,wavefunction,Mathematical description of particles
+Physics,en,schrodinger,Wave mechanics pioneer
+Physics,en,subatomic,Smaller than atoms
+Physics,en,radiometric,Dating ancient materials
+Physics,en,quantization,Discrete energy states
+Computer Science,en,neural networks,Machine learning technique
+Computer Science,en,machine learning,Teaching computers to learn
+Computer Science,en,artificial intelligence,Computer systems mimicking intelligence
+Computer Science,en,cryptography,Secret code techniques
+Computer Science,en,algorithm,Step-by-step problem solving procedure
+Computer Science,en,programming,Writing instructions for computers
+Computer Science,en,database,Organized collection of data
+Environmental Science,en,paleoclimatic,Ancient climate study
+Environmental Science,en,climate change,Long-term alteration in temperature
+Environmental Science,en,conservation,Protection of natural resources
+Environmental Science,en,renewable energy,Power from naturally replenished sources
+Environmental Science,en,carbon footprint,Impact of human activities on environment
+Chemistry,en,biochemical,Chemical processes in life
+Chemistry,en,organic chemistry,Study of carbon compounds
+Chemistry,en,inorganic chemistry,Study of non-carbon compounds
+Chemistry,en,analytical chemistry,Identification of substances
+Chemistry,en,physical chemistry,Physics principles in chemical systems
+Mathematics,en,algorithmic,Following precise procedures
+Mathematics,en,calculus,Study of change and motion
+Mathematics,en,geometry,Study of shapes and spaces
+Mathematics,en,algebra,Study of mathematical symbols
+Mathematics,en,statistics,Collection and analysis of data
+Mathematics,en,probability,Likelihood of events occurring
+Engineering,en,mechanical,Machines and physical systems
+Engineering,en,electrical,Power and electrical systems
+Engineering,en,civil,Buildings and infrastructure
+Engineering,en,chemical,Processing materials
+Engineering,en,aerospace,Aircraft and spacecraft
+Technology,en,nanotechnology,Manipulation of matter at atomic scale
+Technology,en,biotechnology,Use of organisms for products
+Technology,en,robotics,Design of automated machines
+Technology,en,cybersecurity,Protection of computer systems
+Technology,en,virtual reality,Computer-generated simulation
+Medicine,en,hematology,Study of blood and its disorders
+Medicine,en,ophthalmology,Medical specialty of eyes
+Medicine,en,psychiatry,Treatment of mental disorders
+Medicine,en,endocrinology,Study of hormones
+Medicine,en,immunology,Study of immune system
+Medicine,en,cardiology,Study of the heart
+Medicine,en,neurology,Study of the nervous system
+Earth Sciences,en,seismology,Study of earthquakes
+Earth Sciences,en,volcanology,Study of volcanoes
+Earth Sciences,en,glaciology,Study of glaciers
+Earth Sciences,en,oceanography,Study of oceans
+Earth Sciences,en,meteorology,Study of atmosphere
+Earth Sciences,en,geology,Study of Earth's structure
+Earth Sciences,en,hydrology,Study of water systems
+Astronomy,en,cosmology,Study of universe origin
+Astronomy,en,astrophysics,Physics of celestial bodies
+Astronomy,en,planetary science,Study of planets
+Astronomy,en,stellar astronomy,Study of stars
+Astronomy,en,galaxy,Collection of stars and solar systems
+Astronomy,en,black hole,Region where gravity prevents escape
+History,en,archaeological,Study of ancient artifacts
+History,en,paleontology,Study of prehistoric life
+History,en,archaeology,Study of ancient civilizations
+History,en,historiography,Writing of history
+History,en,medieval,Related to Middle Ages
+History,en,renaissance,European cultural rebirth period
+History,en,revolution,Fundamental social change
+Geography,en,geographical,Relating to Earth study
+Geography,en,cartography,Art of making maps
+Geography,en,topography,Physical features of land
+Geography,en,demography,Statistical study of populations
+Geography,en,urban geography,Study of cities
+Geography,en,climate zones,Areas with similar weather patterns
+Philosophy,en,existentialism,School of thought about existence
+Philosophy,en,epistemology,Theory of knowledge
+Philosophy,en,ontology,Nature of being or existence
+Philosophy,en,ethics,Study of moral principles
+Philosophy,en,logic,Study of reasoning
+Philosophy,en,metaphysics,Nature of reality and existence
+Linguistics,en,phonology,Study of sound patterns in language
+Linguistics,en,morphology,Study of word structure
+Linguistics,en,syntax,Rules of sentence formation
+Linguistics,en,semantics,Study of meaning in language
+Linguistics,en,pragmatics,Study of language in context
+Linguistics,en,etymology,Origin of words
+Anthropology,en,ethnography,Description of cultures
+Anthropology,en,cultural anthropology,Study of human cultures
+Anthropology,en,physical anthropology,Study of human biology
+Anthropology,en,archaeology,Study of material remains
+Anthropology,en,linguistic anthropology,Language in cultural context
+Psychology,en,cognitive,Related to mental processes
+Psychology,en,behavioral,Related to observable actions
+Psychology,en,developmental,Changes over lifespan
+Psychology,en,clinical,Treatment of mental disorders
+Psychology,en,social psychology,Influence of others on behavior
+Sociology,en,social structure,Patterns in society
+Sociology,en,institutions,Established social organizations
+Sociology,en,demography,Population statistics
+Sociology,en,urbanization,Growth of cities
+Sociology,en,globalization,Worldwide integration
+Economics,en,microeconomics,Individual market behavior
+Economics,en,macroeconomics,Whole economy behavior
+Economics,en,inflation,Rising prices
+Economics,en,recession,Economic decline
+Economics,en,fiscal policy,Government spending
+Political Science,en,democracy,Government by the people
+Political Science,en,authoritarianism,Strict obedience to authority
+Political Science,en,sovereignty,Supreme authority
+Political Science,en,diplomacy,International relations management
+Political Science,en,geopolitics,Geography's influence on politics
+Law,en,jurisprudence,Philosophy of law
+Law,en,constitutional,Fundamental government principles
+Law,en,criminal,Laws on crimes
+Law,en,civil,Non-criminal legal matters
+Law,en,international,Relations between nations
+Arts,en,impressionism,Capturing light and color
+Arts,en,renaissance,Rebirth of classical influence
+Arts,en,surrealism,Dreamlike imagery
+Arts,en,cubism,Multiple viewpoints
+Arts,en,abstract,Non-representational forms
+Literature,en,poetry,Rhythmic expression
+Literature,en,novel,Extended fictional narrative
+Literature,en,drama,Performance literature
+Literature,en,satire,Using humor for criticism
+Literature,en,metaphor,Figurative comparison
+Music,en,symphony,Large orchestral work
+Music,en,sonata,Instrumental composition
+Music,en,harmony,Combination of notes
+Music,en,melody,Sequence of single notes
+Music,en,rhythm,Pattern of sounds and silences
+Religion,en,theology,Study of religious faith
+Religion,en,mysticism,Direct experience of divinity
+Religion,en,ritual,Ceremonial acts
+Religion,en,scripture,Sacred writings
+Religion,en,monotheism,Belief in one god
+Sports,en,athletics,Competitive physical activities
+Sports,en,gymnastics,Physical exercises
+Sports,en,endurance,Ability to sustain effort
+Sports,en,technique,Method of performance
+Sports,en,championship,Contest for supremacy

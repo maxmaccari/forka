@@ -11,7 +11,7 @@ defmodule Forka.Games.Word do
   The module handles special characters and accents in words automatically.
   """
 
-  defstruct text: nil, hint: nil, category: nil
+  defstruct text: nil, hint: nil, category: nil, language: "en"
 
   @doc """
   Creates a new Word struct.
@@ -28,7 +28,7 @@ defmodule Forka.Games.Word do
       iex> Word.new("café", "food", "Hot beverage")
       #Word<café (food)>
   """
-  def new(text, category, hint \\ nil) do
+  def new(text, category, hint \\ nil, language \\ "en") do
     sanitized_text =
       text
       |> String.trim()
@@ -38,8 +38,29 @@ defmodule Forka.Games.Word do
     %__MODULE__{
       text: sanitized_text,
       category: category,
-      hint: hint
+      hint: hint,
+      language: language
     }
+  end
+
+  @doc """
+  Creates a Word struct from a map containing word data.
+
+  ## Parameters
+    - map: A map containing at least :text and :category keys, with optional :hint and :language keys
+
+  ## Examples
+      iex> Word.from_map(%{text: "elixir", category: "programming"})
+      #Word<elixir (programming)>
+
+      iex> Word.from_map(%{text: "café", category: "food", hint: "Hot beverage", language: "pt"})
+      #Word<café (food)>
+  """
+  def from_map(%{text: text, category: category} = map) do
+    hint = Map.get(map, :hint)
+    language = Map.get(map, :language, "en")
+
+    new(text, category, hint, language)
   end
 
   defp sanitize_text(text) do
@@ -187,6 +208,19 @@ defmodule Forka.Games.Word do
       "A common salutation"
   """
   def hint(%__MODULE__{hint: hint}), do: hint
+
+  @doc """
+  Returns the language of the word.
+
+  ## Parameters
+    - word: Word struct
+
+  ## Examples
+      iex> word = %Word{text: "hello", category: "greeting", language: "en"}
+      iex> Word.language(word)
+      "en"
+  """
+  def language(%__MODULE__{language: language}), do: language
 
   # Helpers
 
