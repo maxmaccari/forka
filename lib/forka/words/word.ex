@@ -15,7 +15,7 @@ defmodule Forka.Words.Word do
   end
 
   @doc false
-  def changeset(word, attrs) do
+  def changeset(word, attrs, _metadata \\ []) do
     word
     |> cast(attrs, [:text, :category_id])
     |> validate_required([:text, :category_id])

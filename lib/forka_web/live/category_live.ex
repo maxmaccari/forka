@@ -33,6 +33,12 @@ defmodule ForkaWeb.CategoryLive do
           {"Portuguese", "pt"},
           {"English", "en"}
         ]
+      },
+      words: %{
+        module: Backpex.Fields.HasMany,
+        label: "Words",
+        display_field: :text,
+        live_resource: ForkaWeb.WordLive
       }
     ]
   end

@@ -26,6 +26,9 @@
     <Backpex.HTML.Layout.sidebar_item current_url={@current_url} navigate={~p"/admin/categories"}>
       <.icon name="hero-book-open" class="h-5 w-5" /> Categories
     </Backpex.HTML.Layout.sidebar_item>
+    <Backpex.HTML.Layout.sidebar_item current_url={@current_url} navigate={~p"/admin/words"}>
+      <.icon name="hero-book-open" class="h-5 w-5" /> Words
+    </Backpex.HTML.Layout.sidebar_item>
   </:sidebar>
   <Backpex.HTML.Layout.flash_messages flash={@flash} />
   {@inner_content}

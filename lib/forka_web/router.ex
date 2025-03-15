@@ -35,6 +35,7 @@ defmodule ForkaWeb.Router do
 
     live_session :default, on_mount: Backpex.InitAssigns do
       live_resources "/categories", CategoryLive
+      live_resources "/words", WordLive
     end
   end
 
