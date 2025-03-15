@@ -36,23 +36,40 @@ defmodule Forka.Games.GameServer do
       - max_players: The maximum number of players allowed in the game (default: 2).
 
   ## Returns
-    - `{:ok, pid}` if the server is started successfully.
+    - `{:ok, game_state}` if the server is started successfully.
   """
-  def start_link(%Player{} = owner, opts \\ []) do
-    name = Keyword.get(opts, :name, "Jogo")
-    max_players = Keyword.get(opts, :max_players, 2)
-    game_state = Game.new(owner, name, max_players)
-
-    case GenServer.start_link(__MODULE__, game_state, name: global_name(game_state.id)) do
-      {:ok, _pid} -> {:ok, game_state.id}
-      {:error, error} -> {:error, error}
-    end
+  def start_link(%GameState{} = game_state) do
+    GenServer.start_link(__MODULE__, game_state, name: global_name(game_state.id))
   end
 
   defp global_name(game_id) when is_binary(game_id) do
     {:global, {__MODULE__, game_id}}
   end
 
+  @doc """
+  Checks if a game server exists for the given game ID.
+
+  ## Parameters
+    - game_id: The ID of the game to check.
+
+  ## Returns
+    - `true` if the game server exists.
+    - `false` if the game server does not exist.
+  """
+  def exists?(game_id) when is_binary(game_id) do
+    game_id |> whereis() |> is_pid()
+  end
+
+  @doc """
+  Finds the process ID for a game server with the given game ID.
+
+  ## Parameters
+    - game_id: The ID of the game to locate.
+
+  ## Returns
+    - The PID of the game server if it exists.
+    - `:undefined` if the game server does not exist.
+  """
   def whereis(game_id) do
     game_id
     |> global_name()
@@ -200,10 +217,35 @@ defmodule Forka.Games.GameServer do
     GenServer.call(global_name(game_id), :archive_game)
   end
 
+  @doc """
+  Subscribes the caller to receive updates for a specific game.
+
+  When events occur in the game (like player actions or state changes),
+  subscribers will receive messages in the format `{:game_updated, game_summary}`.
+
+  ## Parameters
+    - game_id: The ID of the game to subscribe to.
+
+  ## Returns
+    - `:ok` if the subscription is successful.
+    - `{:error, term}` if the subscription fails.
+  """
   def subscribe(game_id) when is_binary(game_id) do
     PubSub.subscribe(Forka.PubSub, topic(game_id))
   end
 
+  @doc """
+  Unsubscribes the caller from receiving updates for a specific game.
+
+  This stops the process from receiving messages about game events.
+
+  ## Parameters
+    - game_id: The ID of the game to unsubscribe from.
+
+  ## Returns
+    - `:ok` if the unsubscription is successful.
+    - `{:error, term}` if the unsubscription fails.
+  """
   def unsubscribe(game_id) when is_binary(game_id) do
     PubSub.unsubscribe(Forka.PubSub, topic(game_id))
   end

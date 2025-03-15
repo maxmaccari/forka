@@ -14,8 +14,8 @@ defmodule Forka.Application do
       {Phoenix.PubSub, name: Forka.PubSub},
       # Start the Finch HTTP client for sending emails
       {Finch, name: Forka.Finch},
-      # Start a worker by calling: Forka.Worker.start_link(arg)
-      # {Forka.Worker, arg},
+      # Forka Games Supervisor
+      {DynamicSupervisor, strategy: :one_for_one, name: Forka.GamesSupervisor},
       # Start to serve requests, typically the last entry
       ForkaWeb.Endpoint
     ]
