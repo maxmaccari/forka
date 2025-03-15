@@ -16,9 +16,17 @@ defmodule Forka.Words do
       iex> list_categories()
       [%Category{}, ...]
 
+      iex> list_categories(language: "en")
+      [%Category{language: "en"}, ...]
+
   """
-  def list_categories do
-    Repo.all(Category)
+  def list_categories(opts \\ []) do
+    language = Keyword.get(opts, :language)
+
+    case language do
+      nil -> Repo.all(Category)
+      lang -> Repo.all(from c in Category, where: c.language == ^lang)
+    end
   end
 
   @doc """

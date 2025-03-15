@@ -13,6 +13,14 @@ defmodule Forka.WordsTest do
       assert Words.list_categories() == [category]
     end
 
+    test "list_categories/1 returns all categories by language" do
+      pt_category = insert(:category, language: "pt")
+      en_category = insert(:category, language: "en")
+
+      assert Words.list_categories(language: "pt") == [pt_category]
+      assert Words.list_categories(language: "en") == [en_category]
+    end
+
     test "get_category!/1 returns the category with given id" do
       category = insert(:category)
       assert Words.get_category!(category.id) == category
