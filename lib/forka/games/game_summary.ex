@@ -22,6 +22,7 @@ defmodule Forka.Games.GameSummary do
 
   defstruct players: %{},
             current_player_id: nil,
+            owner: nil,
             guesses: [],
             remaining_words: nil,
             current_word_summary: nil,
@@ -41,10 +42,12 @@ defmodule Forka.Games.GameSummary do
   """
   def from_game_state(%GameState{
         status: :lobby,
-        players: players
+        players: players,
+        owner: owner
       }) do
     %__MODULE__{
       players: players,
+      owner: owner,
       game_status: :lobby
     }
   end
@@ -52,6 +55,7 @@ defmodule Forka.Games.GameSummary do
   def from_game_state(
         %GameState{
           players: players,
+          owner: owner,
           words: words,
           current_game_word_index: word_index,
           status: status
@@ -65,6 +69,7 @@ defmodule Forka.Games.GameSummary do
 
     %__MODULE__{
       players: players,
+      owner: owner,
       current_player_id: current_player && current_player.id,
       guesses: guesses,
       remaining_words: remaining_words,

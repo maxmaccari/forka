@@ -433,4 +433,19 @@ defmodule Forka.Games.GameTest do
       {:error, :game_archived} = Game.transfer_ownership_to_player(game_archived, player2.id)
     end
   end
+
+  describe "to_game_summary/1" do
+    setup %{owner: owner} do
+      # Create a new game
+      game = Game.new(owner, "Test Game", 4)
+
+      {:ok, game: game}
+    end
+
+    test "returns a GameSummary struct", %{game: game} do
+      summary = Game.to_game_summary(game)
+
+      assert %Forka.Games.GameSummary{} = summary
+    end
+  end
 end

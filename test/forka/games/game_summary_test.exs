@@ -33,6 +33,7 @@ defmodule Forka.Games.GameSummaryTest do
 
     assert %GameSummary{} = summary
     assert summary.players == game_state.players
+    assert summary.owner == game_state.owner
     assert summary.current_player_id == nil
     assert summary.guesses == []
     assert summary.remaining_words == nil
@@ -46,6 +47,7 @@ defmodule Forka.Games.GameSummaryTest do
 
     assert %GameSummary{} = summary
     assert summary.players == game_state.players
+    assert summary.owner == game_state.owner
 
     assert summary.current_player_id ==
              game_state.players[game_state.current_game_player_index].player.id
