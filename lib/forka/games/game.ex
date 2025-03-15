@@ -57,7 +57,7 @@ defmodule Forka.Games.Game do
 
   The player is converted to a GamePlayer and added to the game state's players map.
   """
-  def add_player(%GameState{players: players, status: :lobby} = game_state, %Player{} = player) do
+  def join_game(%GameState{players: players, status: :lobby} = game_state, %Player{} = player) do
     new_players = add_game_player_to_map(players, player)
 
     if map_size(new_players) <= game_state.max_players do
@@ -67,9 +67,9 @@ defmodule Forka.Games.Game do
     end
   end
 
-  def add_player(%GameState{status: :archived}, _player), do: {:error, :game_archived}
+  def join_game(%GameState{status: :archived}, _player), do: {:error, :game_archived}
 
-  def add_player(_game_state, _player), do: {:error, :game_already_started}
+  def join_game(_game_state, _player), do: {:error, :game_already_started}
 
   defp add_game_player_to_map(%{} = players, %Player{} = player) do
     (Map.values(players) ++ [GamePlayer.new(player)])
@@ -92,7 +92,7 @@ defmodule Forka.Games.Game do
   Players are reindexed after removal to maintain sequential ordering.
   If the player is not found in the game, returns the unchanged game state.
   """
-  def remove_player(%GameState{status: :lobby, players: players} = game_state, player_id)
+  def leave_game(%GameState{status: :lobby, players: players} = game_state, player_id)
       when is_binary(player_id) do
     new_players =
       players
@@ -103,10 +103,10 @@ defmodule Forka.Games.Game do
     {:ok, %{game_state | players: new_players}}
   end
 
-  def remove_player(%GameState{status: :archived}, player_id) when is_binary(player_id),
+  def leave_game(%GameState{status: :archived}, player_id) when is_binary(player_id),
     do: {:error, :game_archived}
 
-  def remove_player(%GameState{}, player_id) when is_binary(player_id),
+  def leave_game(%GameState{}, player_id) when is_binary(player_id),
     do: {:error, :game_already_started}
 
   @doc """
@@ -177,11 +177,11 @@ defmodule Forka.Games.Game do
 
   ## Examples
       iex> game_state = %GameState{status: :lobby, players: %{0 => player1, 1 => player2}, words: %{0 => word1}}
-      iex> {:ok, updated_game} = Game.init_game(game_state)
+      iex> {:ok, updated_game} = Game.start_game(game_state)
       iex> updated_game.status
       :playing
   """
-  def init_game(%GameState{status: :lobby} = game_state) do
+  def start_game(%GameState{status: :lobby} = game_state) do
     if can_start?(game_state) do
       new_game_state = %{
         game_state
@@ -196,9 +196,9 @@ defmodule Forka.Games.Game do
     end
   end
 
-  def init_game(%GameState{status: :archived}), do: {:error, :game_archived}
+  def start_game(%GameState{status: :archived}), do: {:error, :game_archived}
 
-  def init_game(%GameState{}), do: {:error, :game_already_initialized}
+  def start_game(%GameState{}), do: {:error, :game_already_initialized}
 
   defp can_start?(%GameState{} = game_state),
     do: map_size(game_state.players) >= 2 && map_size(game_state.words) >= 1
@@ -244,7 +244,7 @@ defmodule Forka.Games.Game do
     - `{:error, :game_not_playing}` if the game is not in playing state
     - `{:error, :game_archived}` if the game is archived and cannot be modified
   """
-  defdelegate give_up_player(game_state, player_id), to: GameLogic
+  defdelegate give_up_game(game_state, player_id), to: GameLogic
 
   @doc """
   Gets the current player in the game.

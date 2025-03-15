@@ -13,8 +13,8 @@ defmodule Forka.Games.GameSummaryTest do
     # Add players
     player1 = Player.new("Player 1")
     player2 = Player.new("Player 2")
-    {:ok, game_with_player1} = Game.add_player(game, player1)
-    {:ok, game_with_players} = Game.add_player(game_with_player1, player2)
+    {:ok, game_with_player1} = Game.join_game(game, player1)
+    {:ok, game_with_players} = Game.join_game(game_with_player1, player2)
 
     # Set words
     words = [
@@ -23,7 +23,7 @@ defmodule Forka.Games.GameSummaryTest do
     ]
 
     game_with_words = Game.set_words(game_with_players, words)
-    {:ok, initialized_game} = Game.init_game(game_with_words)
+    {:ok, initialized_game} = Game.start_game(game_with_words)
 
     {:ok, lobby_game: game_with_words, initialized_game: initialized_game}
   end

@@ -25,7 +25,7 @@ defmodule Forka.Games.GameTest do
     end
   end
 
-  describe "add_player/2" do
+  describe "join_game/2" do
     setup %{owner: owner} do
       game = Game.new(owner, "Test Game", 4)
       player = Player.new("Player 1")
@@ -33,7 +33,7 @@ defmodule Forka.Games.GameTest do
     end
 
     test "adds player successfully when in lobby", %{game: game, player: player} do
-      {:ok, updated_game} = Game.add_player(game, player)
+      {:ok, updated_game} = Game.join_game(game, player)
 
       assert map_size(updated_game.players) == 1
 
@@ -51,9 +51,9 @@ defmodule Forka.Games.GameTest do
       player2 = Player.new("Player 2")
       player3 = Player.new("Player 3")
 
-      {:ok, game_with_player1} = Game.add_player(game, player1)
-      {:ok, game_with_player2} = Game.add_player(game_with_player1, player2)
-      {:ok, game_with_player3} = Game.add_player(game_with_player2, player3)
+      {:ok, game_with_player1} = Game.join_game(game, player1)
+      {:ok, game_with_player2} = Game.join_game(game_with_player1, player2)
+      {:ok, game_with_player3} = Game.join_game(game_with_player2, player3)
 
       assert map_size(game_with_player3.players) == 3
       assert %{0 => %{player: %{username: "Player 1"}}} = game_with_player3.players
@@ -63,33 +63,33 @@ defmodule Forka.Games.GameTest do
 
     test "returns error when game already started", %{game: game, player: player} do
       game_started = %{game | status: :playing}
-      assert {:error, :game_already_started} = Game.add_player(game_started, player)
+      assert {:error, :game_already_started} = Game.join_game(game_started, player)
     end
 
     test "returns error when max players reached", %{game: game, player: player} do
       game = %{game | max_players: 1}
-      {:ok, game_with_player} = Game.add_player(game, player)
+      {:ok, game_with_player} = Game.join_game(game, player)
 
       player2 = Player.new("Player 2")
-      assert {:error, :maximum_players} = Game.add_player(game_with_player, player2)
+      assert {:error, :maximum_players} = Game.join_game(game_with_player, player2)
     end
 
     test "returns error when game is archived", %{game: game, player: player} do
       game_archived = %{game | status: :archived}
-      assert {:error, :game_archived} = Game.add_player(game_archived, player)
+      assert {:error, :game_archived} = Game.join_game(game_archived, player)
     end
   end
 
-  describe "remove_player/2" do
+  describe "leave_game/2" do
     setup %{owner: owner} do
       game = Game.new(owner, "Test Game", 4)
       player = Player.new("Player 1")
-      {:ok, game_with_player} = Game.add_player(game, player)
+      {:ok, game_with_player} = Game.join_game(game, player)
       {:ok, game: game_with_player, player: player}
     end
 
     test "removes player successfully when in lobby", %{game: game, player: player} do
-      {:ok, updated_game} = Game.remove_player(game, player.id)
+      {:ok, updated_game} = Game.leave_game(game, player.id)
       assert map_size(updated_game.players) == 0
     end
 
@@ -97,10 +97,10 @@ defmodule Forka.Games.GameTest do
       player2 = Player.new("Player 2")
       player3 = Player.new("Player 3")
 
-      {:ok, game_with_player2} = Game.add_player(game_with_player1, player2)
-      {:ok, game_with_player3} = Game.add_player(game_with_player2, player3)
+      {:ok, game_with_player2} = Game.join_game(game_with_player1, player2)
+      {:ok, game_with_player3} = Game.join_game(game_with_player2, player3)
 
-      {:ok, updated_game} = Game.remove_player(game_with_player3, player2.id)
+      {:ok, updated_game} = Game.leave_game(game_with_player3, player2.id)
 
       # Check that player3 is now at index 1 (second position)
       assert map_size(updated_game.players) == 2
@@ -110,17 +110,17 @@ defmodule Forka.Games.GameTest do
 
     test "returns unchanged game when removing player that doesn't exist", %{game: game} do
       unknown_player = Player.new("Unknown")
-      assert {:ok, ^game} = Game.remove_player(game, unknown_player.id)
+      assert {:ok, ^game} = Game.leave_game(game, unknown_player.id)
     end
 
     test "returns error when game already started", %{game: game, player: player} do
       game_started = %{game | status: :playing}
-      assert {:error, :game_already_started} = Game.remove_player(game_started, player.id)
+      assert {:error, :game_already_started} = Game.leave_game(game_started, player.id)
     end
 
     test "returns error when game is archived", %{game: game, player: player} do
       game_archived = %{game | status: :archived}
-      assert {:error, :game_archived} = Game.remove_player(game_archived, player.id)
+      assert {:error, :game_archived} = Game.leave_game(game_archived, player.id)
     end
   end
 
@@ -172,7 +172,7 @@ defmodule Forka.Games.GameTest do
       # Add all players to the game
       game_with_players =
         Enum.reduce(players, game, fn player, acc_game ->
-          {:ok, updated_game} = Game.add_player(acc_game, player)
+          {:ok, updated_game} = Game.join_game(acc_game, player)
           updated_game
         end)
 
@@ -221,22 +221,22 @@ defmodule Forka.Games.GameTest do
     end
   end
 
-  describe "init_game/1" do
+  describe "start_game/1" do
     setup %{owner: owner} do
       game = Game.new(owner, "Test Game", 4)
       player1 = Player.new("Player 1")
       player2 = Player.new("Player 2")
       word = Word.new("cat", "Animals", "Meows")
 
-      {:ok, game_with_player1} = Game.add_player(game, player1)
-      {:ok, game_with_players} = Game.add_player(game_with_player1, player2)
+      {:ok, game_with_player1} = Game.join_game(game, player1)
+      {:ok, game_with_players} = Game.join_game(game_with_player1, player2)
       game_with_words = Game.set_words(game_with_players, [word])
 
       {:ok, game: game_with_words}
     end
 
     test "initializes game successfully when ready", %{game: game} do
-      {:ok, initialized_game} = Game.init_game(game)
+      {:ok, initialized_game} = Game.start_game(game)
 
       assert initialized_game.status == :playing
       assert initialized_game.current_game_word_index == 0
@@ -247,20 +247,20 @@ defmodule Forka.Games.GameTest do
 
     test "returns error when game not in lobby", %{game: game} do
       game_started = %{game | status: :playing}
-      assert {:error, :game_already_initialized} = Game.init_game(game_started)
+      assert {:error, :game_already_initialized} = Game.start_game(game_started)
     end
 
     test "returns error when not enough players", %{owner: owner} do
       game = Game.new(owner, "Test Game", 4)
       player = Player.new("Player 1")
-      {:ok, game_with_player} = Game.add_player(game, player)
+      {:ok, game_with_player} = Game.join_game(game, player)
 
-      assert {:error, :game_not_ready} = Game.init_game(game_with_player)
+      assert {:error, :game_not_ready} = Game.start_game(game_with_player)
     end
 
     test "returns error when game is archived", %{game: game} do
       game_archived = %{game | status: :archived}
-      assert {:error, :game_archived} = Game.init_game(game_archived)
+      assert {:error, :game_archived} = Game.start_game(game_archived)
     end
   end
 
@@ -271,11 +271,11 @@ defmodule Forka.Games.GameTest do
       player2 = Player.new("Player 2")
       word = Word.new("cat", "Animals", "Meows")
 
-      {:ok, game_with_player1} = Game.add_player(game, player1)
-      {:ok, game_with_players} = Game.add_player(game_with_player1, player2)
+      {:ok, game_with_player1} = Game.join_game(game, player1)
+      {:ok, game_with_players} = Game.join_game(game_with_player1, player2)
       game_with_words = Game.set_words(game_with_players, [word])
 
-      {:ok, initialized_game} = Game.init_game(game_with_words)
+      {:ok, initialized_game} = Game.start_game(game_with_words)
 
       # Create a finished game with some player state changes
       finished_game = %{initialized_game | status: :finished}
@@ -340,11 +340,11 @@ defmodule Forka.Games.GameTest do
       player2 = Player.new("Player 2")
       word = Word.new("cat", "Animals", "Meows")
 
-      {:ok, game_with_player1} = Game.add_player(game, player1)
-      {:ok, game_with_players} = Game.add_player(game_with_player1, player2)
+      {:ok, game_with_player1} = Game.join_game(game, player1)
+      {:ok, game_with_players} = Game.join_game(game_with_player1, player2)
       game_with_words = Game.set_words(game_with_players, [word])
 
-      {:ok, initialized_game} = Game.init_game(game_with_words)
+      {:ok, initialized_game} = Game.start_game(game_with_words)
 
       # Create a finished game
       finished_game = %{initialized_game | status: :finished}
@@ -377,13 +377,13 @@ defmodule Forka.Games.GameTest do
       word = Word.new("dog", "Animals", "Barks")
 
       # Test various operations on archived game
-      assert {:error, :game_archived} = Game.add_player(archived_game, player)
-      assert {:error, :game_archived} = Game.remove_player(archived_game, "any_player_id")
+      assert {:error, :game_archived} = Game.join_game(archived_game, player)
+      assert {:error, :game_archived} = Game.leave_game(archived_game, "any_player_id")
       assert archived_game == Game.set_words(archived_game, [word])
       assert archived_game == Game.shuffle_players(archived_game)
-      assert {:error, :game_archived} = Game.init_game(archived_game)
+      assert {:error, :game_archived} = Game.start_game(archived_game)
       assert {:error, :game_archived} = Game.guess(archived_game, "any_player_id", "a")
-      assert {:error, :game_archived} = Game.give_up_player(archived_game, "any_player_id")
+      assert {:error, :game_archived} = Game.give_up_game(archived_game, "any_player_id")
     end
   end
 
@@ -393,8 +393,8 @@ defmodule Forka.Games.GameTest do
       player1 = Player.new("Player 1")
       player2 = Player.new("Player 2")
 
-      {:ok, game_with_player1} = Game.add_player(game, player1)
-      {:ok, game_with_players} = Game.add_player(game_with_player1, player2)
+      {:ok, game_with_player1} = Game.join_game(game, player1)
+      {:ok, game_with_players} = Game.join_game(game_with_player1, player2)
 
       {:ok, game: game_with_players, player1: player1, player2: player2, owner: owner}
     end

@@ -51,9 +51,9 @@ defmodule Forka.Games do
     - player: The player to add.
 
   ## Returns
-    See `Forka.Games.GameServer.add_player/2` for return values.
+    See `Forka.Games.GameServer.join_game/2` for return values.
   """
-  defdelegate add_player(game_id, player), to: Forka.Games.GameServer
+  defdelegate join_game(game_id, player), to: Forka.Games.GameServer
 
   @doc """
   Removes a player from the game.
@@ -63,9 +63,9 @@ defmodule Forka.Games do
     - player_id: The ID of the player to remove.
 
   ## Returns
-    See `Forka.Games.GameServer.remove_player/2` for return values.
+    See `Forka.Games.GameServer.leave_game/2` for return values.
   """
-  defdelegate remove_player(game_id, player_id), to: Forka.Games.GameServer
+  defdelegate leave_game(game_id, player_id), to: Forka.Games.GameServer
 
   @doc """
   Initializes the game.
@@ -74,9 +74,9 @@ defmodule Forka.Games do
     - game_id: The ID of the game.
 
   ## Returns
-    See `Forka.Games.GameServer.init_game/1` for return values.
+    See `Forka.Games.GameServer.start_game/1` for return values.
   """
-  defdelegate init_game(game_id), to: Forka.Games.GameServer
+  defdelegate start_game(game_id), to: Forka.Games.GameServer
 
   @doc """
   Makes a player give up in the game.
@@ -86,9 +86,9 @@ defmodule Forka.Games do
     - player_id: The ID of the player who is giving up.
 
   ## Returns
-    See `Forka.Games.GameServer.give_up_player/2` for return values.
+    See `Forka.Games.GameServer.give_up_game/2` for return values.
   """
-  defdelegate give_up_player(game_id, player_id), to: Forka.Games.GameServer
+  defdelegate give_up_game(game_id, player_id), to: Forka.Games.GameServer
 
   @doc """
   Makes a guess for the current word in the game.

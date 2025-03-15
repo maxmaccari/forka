@@ -19,10 +19,10 @@ defmodule Forka.Games.Game.GameLogicTest do
 
     # Create a game
     game = Game.new(owner, "Test Game", 4)
-    {:ok, game_with_player1} = Game.add_player(game, player1)
-    {:ok, game_with_players} = Game.add_player(game_with_player1, player2)
+    {:ok, game_with_player1} = Game.join_game(game, player1)
+    {:ok, game_with_players} = Game.join_game(game_with_player1, player2)
     game_with_words = Game.set_words(game_with_players, [word1, word2])
-    {:ok, initialized_game} = Game.init_game(game_with_words)
+    {:ok, initialized_game} = Game.start_game(game_with_words)
 
     {:ok,
      game_state: initialized_game, player1: player1, player2: player2, word1: word1, word2: word2}
@@ -60,9 +60,9 @@ defmodule Forka.Games.Game.GameLogicTest do
     end
   end
 
-  describe "give_up_player/2" do
+  describe "give_up_game/2" do
     test "makes player give up successfully", %{game_state: game, player1: player} do
-      {:ok, updated_game} = GameLogic.give_up_player(game, player.id)
+      {:ok, updated_game} = GameLogic.give_up_game(game, player.id)
 
       {_idx, game_player} = find_game_player_by_id(updated_game, player.id)
       assert game_player.status == :dead
@@ -75,7 +75,7 @@ defmodule Forka.Games.Game.GameLogicTest do
       player2: player2
     } do
       # Player 1 gives up
-      {:ok, updated_game} = GameLogic.give_up_player(initialized_game, player1.id)
+      {:ok, updated_game} = GameLogic.give_up_game(initialized_game, player1.id)
 
       # Check that the current player is now Player 2
       assert %Player{id: current_player_id} = GameLogic.get_current_player(updated_game)
@@ -84,7 +84,7 @@ defmodule Forka.Games.Game.GameLogicTest do
 
     test "returns error when player not found", %{game_state: game} do
       unknown_player = Player.new("Unknown")
-      assert {:error, :player_not_found} = GameLogic.give_up_player(game, unknown_player.id)
+      assert {:error, :player_not_found} = GameLogic.give_up_game(game, unknown_player.id)
     end
 
     test "returns error when game is archived", %{game_state: game, player1: player1} do
@@ -92,7 +92,7 @@ defmodule Forka.Games.Game.GameLogicTest do
       archived_game = %{game | status: :archived}
 
       # Try to give up in an archived game
-      assert {:error, :game_archived} = GameLogic.give_up_player(archived_game, player1.id)
+      assert {:error, :game_archived} = GameLogic.give_up_game(archived_game, player1.id)
     end
   end
 

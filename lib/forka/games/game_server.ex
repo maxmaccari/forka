@@ -91,7 +91,7 @@ defmodule Forka.Games.GameServer do
   @doc """
   Adds a player to the game.
 
-  Delegates to `Forka.Games.Game.add_player/2`.
+  Delegates to `Forka.Games.Game.join_game/2`.
 
   ## Parameters
     - game_id: The ID of the game.
@@ -99,16 +99,16 @@ defmodule Forka.Games.GameServer do
 
   ## Returns
     - `{:ok, game_state}` if successful.
-    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.add_player/2` for possible error reasons.
+    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.join_game/2` for possible error reasons.
   """
-  def add_player(game_id, %Player{} = player) when is_binary(game_id) do
-    GenServer.call(global_name(game_id), {:add_player, player})
+  def join_game(game_id, %Player{} = player) when is_binary(game_id) do
+    GenServer.call(global_name(game_id), {:join_game, player})
   end
 
   @doc """
   Removes a player from the game.
 
-  Delegates to `Forka.Games.Game.remove_player/2`.
+  Delegates to `Forka.Games.Game.leave_game/2`.
 
   ## Parameters
     - game_id: The ID of the game.
@@ -116,32 +116,32 @@ defmodule Forka.Games.GameServer do
 
   ## Returns
     - `{:ok, game_state}` if successful.
-    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.remove_player/2` for possible error reasons.
+    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.leave_game/2` for possible error reasons.
   """
-  def remove_player(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
-    GenServer.call(global_name(game_id), {:remove_player, player_id})
+  def leave_game(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
+    GenServer.call(global_name(game_id), {:leave_game, player_id})
   end
 
   @doc """
   Initializes the game.
 
-  Delegates to `Forka.Games.Game.init_game/1`.
+  Delegates to `Forka.Games.Game.start_game/1`.
 
   ## Parameters
     - game_id: The ID of the game.
 
   ## Returns
     - `{:ok, game_state}` if successful.
-    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.init_game/1` for possible error reasons.
+    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.start_game/1` for possible error reasons.
   """
-  def init_game(game_id) when is_binary(game_id) do
-    GenServer.call(global_name(game_id), :init_game)
+  def start_game(game_id) when is_binary(game_id) do
+    GenServer.call(global_name(game_id), :start_game)
   end
 
   @doc """
   Makes a player give up in the game.
 
-  Delegates to `Forka.Games.Game.give_up_player/2`.
+  Delegates to `Forka.Games.Game.give_up_game/2`.
 
   ## Parameters
     - game_id: The ID of the game.
@@ -149,9 +149,9 @@ defmodule Forka.Games.GameServer do
 
   ## Returns
     - `{:ok, game_state}` if successful.
-    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.give_up_player/2` for possible error reasons.
+    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.give_up_game/2` for possible error reasons.
   """
-  def give_up_player(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
+  def give_up_game(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
     GenServer.call(global_name(game_id), {:give_up, player_id})
   end
 
@@ -269,8 +269,8 @@ defmodule Forka.Games.GameServer do
   end
 
   @impl true
-  def handle_call({:add_player, player}, _from, game) do
-    case Game.add_player(game, player) do
+  def handle_call({:join_game, player}, _from, game) do
+    case Game.join_game(game, player) do
       {:ok, new_game} ->
         broadcast!(new_game)
 
@@ -282,8 +282,8 @@ defmodule Forka.Games.GameServer do
   end
 
   @impl true
-  def handle_call({:remove_player, player_id}, _from, game) do
-    case Game.remove_player(game, player_id) do
+  def handle_call({:leave_game, player_id}, _from, game) do
+    case Game.leave_game(game, player_id) do
       {:ok, new_game} ->
         broadcast!(new_game)
 
@@ -295,7 +295,7 @@ defmodule Forka.Games.GameServer do
   end
 
   @impl true
-  def handle_call(:init_game, _from, game) do
+  def handle_call(:start_game, _from, game) do
     words = [
       # Animals
       Word.new("cachorro", "animal", "O melhor amigo do homem."),
@@ -368,7 +368,7 @@ defmodule Forka.Games.GameServer do
     words_count = map_size(game.players) * 2
     game_with_words = Game.set_words(game, words |> Enum.shuffle() |> Enum.take(words_count))
 
-    case game_with_words |> Game.shuffle_players() |> Game.init_game() do
+    case game_with_words |> Game.shuffle_players() |> Game.start_game() do
       {:ok, new_game} ->
         broadcast!(new_game)
 
@@ -381,7 +381,7 @@ defmodule Forka.Games.GameServer do
 
   @impl true
   def handle_call({:give_up, player_id}, _from, game) do
-    case Game.give_up_player(game, player_id) do
+    case Game.give_up_game(game, player_id) do
       {:ok, new_game} ->
         broadcast!(new_game)
 
