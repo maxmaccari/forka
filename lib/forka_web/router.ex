@@ -103,9 +103,9 @@ defmodule ForkaWeb.Router do
   scope "/admin", ForkaWeb.Admin do
     pipe_through [:browser, :admin, :require_authenticated_admin]
 
-    backpex_routes()
-
     get "/", RedirectController, :redirect_to_categories
+
+    backpex_routes()
 
     live_session :default,
       on_mount: [Backpex.InitAssigns, {ForkaWeb.AdminAuth, :ensure_authenticated}],
