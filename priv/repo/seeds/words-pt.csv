@@ -1,0 +1,573 @@
+category,language,name,hint
+Tecnologia,pt,cibernética,Estudo de sistemas computacionais
+Tecnologia,pt,blockchain,Tecnologia de registro distribuído
+Tecnologia,pt,computação quântica,Processamento baseado em mecânica quântica
+Tecnologia,pt,internet das coisas,Objetos conectados à internet
+Tecnologia,pt,impressão 3D,Criação de objetos tridimensionais
+Tecnologia,pt,robótica,Ciência e tecnologia de robôs
+Tecnologia,pt,nanotecnologia,Manipulação de matéria em escala atômica
+Tecnologia,pt,console,Plataforma dedicada para jogos
+Tecnologia,pt,realidade virtual,Ambiente simulado imersivo
+Tecnologia,pt,realidade aumentada,Elementos virtuais no mundo real
+Tecnologia,pt,inteligência artificial,Sistemas que simulam inteligência humana
+Tecnologia,pt,criptografia,Técnicas de codificação de informações
+Tecnologia,pt,biometria,Identificação por características físicas
+Tecnologia,pt,automação,Sistemas que funcionam sem intervenção humana
+Tecnologia,pt,telecomunicações,Transmissão de informações à distância
+Literatura,pt,modernismo,Movimento literário do início dos anos 1900
+Literatura,pt,romantismo,Movimento literário do século XIX
+Literatura,pt,realismo,Estilo literário que retrata a realidade social
+Literatura,pt,simbolismo,Movimento que valoriza símbolos e metáforas
+Literatura,pt,naturalismo,Corrente literária influenciada pelo cientificismo
+Literatura,pt,parnasianismo,Escola poética que busca perfeição formal
+Literatura,pt,concretismo,Movimento de poesia visual experimental
+Literatura,pt,trovadorismo,Literatura medieval com cantigas e poemas
+Literatura,pt,arcadismo,Movimento literário do século XVIII
+Literatura,pt,barroco,Estilo artístico dos séculos XVII e XVIII
+Literatura,pt,romance literário,Narrativa longa em prosa
+Literatura,pt,conto,Narrativa curta em prosa
+Literatura,pt,poesia,Composição em versos
+Literatura,pt,crônica,Texto curto sobre cotidiano
+Literatura,pt,biografia,História de vida de uma pessoa
+Literatura,pt,autobiografia,História escrita pelo próprio protagonista
+Literatura,pt,ficção científica,Narrativa com elementos científicos futuristas
+Literatura,pt,fantasia,Narrativa com elementos mágicos ou sobrenaturais
+Literatura,pt,distopia,Sociedade futura indesejável
+Literatura,pt,literatura de cordel,Poesia popular nordestina
+Arte,pt,expressionista,Estilo que enfatiza a emoção
+Arte,pt,impressionismo,Movimento que captura impressões visuais
+Arte,pt,cubismo,Estilo que representa objetos com formas geométricas
+Arte,pt,surrealismo,Movimento inspirado pelo inconsciente e sonhos
+Arte,pt,abstracionismo,Arte não figurativa baseada em formas e cores
+Arte,pt,renascentista,Estilo artístico do Renascimento
+Arte,pt,minimalismo,Estilo que reduz a arte a elementos essenciais
+Arte,pt,dadaísmo,Movimento de ruptura com padrões artísticos
+Arte,pt,futurismo,Movimento que celebra tecnologia e velocidade
+Arte,pt,pop art,Estilo inspirado na cultura popular e consumo
+Arte,pt,pintura,Arte de aplicar pigmentos
+Arte,pt,escultura,Arte tridimensional
+Arte,pt,arquitetura,Arte de projetar edificações
+Arte,pt,fotografia,Captura de imagens com luz
+Arte,pt,cinema,Arte das imagens em movimento
+Arte,pt,instalação,Arte que transforma o espaço expositivo
+Arte,pt,performance,Arte apresentada ao vivo
+Arte,pt,arte digital,Criação artística usando tecnologia
+Arte,pt,gravura,Técnica de impressão artística
+Arte,pt,cerâmica,Arte de modelar argila
+Música,pt,jazzístico,Gênero com raízes afro-americanas
+Música,pt,sinfônico,Composição para orquestra completa
+Música,pt,dodecafônico,Sistema musical de doze tons
+Música,pt,percussivo,Relacionado a instrumentos de percussão
+Música,pt,harmônico,Combinação agradável de sons musicais
+Música,pt,contrapontístico,Técnica de combinar melodias independentes
+Música,pt,melismático,Estilo vocal com várias notas por sílaba
+Música,pt,polifônico,Múltiplas linhas melódicas simultâneas
+Música,pt,minimalista,Estilo baseado em repetições e mudanças graduais
+Música,pt,atonal,Música sem tonalidade definida
+Música,pt,sinfonia,Composição para orquestra
+Música,pt,jazz,Gênero musical improvisado
+Música,pt,samba,Ritmo brasileiro de origem africana
+Música,pt,rock,Gênero com guitarras elétricas
+Música,pt,ópera,Drama musical cantado
+Música,pt,eletrônica,Música produzida com equipamentos eletrônicos
+Música,pt,hip hop,Cultura urbana com elementos musicais rítmicos
+Música,pt,clássica,Música erudita ocidental
+Música,pt,folclórica,Música tradicional de um povo
+Música,pt,coral,Música cantada por grupo de vozes
+Química,pt,bioquímica,Estudo de processos químicos em organismos vivos
+Química,pt,orgânica,Estudo dos compostos de carbono
+Química,pt,inorgânica,Química dos elementos não-carbônicos
+Química,pt,analítica,Identificação de substâncias químicas
+Química,pt,polímeros,Estudo de macromoléculas
+Química,pt,catálise,Estudo de aceleradores de reações
+Química,pt,eletroquímica,Reações que envolvem eletricidade
+Química,pt,termoquímica,Estudo do calor nas reações químicas
+Química,pt,fotoquímica,Reações químicas causadas pela luz
+Química,pt,espectroscopia,Análise da interação luz-matéria
+Química,pt,computacional,Pesquisa química assistida por computador
+Química,pt,quântica,Cálculos baseados em mecânica quântica
+Química,pt,molecular,Simulação de moléculas
+Química,pt,docking,Encaixe de moléculas
+Química,pt,dinâmica,Simulação do movimento molecular
+Química,pt,conformacional,Análise de formas moleculares
+Química,pt,espectroscópica,Previsão de espectros
+Química,pt,quimioinformática,Gestão de dados químicos
+Química,pt,reatividade,Previsão de reações químicas
+Química,pt,farmacofórica,Modelagem de medicamentos
+Engenharia,pt,aeroespacial,Tecnologia de exploração espacial
+Engenharia,pt,mecatrônica,Combinação de mecânica e eletrônica
+Engenharia,pt,hidráulica,Estudo do comportamento dos fluidos
+Engenharia,pt,estrutural,Análise e design de estruturas
+Engenharia,pt,geotécnica,Comportamento de materiais terrestres
+Engenharia,pt,biomédica,Aplicação da engenharia à medicina
+Engenharia,pt,telecomunicações,Transmissão de informações à distância
+Engenharia,pt,ferroviária,Sistemas de transporte sobre trilhos
+Engenharia,pt,naval,Construção e design de embarcações
+Engenharia,pt,petrolífera,Extração e processamento de petróleo
+Engenharia,pt,ambiental,Sistemas de controle de poluição
+Engenharia,pt,materiais,Estudo das propriedades dos materiais
+Engenharia,pt,robótica,Automação de máquinas
+Engenharia,pt,civil,Construção de infraestruturas
+Engenharia,pt,elétrica,Sistemas de energia e eletricidade
+Engenharia,pt,química,Processos de transformação de materiais
+Engenharia,pt,software,Desenvolvimento de programas de computador
+Engenharia,pt,acústica,Controle e manipulação do som
+Engenharia,pt,automotiva,Desenvolvimento de veículos
+Engenharia,pt,nuclear,Aplicações da energia nuclear
+Psicologia,pt,psicanálise,Teoria de Freud sobre a mente
+Psicologia,pt,behaviorismo,Estudo do comportamento observável
+Psicologia,pt,cognitivismo,Estudo dos processos mentais
+Psicologia,pt,gestaltismo,Psicologia da forma e percepção
+Psicologia,pt,humanista,Abordagem centrada na pessoa
+Psicologia,pt,transpessoal,Estudo de estados alterados de consciência
+Psicologia,pt,desenvolvimentista,Estudo das mudanças ao longo da vida
+Psicologia,pt,neuropsicologia,Relação entre cérebro e comportamento
+Psicologia,pt,psicometria,Medição de fenômenos psicológicos
+Psicologia,pt,psicopatologia,Estudo dos transtornos mentais
+Psicologia,pt,humanismo,Foco no potencial humano
+Psicologia,pt,social,Influência social no comportamento
+Psicologia,pt,evolucionista,Bases evolutivas do comportamento
+Psicologia,pt,positiva,Estudo do bem-estar e felicidade
+Psicologia,pt,forense,Aplicação da psicologia ao sistema legal
+Psicologia,pt,organizacional,Comportamento humano no trabalho
+Psicologia,pt,educacional,Psicologia aplicada à educação
+Psicologia,pt,clínica,Diagnóstico e tratamento de transtornos
+Psicologia,pt,comunitária,Intervenções em nível comunitário
+Psicologia,pt,intercultural,Influência cultural na psicologia
+Linguística,pt,fonologia,Padrões sonoros na linguagem
+Linguística,pt,morfologia,Estudo da formação das palavras
+Linguística,pt,sintaxe,Regras de organização das frases
+Linguística,pt,semântica,Estudo do significado das palavras
+Linguística,pt,pragmática,Uso da linguagem em contexto
+Linguística,pt,sociolinguística,Relação entre língua e sociedade
+Linguística,pt,psicolinguística,Processos mentais da linguagem
+Linguística,pt,diacrônica,Evolução histórica das línguas
+Linguística,pt,lexicologia,Estudo do vocabulário das línguas
+Linguística,pt,dialetologia,Estudo das variações regionais
+Linguística,pt,filologia,Estudo histórico das línguas
+Linguística,pt,lexicografia,Compilação de dicionários
+Linguística,pt,etimologia,Origem e história das palavras
+Linguística,pt,fonética,Estudo dos sons da fala
+Linguística,pt,gramática,Regras de estruturação da língua
+Linguística,pt,linguística computacional,Processamento computacional da linguagem
+Linguística,pt,neurolinguística,Bases cerebrais da linguagem
+Linguística,pt,análise do discurso,Estudo de textos em contexto
+Linguística,pt,tradução,Transferência entre línguas
+Linguística,pt,linguística aplicada,Aplicações práticas da linguística
+Medicina,pt,patologia,Estudo das doenças
+Medicina,pt,oncologia,Estudo e tratamento do câncer
+Medicina,pt,cardiologia,Estudo do coração e vasos sanguíneos
+Medicina,pt,neurologia,Estudo do sistema nervoso
+Medicina,pt,epidemiologia,Estudo da distribuição de doenças
+Medicina,pt,farmacologia,Estudo dos medicamentos
+Medicina,pt,imunologia,Estudo do sistema de defesa do corpo
+Medicina,pt,genômica,Estudo do genoma humano
+Medicina,pt,telemedicina,Atendimento médico à distância
+Medicina,pt,regenerativa,Recuperação de tecidos danificados
+Medicina,pt,hematologia,Estudo do sangue e suas doenças
+Medicina,pt,oftalmologia,Especialidade médica dos olhos
+Medicina,pt,psiquiatria,Tratamento de transtornos mentais
+Medicina,pt,endocrinologia,Estudo dos hormônios
+Medicina,pt,pediatria,Especialidade de crianças
+Medicina,pt,geriatria,Medicina para idosos
+Medicina,pt,dermatologia,Especialidade da pele
+Medicina,pt,ortopedia,Tratamento do sistema músculo-esquelético
+Medicina,pt,ginecologia,Saúde do sistema reprodutor feminino
+Medicina,pt,urologia,Saúde do sistema urinário
+Ciências da Terra,pt,oceanografia,Ciência dos mares e oceanos
+Ciências da Terra,pt,batimetria,Medição das profundidades marinhas
+Ciências da Terra,pt,maremotriz,Estudo das marés e suas energias
+Ciências da Terra,pt,oceanologia,Estudo científico dos oceanos
+Ciências da Terra,pt,talassografia,Descrição dos mares e oceanos
+Ciências da Terra,pt,limnologia,Estudo de lagos e águas doces
+Ciências da Terra,pt,hidrografia,Mapeamento de corpos d'água
+Ciências da Terra,pt,oceanoclimática,Relação entre oceanos e clima
+Ciências da Terra,pt,sedimentologia,Estudo dos sedimentos marinhos
+Ciências da Terra,pt,aquacultura,Cultivo de organismos aquáticos
+Ciências da Terra,pt,geofísica,Propriedades físicas da Terra
+Ciências da Terra,pt,sismologia,Estudo de terremotos e ondas sísmicas
+Ciências da Terra,pt,gravimetria,Medição da força gravitacional
+Ciências da Terra,pt,magnetometria,Estudo do campo magnético terrestre
+Ciências da Terra,pt,geodinâmica,Processos físicos da Terra
+Ciências da Terra,pt,tectônica,Estudo da estrutura da crosta terrestre
+Ciências da Terra,pt,vulcanologia,Estudo de vulcões e fenômenos relacionados
+Ciências da Terra,pt,geotermia,Estudo do calor interno da Terra
+Ciências da Terra,pt,paleomagnetismo,Estudo do magnetismo em rochas antigas
+Ciências da Terra,pt,hidrogeofísica,Estudo físico das águas subterrâneas
+Ciências da Terra,pt,meteorologia,Estudo do clima
+Ciências da Terra,pt,climatologia,Estudo de padrões climáticos
+Ciências da Terra,pt,glaciologia,Estudo de geleiras
+Ciências da Terra,pt,cartografia,Arte de produzir mapas
+Ciências da Terra,pt,geomorfologia,Estudo das formas de relevo
+Ciências da Terra,pt,pedologia,Estudo dos solos
+Ciências da Terra,pt,hidrogeologia,Estudo das águas subterrâneas
+Ciências da Terra,pt,paleontologia,Estudo de fósseis
+Ciências da Terra,pt,estratigrafia,Estudo das camadas rochosas
+Ciências da Terra,pt,mineralogia,Estudo dos minerais
+Computação,pt,robótica,Ciência da automação de máquinas
+Computação,pt,mecatrônica,Integração de sistemas mecânicos e eletrônicos
+Computação,pt,cibernética,Estudo de sistemas de controle
+Computação,pt,automação,Sistemas que funcionam com mínima intervenção humana
+Computação,pt,telerobótica,Controle de robôs à distância
+Computação,pt,microrobótica,Robôs em escala microscópica
+Computação,pt,biorobótica,Robôs inspirados em sistemas biológicos
+Computação,pt,nanorobótica,Robôs em escala nanométrica
+Computação,pt,exoesqueletos,Estruturas robóticas vestíveis
+Computação,pt,swarmrobótica,Sistemas de múltiplos robôs cooperativos
+Computação,pt,gráfica,Técnicas de processamento visual
+Computação,pt,renderização,Processo de geração de imagem digital
+Computação,pt,modelagem,Criação de representações 3D
+Computação,pt,texturização,Aplicação de detalhes superficiais
+Computação,pt,animação,Simulação de movimento em imagens
+Computação,pt,iluminação,Simulação de luz em ambientes virtuais
+Computação,pt,fotorrealismo,Imagens digitais indistinguíveis de fotografias
+Computação,pt,rasterização,Conversão de vetores em pixels
+Computação,pt,antialiasing,Técnica para suavizar bordas pixeladas
+Computação,pt,mapeamento,Projeção de texturas em modelos 3D
+Computação,pt,redes neurais,Computação inspirada no cérebro
+Computação,pt,aprendizado profundo,Redes neurais com múltiplas camadas
+Computação,pt,perceptron,Modelo básico de neurônio artificial
+Computação,pt,backpropagation,Algoritmo de ajuste de pesos
+Computação,pt,convolucional,Redes especializadas em processamento visual
+Computação,pt,recorrente,Redes com conexões cíclicas
+Computação,pt,autoencoders,Redes para compressão de dados
+Computação,pt,generativa,Redes que criam novos dados
+Computação,pt,adversarial,Redes que competem entre si
+Computação,pt,transformers,Arquitetura para processamento de sequências
+Computação,pt,visão computacional,Máquinas que compreendem imagens
+Computação,pt,reconhecimento,Identificação de objetos em imagens
+Computação,pt,segmentação,Divisão de imagens em regiões
+Computação,pt,rastreamento,Seguimento de objetos em vídeo
+Computação,pt,estereoscopia,Visão tridimensional por computador
+Computação,pt,morfologia,Operações em formas de imagens
+Computação,pt,calibração,Ajuste de parâmetros de câmeras
+Computação,pt,fotogrametria,Medições a partir de fotografias
+Computação,pt,realidade aumentada,Sobreposição de elementos virtuais
+Computação,pt,odometria,Estimativa de movimento por imagens
+Computação,pt,segurança computacional,Proteção de sistemas computacionais
+Computação,pt,criptografia,Codificação de informações
+Computação,pt,autenticação,Verificação de identidade
+Computação,pt,firewall,Barreira de proteção de rede
+Computação,pt,malware,Software malicioso
+Computação,pt,forense,Investigação de crimes digitais
+Computação,pt,penetração,Testes de vulnerabilidade
+Computação,pt,biométrica,Identificação por características físicas
+Computação,pt,cibersegurança,Proteção contra ataques digitais
+Computação,pt,criptoanálise,Quebra de códigos criptográficos
+Computação,pt,neural,Processamento inspirado no cérebro
+Ciência dos Materiais,pt,nanotecnologia,Engenharia em escala atômica
+Ciência dos Materiais,pt,metalurgia,Estudo e processamento de metais
+Ciência dos Materiais,pt,cerâmica,Materiais inorgânicos não-metálicos
+Ciência dos Materiais,pt,polímeros,Estudo de macromoléculas
+Ciência dos Materiais,pt,compósitos,Materiais formados por diferentes componentes
+Ciência dos Materiais,pt,semicondutores,Materiais com condutividade intermediária
+Ciência dos Materiais,pt,biomateriais,Materiais compatíveis com sistemas biológicos
+Ciência dos Materiais,pt,supercondutores,Materiais sem resistência elétrica
+Ciência dos Materiais,pt,cristalografia,Estudo da estrutura cristalina
+Ciência dos Materiais,pt,reologia,Estudo do fluxo da matéria
+Ciência dos Materiais,pt,nanomateriais,Materiais em escala nanométrica
+Ciência dos Materiais,pt,metamateriais,Materiais com propriedades não naturais
+Ciência dos Materiais,pt,ferroelétricos,Materiais com polarização elétrica
+Ciência dos Materiais,pt,piezoelétricos,Materiais que geram eletricidade sob pressão
+Ciência dos Materiais,pt,fotônicos,Materiais que controlam a luz
+Ciência dos Materiais,pt,magnéticos,Materiais com propriedades magnéticas
+Ciência dos Materiais,pt,termoelétricos,Materiais que convertem calor em eletricidade
+Ciência dos Materiais,pt,tribologia,Estudo de atrito e desgaste
+Ciência dos Materiais,pt,corrosão,Degradação de materiais
+Ciência dos Materiais,pt,adesivos,Materiais que unem superfícies
+Ciências Ambientais,pt,ciências climáticas,Padrões de temperatura da Terra
+Ciências Ambientais,pt,climatologia,Estudo de padrões climáticos
+Ciências Ambientais,pt,meteorologia,Estudo da atmosfera
+Ciências Ambientais,pt,paleoclimatologia,Estudo de climas antigos
+Ciências Ambientais,pt,agroclimatologia,Clima aplicado à agricultura
+Ciências Ambientais,pt,bioclimatologia,Efeitos do clima nos seres vivos
+Ciências Ambientais,pt,microclimatologia,Estudo de climas localizados
+Ciências Ambientais,pt,climatografia,Descrição de climas regionais
+Ciências Ambientais,pt,fenologia,Estudo dos ciclos naturais e clima
+Ciências Ambientais,pt,dendroclimatologia,Estudo do clima através de anéis de árvores
+Ciências Ambientais,pt,proteção ambiental,Conservação da natureza
+Ciências Ambientais,pt,sustentabilidade,Uso responsável de recursos naturais
+Ciências Ambientais,pt,conservacionismo,Uso sustentável de recursos naturais
+Ciências Ambientais,pt,preservacionismo,Proteção integral de áreas naturais
+Ciências Ambientais,pt,reflorestamento,Replantio de áreas desmatadas
+Ciências Ambientais,pt,biodiversidade,Variedade de espécies em ecossistemas
+Ciências Ambientais,pt,restauração,Recuperação de ecossistemas degradados
+Ciências Ambientais,pt,biomonitoramento,Avaliação da saúde ambiental
+Ciências Ambientais,pt,mitigação,Redução de impactos ambientais
+Ciências Ambientais,pt,remediação,Limpeza de áreas contaminadas
+Ciências Ambientais,pt,ecologista,Proteção ambiental
+Ciências Ambientais,pt,biocapacidade,Capacidade regenerativa dos ecossistemas
+Ciências Ambientais,pt,corredores ecológicos,Conexões entre habitats fragmentados
+Ciências Ambientais,pt,modelagem climática,Previsão de padrões climáticos
+Ciências Ambientais,pt,simulação,Reprodução computacional de fenômenos
+Ciências Ambientais,pt,previsibilidade,Capacidade de prever mudanças
+Ciências Ambientais,pt,parametrização,Representação simplificada de processos
+Ciências Ambientais,pt,retroalimentação,Ciclos de causa e efeito
+Ciências Ambientais,pt,downscaling,Refinamento de modelos globais
+Ciências Ambientais,pt,assimilação,Incorporação de dados observacionais
+Ciências Ambientais,pt,validação,Verificação da precisão do modelo
+Ciências Ambientais,pt,cenários,Projeções de condições futuras
+Ciências Ambientais,pt,sensibilidade,Resposta do sistema a mudanças
+Biotecnologia,pt,bioengenharia,Engenharia de sistemas biológicos
+Biotecnologia,pt,transgênica,Modificação genética de organismos
+Biotecnologia,pt,bioinformática,Análise computacional de dados biológicos
+Biotecnologia,pt,proteômica,Estudo em larga escala de proteínas
+Biotecnologia,pt,metabolômica,Estudo de processos metabólicos
+Biotecnologia,pt,nanobiotecnologia,Biotecnologia em escala nanométrica
+Biotecnologia,pt,bioprocessamento,Uso de sistemas biológicos na produção
+Biotecnologia,pt,biofarmacêutica,Medicamentos produzidos por biotecnologia
+Biotecnologia,pt,biossensores,Dispositivos que detectam substâncias biológicas
+Biotecnologia,pt,bioimpressão,Impressão 3D de tecidos biológicos
+Biotecnologia,pt,pesquisa biotecnológica,Tecnologia de organismos vivos
+Biotecnologia,pt,genômica,Estudo do genoma completo
+Biotecnologia,pt,clonagem,Reprodução de cópias genéticas idênticas
+Biotecnologia,pt,terapia gênica,Tratamento por inserção de genes
+Biotecnologia,pt,bioremediação,Uso de organismos para limpar poluição
+Biotecnologia,pt,fermentação,Processos metabólicos sem oxigênio
+Biotecnologia,pt,biocombustíveis,Combustíveis derivados de biomassa
+Biotecnologia,pt,enzimologia,Estudo de catalisadores biológicos
+Biotecnologia,pt,cultura de tecidos,Crescimento de células fora do organismo
+Biotecnologia,pt,engenharia metabólica,Otimização de vias metabólicas
+Biologia,pt,oceanobiologia,Organismos vivos nos oceanos
+Biologia,pt,ictiologia,Estudo dos peixes
+Biologia,pt,cetologia,Estudo de baleias e golfinhos
+Biologia,pt,malacologia,Estudo de moluscos
+Biologia,pt,ficologia,Estudo das algas
+Biologia,pt,carcinologia,Estudo de crustáceos
+Biologia,pt,planctologia,Estudo de organismos flutuantes
+Biologia,pt,bentologia,Estudo de organismos do fundo marinho
+Biologia,pt,recifologia,Estudo de recifes de coral
+Biologia,pt,manguezologia,Estudo de ecossistemas de mangue
+Biologia,pt,entomologia,Estudo dos insetos
+Biologia,pt,ornitologia,Estudo das aves
+Biologia,pt,herpetologia,Estudo de répteis e anfíbios
+Biologia,pt,taxonomia,Classificação de organismos
+Biologia,pt,fotossíntese,Processo de conversão de luz em energia
+Biologia,pt,metamorfose,Transformação biológica completa
+Biologia,pt,ecossistema,Comunidade biológica completa
+Biologia,pt,evolução,Mudança nas características hereditárias
+Biologia,pt,célula,Unidade básica da vida
+Biologia,pt,biodiversidade,Variedade de espécies
+Biologia,pt,genoma,Conjunto completo de genes
+Biologia,pt,botânica,Estudo das plantas
+Biologia,pt,zoologia,Estudo dos animais
+Biologia,pt,micologia,Estudo dos fungos
+Biologia,pt,microbiologia,Estudo de microrganismos
+Física,pt,astrofísica,Estudo da física dos corpos celestes
+Física,pt,termodinâmica,Estudo do calor e energia
+Física,pt,pesquisa quântica,Estudo de partículas subatômicas
+Física,pt,cosmologia,Estudo da origem do universo
+Física,pt,astronáutica,Ciência de viagens espaciais
+Física,pt,cosmonauta,Viajante espacial russo
+Física,pt,exoplanetária,Estudo de planetas fora do sistema solar
+Física,pt,astrobiologia,Estudo da vida no universo
+Física,pt,propulsão,Sistemas de movimento espacial
+Física,pt,telemetria,Medição e transmissão de dados à distância
+Física,pt,gravitacional,Relacionado à força da gravidade
+Física,pt,terraformação,Modificação de planetas para habitação humana
+Física,pt,astrogeologia,Geologia de corpos celestes
+Física,pt,radioastronomia,Estudo de ondas de rádio do espaço
+Física,pt,tecnologia espacial,Equipamentos para exploração espacial
+Física,pt,satélites,Objetos em órbita ao redor da Terra
+Física,pt,astrônomica,Relacionada à observação do espaço
+Física,pt,mecânica,Estudo do movimento e forças
+Física,pt,eletromagnetismo,Estudo de eletricidade e magnetismo
+Física,pt,óptica,Estudo da luz e visão
+Física,pt,acústica,Estudo do som
+Física,pt,nuclear,Estudo do núcleo atômico
+Física,pt,relatividade,Teoria de Einstein sobre espaço-tempo
+Física,pt,estado sólido,Estudo de materiais sólidos
+Neurociência,pt,neurociência,Estudo da função cerebral
+Neurociência,pt,neuroanatomia,Estrutura do sistema nervoso
+Neurociência,pt,neurofisiologia,Funcionamento do sistema nervoso
+Neurociência,pt,neurobiologia,Biologia do sistema nervoso
+Neurociência,pt,neuropsicologia,Relação entre cérebro e comportamento
+Neurociência,pt,neurolinguística,Bases neurais da linguagem
+Neurociência,pt,neuroimagem,Visualização da atividade cerebral
+Neurociência,pt,neuroendocrinologia,Interação entre sistema nervoso e hormônios
+Neurociência,pt,neurogenética,Bases genéticas do sistema nervoso
+Neurociência,pt,neuroplasticidade,Capacidade de adaptação do cérebro
+Neurociência,pt,estudos neurocientíficos,Pesquisa da função cerebral
+Arqueologia,pt,arqueologia,Estudo de civilizações antigas
+Arqueologia,pt,paleontologia,Estudo de fósseis e vida pré-histórica
+Arqueologia,pt,epistemologia,Teoria do conhecimento
+História,pt,civilização egípcia,Antiga cultura do vale do Nilo
+História,pt,império romano,Civilização da antiguidade clássica
+História,pt,civilização maia,Antiga cultura mesoamericana
+História,pt,império inca,Civilização andina pré-colombiana
+História,pt,dinastia ming,Período imperial chinês
+História,pt,império otomano,Potência islâmica histórica
+História,pt,civilização mesopotâmica,Berço da escrita e agricultura
+História,pt,império mongol,Maior império contíguo da história
+História,pt,civilização asteca,Antiga cultura do México central
+História,pt,império bizantino,Continuação oriental de Roma
+Cultura Pop,pt,cultura pop,Entretenimento popular contemporâneo
+Cultura Pop,pt,blockbuster,Filme de grande sucesso comercial
+Cultura Pop,pt,viral,Conteúdo que se espalha rapidamente online
+Cultura Pop,pt,streaming,Transmissão contínua de mídia digital
+Cultura Pop,pt,podcast,Programa de áudio digital
+Cultura Pop,pt,meme,Ideia que se espalha pela internet
+Cultura Pop,pt,cosplay,Fantasia de personagens fictícios
+Cultura Pop,pt,fandom,Comunidade de fãs dedicados
+Cultura Pop,pt,cultura geek,Entusiasmo por tecnologia e ficção
+Cultura Pop,pt,influenciador,Pessoa com grande alcance nas redes sociais
+Personalidades,pt,santos dumont,Inventor brasileiro da aviação
+Personalidades,pt,machado de assis,Escritor brasileiro do realismo
+Personalidades,pt,pelé,Lendário jogador de futebol brasileiro
+Personalidades,pt,carmen miranda,Cantora e atriz brasileira internacional
+Personalidades,pt,oscar niemeyer,Arquiteto modernista brasileiro
+Personalidades,pt,paulo freire,Educador e filósofo brasileiro
+Personalidades,pt,clarice lispector,Escritora brasileira inovadora
+Personalidades,pt,ayrton senna,Piloto brasileiro de Fórmula 1
+Personalidades,pt,chico mendes,Ambientalista e seringueiro brasileiro
+Personalidades,pt,zumbi dos palmares,Líder do quilombo dos Palmares
+Cinema,pt,cinema novo,Movimento cinematográfico brasileiro
+Cinema,pt,blockbuster,Filme de grande orçamento e sucesso
+Cinema,pt,filme cult,Obra com seguidores dedicados
+Cinema,pt,cinema de arte,Filmes com foco artístico e experimental
+Cinema,pt,documentário,Filme baseado em fatos reais
+Cinema,pt,animação,Filme criado quadro a quadro
+Cinema,pt,curta-metragem,Filme de curta duração
+Cinema,pt,longa-metragem,Filme de duração padrão
+Cinema,pt,cinematografia,Arte de capturar imagens em movimento
+Cinema,pt,direção cinematográfica,Coordenação da produção de um filme
+Heróis,pt,super-homem,Herói alienígena com superpoderes
+Heróis,pt,mulher-maravilha,Heroína amazona com força sobre-humana
+Heróis,pt,homem-aranha,Herói com habilidades aracnídeas
+Heróis,pt,capitão américa,Soldado super-humano patriótico
+Heróis,pt,pantera negra,Rei e protetor de Wakanda
+Heróis,pt,batman,Vigilante sem superpoderes
+Heróis,pt,homem de ferro,Gênio bilionário com armadura tecnológica
+Heróis,pt,capitã marvel,Heroína com poderes cósmicos
+Heróis,pt,flash,Velocista super-rápido
+Heróis,pt,aquaman,Rei dos mares e oceanos
+Séries,pt,série dramática,Programa televisivo com narrativa séria
+Séries,pt,sitcom,Comédia de situação
+Séries,pt,série policial,Programa sobre investigação criminal
+Séries,pt,série de fantasia,Programa com elementos sobrenaturais
+Séries,pt,série de ficção científica,Programa com tecnologia futurista
+Séries,pt,série documental,Programa baseado em fatos reais
+Séries,pt,série de animação,Programa desenhado ou computadorizado
+Séries,pt,websérie,Série distribuída pela internet
+Séries,pt,minissérie,Série com número limitado de episódios
+Séries,pt,série antológica,Cada temporada conta história diferente
+Literatura,pt,romance literário,Narrativa longa em prosa
+Literatura,pt,conto,Narrativa curta em prosa
+Literatura,pt,poesia,Composição em versos
+Literatura,pt,crônica,Texto curto sobre cotidiano
+Literatura,pt,biografia,História de vida de uma pessoa
+Literatura,pt,autobiografia,História escrita pelo próprio protagonista
+Literatura,pt,ficção científica,Narrativa com elementos científicos futuristas
+Literatura,pt,fantasia,Narrativa com elementos mágicos ou sobrenaturais
+Literatura,pt,distopia,Sociedade futura indesejável
+Literatura,pt,literatura de cordel,Poesia popular nordestina
+Jogos,pt,videogame,Jogo eletrônico interativo
+Jogos,pt,RPG,Jogo de interpretação de papéis
+Jogos,pt,jogo de estratégia,Foco em planejamento e táticas
+Jogos,pt,jogo de ação,Foco em reflexos e coordenação
+Jogos,pt,jogo de aventura,Foco em exploração e narrativa
+Jogos,pt,jogo indie,Desenvolvido por estúdio independente
+Jogos,pt,e-sports,Competições profissionais de jogos eletrônicos
+Jogos,pt,jogo mobile,Para dispositivos móveis
+Jogos,pt,jogo multiplayer,Jogado por várias pessoas simultaneamente
+Jogos,pt,jogo de mundo aberto,Ambiente livre para exploração
+Tecnologia,pt,console,Plataforma dedicada para jogos
+Tecnologia,pt,realidade virtual,Ambiente simulado imersivo
+Tecnologia,pt,realidade aumentada,Elementos virtuais no mundo real
+Tecnologia,pt,inteligência artificial,Sistemas que simulam inteligência humana
+Tecnologia,pt,blockchain,Tecnologia de registro distribuído
+Tecnologia,pt,computação quântica,Processamento baseado em mecânica quântica
+Tecnologia,pt,internet das coisas,Objetos conectados à internet
+Tecnologia,pt,impressão 3D,Criação de objetos tridimensionais
+Tecnologia,pt,robótica,Ciência e tecnologia de robôs
+Tecnologia,pt,nanotecnologia,Manipulação de matéria em escala atômica
+Ciência,pt,fotossíntese,Processo de plantas usando luz solar
+Ciência,pt,arqueológico,Estudo de artefatos antigos
+Ciência,pt,genética,Estudo da hereditariedade
+Ciência,pt,astronomia,Estudo dos corpos celestes
+Ciência,pt,paleontologia,Estudo de fósseis e vida pré-histórica
+Filosofia,pt,existencialismo,Escola de pensamento sobre existência
+Filosofia,pt,metafísica,Estudo da natureza da realidade
+Filosofia,pt,epistemologia,Teoria do conhecimento
+Filosofia,pt,ética,Estudo dos princípios morais
+Filosofia,pt,lógica,Estudo do raciocínio válido
+Geografia,pt,cartografia,Arte de fazer mapas
+Geografia,pt,climatologia,Estudo do clima
+Geografia,pt,geomorfologia,Estudo das formas de relevo
+Geografia,pt,hidrografia,Estudo de corpos d'água
+Geografia,pt,urbanismo,Planejamento de cidades
+Medicina,pt,cardiologia,Especialidade do coração
+Medicina,pt,neurologia,Especialidade do sistema nervoso
+Medicina,pt,pediatria,Especialidade de crianças
+Medicina,pt,oncologia,Estudo e tratamento do câncer
+Medicina,pt,psiquiatria,Tratamento de transtornos mentais
+Esportes,pt,futebol,Esporte com bola nos pés
+Esportes,pt,basquete,Esporte com cesta e bola
+Esportes,pt,natação,Deslocamento na água
+Esportes,pt,atletismo,"Corrida, saltos e lançamentos"
+Esportes,pt,ciclismo,Esporte com bicicleta
+Música,pt,sinfonia,Composição para orquestra
+Música,pt,jazz,Gênero musical improvisado
+Música,pt,samba,Ritmo brasileiro de origem africana
+Música,pt,rock,Gênero com guitarras elétricas
+Música,pt,ópera,Drama musical cantado
+Culinária,pt,gastronomia,Arte de preparar alimentos
+Culinária,pt,confeitaria,Arte de fazer doces
+Culinária,pt,churrasco,Carne assada na brasa
+Culinária,pt,fermentação,Processo de transformação de alimentos
+Culinária,pt,culinária regional,Pratos típicos de uma região
+Arte,pt,pintura,Arte de aplicar pigmentos
+Arte,pt,escultura,Arte tridimensional
+Arte,pt,arquitetura,Arte de projetar edificações
+Arte,pt,fotografia,Captura de imagens com luz
+Arte,pt,cinema,Arte das imagens em movimento
+História,pt,renascimento,Período de renovação cultural
+História,pt,revolução industrial,Transformação dos meios de produção
+História,pt,guerra fria,Conflito ideológico pós-guerra
+História,pt,idade média,Período entre antiguidade e modernidade
+História,pt,colonização,Ocupação e exploração de territórios
+Economia,pt,microeconomia,Estudo do comportamento econômico individual
+Economia,pt,macroeconomia,Estudo da economia como um todo
+Economia,pt,inflação,Aumento generalizado de preços
+Economia,pt,mercado financeiro,Sistema de negociação de ativos
+Economia,pt,comércio internacional,Trocas entre países
+Matemática,pt,geometria,Estudo de formas e espaços
+Matemática,pt,álgebra,Estudo de estruturas matemáticas
+Matemática,pt,estatística,Coleta e análise de dados
+Matemática,pt,cálculo,Estudo de mudanças
+Matemática,pt,trigonometria,Estudo de triângulos e ângulos
+Psicologia,pt,behaviorismo,Estudo do comportamento observável
+Psicologia,pt,psicanálise,Teoria do inconsciente
+Psicologia,pt,cognitivismo,Estudo dos processos mentais
+Psicologia,pt,humanismo,Foco no potencial humano
+Psicologia,pt,neuropsicologia,Relação entre cérebro e comportamento
+Idiomas,pt,linguística,Estudo científico da linguagem
+Idiomas,pt,etimologia,Origem e história das palavras
+Idiomas,pt,fonética,Estudo dos sons da fala
+Idiomas,pt,gramática,Regras de estruturação da língua
+Idiomas,pt,semântica,Estudo do significado das palavras
+Mitologia,pt,grega,Deuses e heróis da Grécia Antiga
+Mitologia,pt,nórdica,Lendas dos povos escandinavos
+Mitologia,pt,egípcia,Deuses do Antigo Egito
+Mitologia,pt,brasileira,Lendas e folclore do Brasil
+Mitologia,pt,asteca,Deuses da civilização mesoamericana
+Astronomia,pt,galáxia,Sistema de estrelas e matéria interestelar
+Astronomia,pt,buraco negro,Região do espaço com gravidade extrema
+Astronomia,pt,supernova,Explosão estelar
+Astronomia,pt,exoplaneta,Planeta fora do sistema solar
+Astronomia,pt,nebulosa,Nuvem interestelar de poeira e gás
+Biologia,pt,ecossistema,Comunidade biológica completa
+Biologia,pt,evolução,Mudança nas características hereditárias
+Biologia,pt,célula,Unidade básica da vida
+Biologia,pt,biodiversidade,Variedade de espécies
+Biologia,pt,genoma,Conjunto completo de genes
+Política,pt,democracia,Governo pelo povo
+Política,pt,constituição,Lei fundamental de um país
+Política,pt,diplomacia,Relações entre nações
+Política,pt,geopolítica,Influência da geografia na política
+Política,pt,soberania,Autoridade suprema de um Estado
+Religião,pt,budismo,Religião baseada nos ensinamentos de Buda
+Religião,pt,cristianismo,Religião baseada em Jesus Cristo
+Religião,pt,islamismo,Religião baseada no profeta Maomé
+Religião,pt,hinduísmo,Conjunto de tradições religiosas da Índia
+Religião,pt,xamanismo,Práticas espirituais de comunicação com espíritos

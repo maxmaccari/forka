@@ -9,7 +9,9 @@ module.exports = {
   content: [
     "./js/**/*.js",
     "../lib/forka_web.ex",
-    "../lib/forka_web/**/*.*ex"
+    "../lib/forka_web/**/*.*ex",
+    '../deps/backpex/**/*.*ex',
+    '../deps/backpex/assets/js/**/*.*js'
   ],
   theme: {
     extend: {
@@ -19,7 +21,8 @@ module.exports = {
     },
   },
   plugins: [
-    require("@tailwindcss/forms"),
+    require('daisyui'),
+    require("@tailwindcss/forms")({strategy: 'class'}),
     // Allows prefixing tailwind classes with LiveView classes to add rules
     // only when LiveView classes are applied, for example:
     //

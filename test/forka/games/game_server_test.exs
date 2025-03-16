@@ -1,5 +1,5 @@
 defmodule Forka.Games.GameServerTest do
-  use ExUnit.Case, async: true
+  use Forka.DataCase, async: true
 
   alias Forka.Games.GameServer
   alias Forka.Games.Player
@@ -8,6 +8,8 @@ defmodule Forka.Games.GameServerTest do
   @moduletag :capture_log
 
   setup do
+    insert_list(10, :word)
+
     owner = Player.new("Owner")
 
     # Create a new game using Game module
@@ -15,6 +17,9 @@ defmodule Forka.Games.GameServerTest do
 
     # Start the game server
     {:ok, pid} = GameServer.start_link(game)
+
+    # Allow server to colaborate with same connection
+    Ecto.Adapters.SQL.Sandbox.allow(Repo, self(), pid)
 
     # Subscribe to receive game updates
     GameServer.subscribe(game.id)
@@ -107,6 +112,53 @@ defmodule Forka.Games.GameServerTest do
     end
   end
 
+  describe "set_word_options/2" do
+    test "sets word options and sends update via PubSub", %{game: game} do
+      options = [language: "pt", category_ids: ["uuid1", "uuid2"]]
+
+      assert :ok = GameServer.set_word_options(game.id, options)
+
+      assert_receive {:game_updated, game_summary}
+      assert game_summary.word_options == options
+    end
+
+    test "returns error when game is not in lobby state", %{game: game} do
+      # Add players and start the game
+      player1 = Player.new("Player 1")
+      GameServer.join_game(game.id, player1)
+      player2 = Player.new("Player 2")
+      GameServer.join_game(game.id, player2)
+      GameServer.start_game(game.id)
+
+      flush_messages()
+
+      # Try to set word options after game started
+      options = [language: "es"]
+      assert {:error, :game_not_in_lobby} = GameServer.set_word_options(game.id, options)
+
+      # Don't receive messages in case of errors
+      refute_receive {:game_updated, _game_summary}
+    end
+
+    test "can set only language option", %{game: game} do
+      options = [language: "fr"]
+
+      assert :ok = GameServer.set_word_options(game.id, options)
+
+      assert_receive {:game_updated, game_summary}
+      assert game_summary.word_options == options
+    end
+
+    test "can set only category_ids option", %{game: game} do
+      options = [category_ids: ["uuid3", "uuid4"]]
+
+      assert :ok = GameServer.set_word_options(game.id, options)
+
+      assert_receive {:game_updated, game_summary}
+      assert game_summary.word_options == options
+    end
+  end
+
   describe "start_game/1" do
     test "starts the game and sends update via PubSub", %{game: game} do
       # Add players to have at least 2 players
@@ -121,6 +173,91 @@ defmodule Forka.Games.GameServerTest do
 
       assert_receive {:game_updated, game_summary}
       assert game_summary.game_status == :playing
+    end
+
+    test "filters words by language when starting a game", %{game: game} do
+      # Add players to have at least 2 players
+      player1 = Player.new("Player 1")
+      GameServer.join_game(game.id, player1)
+      player2 = Player.new("Player 2")
+      GameServer.join_game(game.id, player2)
+
+      # Insert a Portuguese word
+      insert(:word,
+        text: "gato",
+        hint: "Mia",
+        category: insert(:category, language: "pt", name: "animals")
+      )
+
+      # Set language option to Portuguese
+      GameServer.set_word_options(game.id, language: "pt")
+
+      flush_messages()
+
+      # Start the game
+      assert :ok = GameServer.start_game(game.id)
+
+      assert_receive {:game_updated, game_summary}
+      assert game_summary.game_status == :playing
+
+      # Get the current player
+      current_player_id = game_summary.current_player_id
+
+      # Try to guess the Portuguese word "gato" letter by letter
+      letters = ["g", "a", "t", "o"]
+
+      Enum.each(letters, fn letter ->
+        assert :ok = GameServer.guess(game.id, current_player_id, letter)
+        assert_receive {:game_updated, _updated_summary}
+      end)
+
+      # Get the final game state
+      final_summary = GameServer.get_game(game.id)
+      assert final_summary.game_status == :finished
+    end
+
+    test "filters words by categories when starting a game", %{game: game} do
+      # Add players to have at least 2 players
+      player1 = Player.new("Player 1")
+      GameServer.join_game(game.id, player1)
+      player2 = Player.new("Player 2")
+      GameServer.join_game(game.id, player2)
+
+      # Insert a Portuguese word
+      category_1 = insert(:category)
+      category_2 = insert(:category)
+
+      insert(:word,
+        text: "gato",
+        hint: "Mia",
+        category: category_1
+      )
+
+      # Set language option to Portuguese
+      GameServer.set_word_options(game.id, category_ids: [category_1.id, category_2.id])
+
+      flush_messages()
+
+      # Start the game
+      assert :ok = GameServer.start_game(game.id)
+
+      assert_receive {:game_updated, game_summary}
+      assert game_summary.game_status == :playing
+
+      # Get the current player
+      current_player_id = game_summary.current_player_id
+
+      # Try to guess the Portuguese word "gato" letter by letter
+      letters = ["g", "a", "t", "o"]
+
+      Enum.each(letters, fn letter ->
+        assert :ok = GameServer.guess(game.id, current_player_id, letter)
+        assert_receive {:game_updated, _updated_summary}
+      end)
+
+      # Get the final game state
+      final_summary = GameServer.get_game(game.id)
+      assert final_summary.game_status == :finished
     end
 
     test "returns error when trying to start a game with insufficient players", %{game: game} do

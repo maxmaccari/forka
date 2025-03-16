@@ -24,6 +24,8 @@ defmodule Forka.DataCase do
       import Ecto.Changeset
       import Ecto.Query
       import Forka.DataCase
+
+      import Forka.Factory
     end
   end
 

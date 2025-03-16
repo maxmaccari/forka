@@ -32,6 +32,7 @@ defmodule Forka.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
+      {:bcrypt_elixir, "~> 3.0"},
       {:phoenix, "~> 1.7.20"},
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.10"},
@@ -58,7 +59,10 @@ defmodule Forka.MixProject do
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.1.1"},
       {:bandit, "~> 1.5"},
-      {:uuid, "~> 1.1"}
+      {:uuid, "~> 1.1"},
+      {:ex_machina, "~> 2.8.0", only: :test},
+      {:backpex, "~> 0.11.0"},
+      {:csv, "~> 3.2"}
     ]
   end
 

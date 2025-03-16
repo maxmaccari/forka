@@ -9,7 +9,11 @@ import Config
 
 config :forka,
   ecto_repos: [Forka.Repo],
-  generators: [timestamp_type: :utc_datetime]
+  generators: [timestamp_type: :utc_datetime, binary_id: true]
+
+config :forka, Forka.Repo,
+  primary_key_type: :binary_id,
+  foreign_key_type: :binary_id
 
 # Configures the endpoint
 config :forka, ForkaWeb.Endpoint,

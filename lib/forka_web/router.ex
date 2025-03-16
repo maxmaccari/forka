@@ -1,6 +1,10 @@
 defmodule ForkaWeb.Router do
   use ForkaWeb, :router
 
+  import ForkaWeb.AdminAuth
+
+  import Backpex.Router
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -8,6 +12,11 @@ defmodule ForkaWeb.Router do
     plug :put_root_layout, html: {ForkaWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+  end
+
+  pipeline :admin do
+    plug Backpex.ThemeSelectorPlug
+    plug :fetch_current_admin
   end
 
   pipeline :api do
@@ -39,6 +48,50 @@ defmodule ForkaWeb.Router do
 
       live_dashboard "/dashboard", metrics: ForkaWeb.Telemetry
       forward "/mailbox", Plug.Swoosh.MailboxPreview
+    end
+  end
+
+  ## Authentication routes
+
+  scope "/", ForkaWeb do
+    pipe_through [:browser, :redirect_if_admin_is_authenticated]
+
+    live_session :redirect_if_admin_is_authenticated,
+      on_mount: [{ForkaWeb.AdminAuth, :redirect_if_admin_is_authenticated}] do
+      live "/admin/log_in", AdminLoginLive, :new
+    end
+
+    post "/admin/log_in", AdminSessionController, :create
+  end
+
+  scope "/", ForkaWeb do
+    pipe_through [:browser]
+
+    delete "/admin/log_out", AdminSessionController, :delete
+
+    live_session :current_admin,
+      on_mount: [{ForkaWeb.AdminAuth, :mount_current_admin}] do
+      live "/admin/confirm/:token", AdminConfirmationLive, :edit
+      live "/admin/confirm", AdminConfirmationInstructionsLive, :new
+    end
+  end
+
+  scope "/admin", ForkaWeb.Admin do
+    pipe_through [:browser, :admin, :require_authenticated_admin]
+
+    backpex_routes()
+
+    get "/", RedirectController, :redirect_to_categories
+
+    live_session :default,
+      on_mount: [Backpex.InitAssigns, {ForkaWeb.AdminAuth, :ensure_authenticated}],
+      layout: {ForkaWeb.Layouts, :admin} do
+      live_resources "/categories", CategoryLive
+      live_resources "/words", WordLive
+      live_resources "/admin_users", AdminUsersLive
+
+      live "/settings", AdminSettingsLive, :edit
+      live "/settings/confirm_email/:token", AdminSettingsLive, :confirm_email
     end
   end
 end
