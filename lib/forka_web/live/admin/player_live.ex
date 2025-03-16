@@ -24,14 +24,20 @@ defmodule ForkaWeb.Admin.PlayerLive do
     [
       username: %{
         module: Backpex.Fields.Text,
-        label: "Text",
+        label: "Usernae",
         searchable: true
       },
       email: %{
         module: Backpex.Fields.Text,
-        label: "Text",
+        label: "Email",
         searchable: true
       }
     ]
   end
+
+  @impl Backpex.LiveResource
+  def can?(_assigns, :show, _item), do: false
+  def can?(_assigns, :new, _item), do: false
+  def can?(_assigns, action, _item) when action in [:index, :edit, :delete], do: true
+  def can?(_assigns, _action, _item), do: false
 end
