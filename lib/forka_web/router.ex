@@ -88,6 +88,7 @@ defmodule ForkaWeb.Router do
       layout: {ForkaWeb.Layouts, :admin} do
       live_resources "/categories", CategoryLive
       live_resources "/words", WordLive
+      live_resources "/admin_users", AdminUsersLive
 
       live "/settings", AdminSettingsLive, :edit
       live "/settings/confirm_email/:token", AdminSettingsLive, :confirm_email
