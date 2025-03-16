@@ -1,4 +1,4 @@
-defmodule ForkaWeb.AdminAdminLoginLive do
+defmodule ForkaWeb.AdminLoginLive do
   use ForkaWeb, :live_view
 
   def render(assigns) do

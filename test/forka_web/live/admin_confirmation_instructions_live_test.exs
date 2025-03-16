@@ -13,12 +13,12 @@ defmodule ForkaWeb.AdminConfirmationInstructionsLiveTest do
 
   describe "Resend confirmation" do
     test "renders the resend confirmation page", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/admins/confirm")
+      {:ok, _lv, html} = live(conn, ~p"/admin/confirm")
       assert html =~ "Resend confirmation instructions"
     end
 
     test "sends a new confirmation token", %{conn: conn, admin: admin} do
-      {:ok, lv, _html} = live(conn, ~p"/admins/confirm")
+      {:ok, lv, _html} = live(conn, ~p"/admin/confirm")
 
       {:ok, conn} =
         lv
@@ -35,7 +35,7 @@ defmodule ForkaWeb.AdminConfirmationInstructionsLiveTest do
     test "does not send confirmation token if admin is confirmed", %{conn: conn, admin: admin} do
       Repo.update!(Backoffice.Admin.confirm_changeset(admin))
 
-      {:ok, lv, _html} = live(conn, ~p"/admins/confirm")
+      {:ok, lv, _html} = live(conn, ~p"/admin/confirm")
 
       {:ok, conn} =
         lv
@@ -50,7 +50,7 @@ defmodule ForkaWeb.AdminConfirmationInstructionsLiveTest do
     end
 
     test "does not send confirmation token if email is invalid", %{conn: conn} do
-      {:ok, lv, _html} = live(conn, ~p"/admins/confirm")
+      {:ok, lv, _html} = live(conn, ~p"/admin/confirm")
 
       {:ok, conn} =
         lv

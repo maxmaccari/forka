@@ -1,4 +1,4 @@
-defmodule ForkaWeb.AdminSettingsLiveTest do
+defmodule ForkaWeb.Admin.AdminSettingsLiveTest do
   use ForkaWeb.ConnCase, async: true
 
   alias Forka.Backoffice
@@ -10,17 +10,17 @@ defmodule ForkaWeb.AdminSettingsLiveTest do
       {:ok, _lv, html} =
         conn
         |> log_in_admin(admin_fixture())
-        |> live(~p"/admins/settings")
+        |> live(~p"/admin/settings")
 
       assert html =~ "Change Email"
       assert html =~ "Change Password"
     end
 
     test "redirects if admin is not logged in", %{conn: conn} do
-      assert {:error, redirect} = live(conn, ~p"/admins/settings")
+      assert {:error, redirect} = live(conn, ~p"/admin/settings")
 
       assert {:redirect, %{to: path, flash: flash}} = redirect
-      assert path == ~p"/admins/log_in"
+      assert path == ~p"/admin/log_in"
       assert %{"error" => "You must log in to access this page."} = flash
     end
   end
@@ -35,7 +35,7 @@ defmodule ForkaWeb.AdminSettingsLiveTest do
     test "updates the admin email", %{conn: conn, password: password, admin: admin} do
       new_email = unique_admin_email()
 
-      {:ok, lv, _html} = live(conn, ~p"/admins/settings")
+      {:ok, lv, _html} = live(conn, ~p"/admin/settings")
 
       result =
         lv
@@ -50,7 +50,7 @@ defmodule ForkaWeb.AdminSettingsLiveTest do
     end
 
     test "renders errors with invalid data (phx-change)", %{conn: conn} do
-      {:ok, lv, _html} = live(conn, ~p"/admins/settings")
+      {:ok, lv, _html} = live(conn, ~p"/admin/settings")
 
       result =
         lv
@@ -66,7 +66,7 @@ defmodule ForkaWeb.AdminSettingsLiveTest do
     end
 
     test "renders errors with invalid data (phx-submit)", %{conn: conn, admin: admin} do
-      {:ok, lv, _html} = live(conn, ~p"/admins/settings")
+      {:ok, lv, _html} = live(conn, ~p"/admin/settings")
 
       result =
         lv
@@ -92,7 +92,7 @@ defmodule ForkaWeb.AdminSettingsLiveTest do
     test "updates the admin password", %{conn: conn, admin: admin, password: password} do
       new_password = valid_admin_password()
 
-      {:ok, lv, _html} = live(conn, ~p"/admins/settings")
+      {:ok, lv, _html} = live(conn, ~p"/admin/settings")
 
       form =
         form(lv, "#password_form", %{
@@ -108,7 +108,7 @@ defmodule ForkaWeb.AdminSettingsLiveTest do
 
       new_password_conn = follow_trigger_action(form, conn)
 
-      assert redirected_to(new_password_conn) == ~p"/admins/settings"
+      assert redirected_to(new_password_conn) == ~p"/admin/settings"
 
       assert get_session(new_password_conn, :admin_token) != get_session(conn, :admin_token)
 
@@ -119,7 +119,7 @@ defmodule ForkaWeb.AdminSettingsLiveTest do
     end
 
     test "renders errors with invalid data (phx-change)", %{conn: conn} do
-      {:ok, lv, _html} = live(conn, ~p"/admins/settings")
+      {:ok, lv, _html} = live(conn, ~p"/admin/settings")
 
       result =
         lv
@@ -138,7 +138,7 @@ defmodule ForkaWeb.AdminSettingsLiveTest do
     end
 
     test "renders errors with invalid data (phx-submit)", %{conn: conn} do
-      {:ok, lv, _html} = live(conn, ~p"/admins/settings")
+      {:ok, lv, _html} = live(conn, ~p"/admin/settings")
 
       result =
         lv
@@ -165,34 +165,38 @@ defmodule ForkaWeb.AdminSettingsLiveTest do
 
       token =
         extract_admin_token(fn url ->
-          Backoffice.deliver_admin_update_email_instructions(%{admin | email: email}, admin.email, url)
+          Backoffice.deliver_admin_update_email_instructions(
+            %{admin | email: email},
+            admin.email,
+            url
+          )
         end)
 
       %{conn: log_in_admin(conn, admin), token: token, email: email, admin: admin}
     end
 
     test "updates the admin email once", %{conn: conn, admin: admin, token: token, email: email} do
-      {:error, redirect} = live(conn, ~p"/admins/settings/confirm_email/#{token}")
+      {:error, redirect} = live(conn, ~p"/admin/settings/confirm_email/#{token}")
 
       assert {:live_redirect, %{to: path, flash: flash}} = redirect
-      assert path == ~p"/admins/settings"
+      assert path == ~p"/admin/settings"
       assert %{"info" => message} = flash
       assert message == "Email changed successfully."
       refute Backoffice.get_admin_by_email(admin.email)
       assert Backoffice.get_admin_by_email(email)
 
       # use confirm token again
-      {:error, redirect} = live(conn, ~p"/admins/settings/confirm_email/#{token}")
+      {:error, redirect} = live(conn, ~p"/admin/settings/confirm_email/#{token}")
       assert {:live_redirect, %{to: path, flash: flash}} = redirect
-      assert path == ~p"/admins/settings"
+      assert path == ~p"/admin/settings"
       assert %{"error" => message} = flash
       assert message == "Email change link is invalid or it has expired."
     end
 
     test "does not update email with invalid token", %{conn: conn, admin: admin} do
-      {:error, redirect} = live(conn, ~p"/admins/settings/confirm_email/oops")
+      {:error, redirect} = live(conn, ~p"/admin/settings/confirm_email/oops")
       assert {:live_redirect, %{to: path, flash: flash}} = redirect
-      assert path == ~p"/admins/settings"
+      assert path == ~p"/admin/settings"
       assert %{"error" => message} = flash
       assert message == "Email change link is invalid or it has expired."
       assert Backoffice.get_admin_by_email(admin.email)
@@ -200,9 +204,9 @@ defmodule ForkaWeb.AdminSettingsLiveTest do
 
     test "redirects if admin is not logged in", %{token: token} do
       conn = build_conn()
-      {:error, redirect} = live(conn, ~p"/admins/settings/confirm_email/#{token}")
+      {:error, redirect} = live(conn, ~p"/admin/settings/confirm_email/#{token}")
       assert {:redirect, %{to: path, flash: flash}} = redirect
-      assert path == ~p"/admins/log_in"
+      assert path == ~p"/admin/log_in"
       assert %{"error" => message} = flash
       assert message == "You must log in to access this page."
     end

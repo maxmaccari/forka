@@ -13,7 +13,7 @@ defmodule ForkaWeb.AdminConfirmationLiveTest do
 
   describe "Confirm admin" do
     test "renders confirmation page", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/admins/confirm/some-token")
+      {:ok, _lv, html} = live(conn, ~p"/admin/confirm/some-token")
       assert html =~ "Confirm Account"
     end
 
@@ -23,7 +23,7 @@ defmodule ForkaWeb.AdminConfirmationLiveTest do
           Backoffice.deliver_admin_confirmation_instructions(admin, url)
         end)
 
-      {:ok, lv, _html} = live(conn, ~p"/admins/confirm/#{token}")
+      {:ok, lv, _html} = live(conn, ~p"/admin/confirm/#{token}")
 
       result =
         lv
@@ -41,7 +41,7 @@ defmodule ForkaWeb.AdminConfirmationLiveTest do
       assert Repo.all(Backoffice.AdminToken) == []
 
       # when not logged in
-      {:ok, lv, _html} = live(conn, ~p"/admins/confirm/#{token}")
+      {:ok, lv, _html} = live(conn, ~p"/admin/confirm/#{token}")
 
       result =
         lv
@@ -59,7 +59,7 @@ defmodule ForkaWeb.AdminConfirmationLiveTest do
         build_conn()
         |> log_in_admin(admin)
 
-      {:ok, lv, _html} = live(conn, ~p"/admins/confirm/#{token}")
+      {:ok, lv, _html} = live(conn, ~p"/admin/confirm/#{token}")
 
       result =
         lv
@@ -72,7 +72,7 @@ defmodule ForkaWeb.AdminConfirmationLiveTest do
     end
 
     test "does not confirm email with invalid token", %{conn: conn, admin: admin} do
-      {:ok, lv, _html} = live(conn, ~p"/admins/confirm/invalid-token")
+      {:ok, lv, _html} = live(conn, ~p"/admin/confirm/invalid-token")
 
       {:ok, conn} =
         lv
