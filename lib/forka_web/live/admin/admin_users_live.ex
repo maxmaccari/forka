@@ -1,4 +1,4 @@
-defmodule ForkaWeb.AdminUsersLive do
+defmodule ForkaWeb.Admin.AdminUsersLive do
   use Backpex.LiveResource,
     adapter_config: [
       schema: Forka.Backoffice.Admin,

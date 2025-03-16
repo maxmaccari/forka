@@ -76,7 +76,7 @@ defmodule ForkaWeb.Router do
     end
   end
 
-  scope "/admin", ForkaWeb do
+  scope "/admin", ForkaWeb.Admin do
     pipe_through [:browser, :admin, :require_authenticated_admin]
 
     backpex_routes()

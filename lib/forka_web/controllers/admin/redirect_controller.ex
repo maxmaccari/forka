@@ -1,4 +1,4 @@
-defmodule ForkaWeb.RedirectController do
+defmodule ForkaWeb.Admin.RedirectController do
   use ForkaWeb, :controller
 
   def redirect_to_categories(conn, _params) do

@@ -1,4 +1,4 @@
-defmodule ForkaWeb.AdminSettingsLive do
+defmodule ForkaWeb.Admin.AdminSettingsLive do
   use ForkaWeb, :live_view
 
   import ForkaWeb.AdminComponents

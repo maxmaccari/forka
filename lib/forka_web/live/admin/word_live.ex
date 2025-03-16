@@ -1,4 +1,4 @@
-defmodule ForkaWeb.WordLive do
+defmodule ForkaWeb.Admin.WordLive do
   use Backpex.LiveResource,
     adapter_config: [
       schema: Forka.Words.Word,

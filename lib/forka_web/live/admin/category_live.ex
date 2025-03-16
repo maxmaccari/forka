@@ -1,4 +1,4 @@
-defmodule ForkaWeb.CategoryLive do
+defmodule ForkaWeb.Admin.CategoryLive do
   use Backpex.LiveResource,
     adapter_config: [
       schema: Forka.Words.Category,
