@@ -1,17 +1,15 @@
 defmodule ForkaWeb.AdminSessionControllerTest do
   use ForkaWeb.ConnCase, async: true
 
-  import Forka.BackofficeFixtures
-
   setup do
-    %{admin: admin_fixture()}
+    %{admin: insert(:admin)}
   end
 
   describe "POST /admin/log_in" do
     test "logs the admin in", %{conn: conn, admin: admin} do
       conn =
         post(conn, ~p"/admin/log_in", %{
-          "admin" => %{"email" => admin.email, "password" => valid_admin_password()}
+          "admin" => %{"email" => admin.email, "password" => admin.password}
         })
 
       assert get_session(conn, :admin_token)
@@ -29,7 +27,7 @@ defmodule ForkaWeb.AdminSessionControllerTest do
         post(conn, ~p"/admin/log_in", %{
           "admin" => %{
             "email" => admin.email,
-            "password" => valid_admin_password(),
+            "password" => admin.password,
             "remember_me" => "true"
           }
         })
@@ -45,7 +43,7 @@ defmodule ForkaWeb.AdminSessionControllerTest do
         |> post(~p"/admin/log_in", %{
           "admin" => %{
             "email" => admin.email,
-            "password" => valid_admin_password()
+            "password" => admin.password
           }
         })
 
@@ -60,7 +58,7 @@ defmodule ForkaWeb.AdminSessionControllerTest do
           "_action" => "registered",
           "admin" => %{
             "email" => admin.email,
-            "password" => valid_admin_password()
+            "password" => admin.password
           }
         })
 
@@ -75,7 +73,7 @@ defmodule ForkaWeb.AdminSessionControllerTest do
           "_action" => "password_updated",
           "admin" => %{
             "email" => admin.email,
-            "password" => valid_admin_password()
+            "password" => admin.password
           }
         })
 

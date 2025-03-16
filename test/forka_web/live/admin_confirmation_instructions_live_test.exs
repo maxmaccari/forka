@@ -2,13 +2,12 @@ defmodule ForkaWeb.AdminConfirmationInstructionsLiveTest do
   use ForkaWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
-  import Forka.BackofficeFixtures
 
   alias Forka.Backoffice
   alias Forka.Repo
 
   setup do
-    %{admin: admin_fixture()}
+    %{admin: insert(:admin)}
   end
 
   describe "Resend confirmation" do

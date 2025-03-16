@@ -47,7 +47,7 @@ defmodule ForkaWeb.ConnCase do
   test context.
   """
   def register_and_log_in_admin(%{conn: conn}) do
-    admin = Forka.BackofficeFixtures.admin_fixture()
+    admin = Forka.Factory.insert(:admin)
     %{conn: log_in_admin(conn, admin), admin: admin}
   end
 
@@ -62,5 +62,31 @@ defmodule ForkaWeb.ConnCase do
     conn
     |> Phoenix.ConnTest.init_test_session(%{})
     |> Plug.Conn.put_session(:admin_token, token)
+  end
+
+  @doc """
+  Setup helper that registers and logs in players.
+
+      setup :register_and_log_in_player
+
+  It stores an updated connection and a registered player in the
+  test context.
+  """
+  def register_and_log_in_player(%{conn: conn}) do
+    player = Forka.Factory.insert(:player)
+    %{conn: log_in_player(conn, player), player: player}
+  end
+
+  @doc """
+  Logs the given `player` into the `conn`.
+
+  It returns an updated `conn`.
+  """
+  def log_in_player(conn, player) do
+    token = Forka.Players.generate_player_session_token(player)
+
+    conn
+    |> Phoenix.ConnTest.init_test_session(%{})
+    |> Plug.Conn.put_session(:player_token, token)
   end
 end

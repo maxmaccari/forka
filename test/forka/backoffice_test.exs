@@ -3,7 +3,7 @@ defmodule Forka.BackofficeTest do
 
   alias Forka.Backoffice
 
-  import Forka.BackofficeFixtures
+  import Forka.TestHelpers
   alias Forka.Backoffice.{Admin, AdminToken}
 
   describe "get_admin_by_email/1" do
@@ -12,7 +12,7 @@ defmodule Forka.BackofficeTest do
     end
 
     test "returns the admin if the email exists" do
-      %{id: id} = admin = admin_fixture()
+      %{id: id} = admin = insert(:admin)
       assert %Admin{id: ^id} = Backoffice.get_admin_by_email(admin.email)
     end
   end
@@ -23,15 +23,15 @@ defmodule Forka.BackofficeTest do
     end
 
     test "does not return the admin if the password is not valid" do
-      admin = admin_fixture()
+      admin = insert(:admin)
       refute Backoffice.get_admin_by_email_and_password(admin.email, "invalid")
     end
 
     test "returns the admin if the email and password are valid" do
-      %{id: id} = admin = admin_fixture()
+      %{id: id} = admin = insert(:admin)
 
       assert %Admin{id: ^id} =
-               Backoffice.get_admin_by_email_and_password(admin.email, valid_admin_password())
+               Backoffice.get_admin_by_email_and_password(admin.email, admin.password)
     end
   end
 
@@ -43,7 +43,7 @@ defmodule Forka.BackofficeTest do
     end
 
     test "returns the admin with the given id" do
-      %{id: id} = admin = admin_fixture()
+      %{id: id} = admin = insert(:admin)
       assert %Admin{id: ^id} = Backoffice.get_admin!(admin.id)
     end
   end
@@ -59,7 +59,8 @@ defmodule Forka.BackofficeTest do
     end
 
     test "validates email and password when given" do
-      {:error, changeset} = Backoffice.register_admin(%{email: "not valid", password: "not valid"})
+      {:error, changeset} =
+        Backoffice.register_admin(%{email: "not valid", password: "not valid"})
 
       assert %{
                email: ["must have the @ sign and no spaces"],
@@ -75,7 +76,7 @@ defmodule Forka.BackofficeTest do
     end
 
     test "validates email uniqueness" do
-      %{email: email} = admin_fixture()
+      %{email: email} = insert(:admin)
       {:error, changeset} = Backoffice.register_admin(%{email: email})
       assert "has already been taken" in errors_on(changeset).email
 
@@ -85,8 +86,8 @@ defmodule Forka.BackofficeTest do
     end
 
     test "registers admins with a hashed password" do
-      email = unique_admin_email()
-      {:ok, admin} = Backoffice.register_admin(valid_admin_attributes(email: email))
+      %{email: email} = params_for(:admin)
+      {:ok, admin} = Backoffice.register_admin(params_for(:admin, email: email))
       assert admin.email == email
       assert is_binary(admin.hashed_password)
       assert is_nil(admin.confirmed_at)
@@ -101,14 +102,9 @@ defmodule Forka.BackofficeTest do
     end
 
     test "allows fields to be set" do
-      email = unique_admin_email()
-      password = valid_admin_password()
+      %{email: email, password: password} = admin_params = params_for(:admin)
 
-      changeset =
-        Backoffice.change_admin_registration(
-          %Admin{},
-          valid_admin_attributes(email: email, password: password)
-        )
+      changeset = Backoffice.change_admin_registration(%Admin{}, admin_params)
 
       assert changeset.valid?
       assert get_change(changeset, :email) == email
@@ -126,17 +122,17 @@ defmodule Forka.BackofficeTest do
 
   describe "apply_admin_email/3" do
     setup do
-      %{admin: admin_fixture()}
+      %{admin: insert(:admin)}
     end
 
     test "requires email to change", %{admin: admin} do
-      {:error, changeset} = Backoffice.apply_admin_email(admin, valid_admin_password(), %{})
+      {:error, changeset} = Backoffice.apply_admin_email(admin, admin.password, %{})
       assert %{email: ["did not change"]} = errors_on(changeset)
     end
 
     test "validates email", %{admin: admin} do
       {:error, changeset} =
-        Backoffice.apply_admin_email(admin, valid_admin_password(), %{email: "not valid"})
+        Backoffice.apply_admin_email(admin, admin.email, %{email: "not valid"})
 
       assert %{email: ["must have the @ sign and no spaces"]} = errors_on(changeset)
     end
@@ -145,14 +141,13 @@ defmodule Forka.BackofficeTest do
       too_long = String.duplicate("db", 100)
 
       {:error, changeset} =
-        Backoffice.apply_admin_email(admin, valid_admin_password(), %{email: too_long})
+        Backoffice.apply_admin_email(admin, admin.email, %{email: too_long})
 
       assert "should be at most 160 character(s)" in errors_on(changeset).email
     end
 
     test "validates email uniqueness", %{admin: admin} do
-      %{email: email} = admin_fixture()
-      password = valid_admin_password()
+      %{email: email, password: password} = insert(:admin)
 
       {:error, changeset} = Backoffice.apply_admin_email(admin, password, %{email: email})
 
@@ -160,15 +155,17 @@ defmodule Forka.BackofficeTest do
     end
 
     test "validates current password", %{admin: admin} do
+      %{email: email} = params_for(:admin)
+
       {:error, changeset} =
-        Backoffice.apply_admin_email(admin, "invalid", %{email: unique_admin_email()})
+        Backoffice.apply_admin_email(admin, "invalid", %{email: email})
 
       assert %{current_password: ["is not valid"]} = errors_on(changeset)
     end
 
     test "applies the email without persisting it", %{admin: admin} do
-      email = unique_admin_email()
-      {:ok, admin} = Backoffice.apply_admin_email(admin, valid_admin_password(), %{email: email})
+      %{email: email} = params_for(:admin)
+      {:ok, admin} = Backoffice.apply_admin_email(admin, admin.password, %{email: email})
       assert admin.email == email
       assert Backoffice.get_admin!(admin.id).email != email
     end
@@ -176,12 +173,12 @@ defmodule Forka.BackofficeTest do
 
   describe "deliver_admin_update_email_instructions/3" do
     setup do
-      %{admin: admin_fixture()}
+      %{admin: insert(:admin)}
     end
 
     test "sends token through notification", %{admin: admin} do
       token =
-        extract_admin_token(fn url ->
+        extract_token_from_email(fn url ->
           Backoffice.deliver_admin_update_email_instructions(admin, "current@example.com", url)
         end)
 
@@ -195,12 +192,16 @@ defmodule Forka.BackofficeTest do
 
   describe "update_admin_email/2" do
     setup do
-      admin = admin_fixture()
-      email = unique_admin_email()
+      admin = insert(:admin)
+      %{email: email} = params_for(:admin)
 
       token =
-        extract_admin_token(fn url ->
-          Backoffice.deliver_admin_update_email_instructions(%{admin | email: email}, admin.email, url)
+        extract_token_from_email(fn url ->
+          Backoffice.deliver_admin_update_email_instructions(
+            %{admin | email: email},
+            admin.email,
+            url
+          )
         end)
 
       %{admin: admin, token: token, email: email}
@@ -223,7 +224,9 @@ defmodule Forka.BackofficeTest do
     end
 
     test "does not update email if admin email changed", %{admin: admin, token: token} do
-      assert Backoffice.update_admin_email(%{admin | email: "current@example.com"}, token) == :error
+      assert Backoffice.update_admin_email(%{admin | email: "current@example.com"}, token) ==
+               :error
+
       assert Repo.get!(Admin, admin.id).email == admin.email
       assert Repo.get_by(AdminToken, admin_id: admin.id)
     end
@@ -244,9 +247,7 @@ defmodule Forka.BackofficeTest do
 
     test "allows fields to be set" do
       changeset =
-        Backoffice.change_admin_password(%Admin{}, %{
-          "password" => "new valid password"
-        })
+        Backoffice.change_admin_password(%Admin{}, %{"password" => "new valid password"})
 
       assert changeset.valid?
       assert get_change(changeset, :password) == "new valid password"
@@ -256,12 +257,12 @@ defmodule Forka.BackofficeTest do
 
   describe "update_admin_password/3" do
     setup do
-      %{admin: admin_fixture()}
+      %{admin: insert(:admin)}
     end
 
     test "validates password", %{admin: admin} do
       {:error, changeset} =
-        Backoffice.update_admin_password(admin, valid_admin_password(), %{
+        Backoffice.update_admin_password(admin, admin.password, %{
           password: "not valid",
           password_confirmation: "another"
         })
@@ -276,21 +277,26 @@ defmodule Forka.BackofficeTest do
       too_long = String.duplicate("db", 100)
 
       {:error, changeset} =
-        Backoffice.update_admin_password(admin, valid_admin_password(), %{password: too_long})
+        Backoffice.update_admin_password(admin, admin.password, %{password: too_long})
 
       assert "should be at most 72 character(s)" in errors_on(changeset).password
     end
 
     test "validates current password", %{admin: admin} do
       {:error, changeset} =
-        Backoffice.update_admin_password(admin, "invalid", %{password: valid_admin_password()})
+        Backoffice.update_admin_password(admin, "invalid", %{password: admin.password})
 
       assert %{current_password: ["is not valid"]} = errors_on(changeset)
     end
 
     test "updates the password", %{admin: admin} do
+      # On tests, the admin password is filled by convenience through the factory,
+      # but we need to nilify it to properly test the password update behavior
+      valid_password = admin.password
+      admin = Map.put(admin, :password, nil)
+
       {:ok, admin} =
-        Backoffice.update_admin_password(admin, valid_admin_password(), %{
+        Backoffice.update_admin_password(admin, valid_password, %{
           password: "new valid password"
         })
 
@@ -302,7 +308,7 @@ defmodule Forka.BackofficeTest do
       _ = Backoffice.generate_admin_session_token(admin)
 
       {:ok, _} =
-        Backoffice.update_admin_password(admin, valid_admin_password(), %{
+        Backoffice.update_admin_password(admin, admin.password, %{
           password: "new valid password"
         })
 
@@ -312,7 +318,7 @@ defmodule Forka.BackofficeTest do
 
   describe "generate_admin_session_token/1" do
     setup do
-      %{admin: admin_fixture()}
+      %{admin: insert(:admin)}
     end
 
     test "generates a token", %{admin: admin} do
@@ -324,7 +330,7 @@ defmodule Forka.BackofficeTest do
       assert_raise Ecto.ConstraintError, fn ->
         Repo.insert!(%AdminToken{
           token: admin_token.token,
-          admin_id: admin_fixture().id,
+          admin_id: insert(:admin).id,
           context: "session"
         })
       end
@@ -333,7 +339,7 @@ defmodule Forka.BackofficeTest do
 
   describe "get_admin_by_session_token/1" do
     setup do
-      admin = admin_fixture()
+      admin = insert(:admin)
       token = Backoffice.generate_admin_session_token(admin)
       %{admin: admin, token: token}
     end
@@ -355,7 +361,7 @@ defmodule Forka.BackofficeTest do
 
   describe "delete_admin_session_token/1" do
     test "deletes the token" do
-      admin = admin_fixture()
+      admin = insert(:admin)
       token = Backoffice.generate_admin_session_token(admin)
       assert Backoffice.delete_admin_session_token(token) == :ok
       refute Backoffice.get_admin_by_session_token(token)
@@ -364,12 +370,12 @@ defmodule Forka.BackofficeTest do
 
   describe "deliver_admin_confirmation_instructions/2" do
     setup do
-      %{admin: admin_fixture()}
+      %{admin: insert(:admin)}
     end
 
     test "sends token through notification", %{admin: admin} do
       token =
-        extract_admin_token(fn url ->
+        extract_token_from_email(fn url ->
           Backoffice.deliver_admin_confirmation_instructions(admin, url)
         end)
 
@@ -383,10 +389,10 @@ defmodule Forka.BackofficeTest do
 
   describe "confirm_admin/1" do
     setup do
-      admin = admin_fixture()
+      admin = insert(:admin)
 
       token =
-        extract_admin_token(fn url ->
+        extract_token_from_email(fn url ->
           Backoffice.deliver_admin_confirmation_instructions(admin, url)
         end)
 
@@ -417,12 +423,12 @@ defmodule Forka.BackofficeTest do
 
   describe "deliver_admin_reset_password_instructions/2" do
     setup do
-      %{admin: admin_fixture()}
+      %{admin: insert(:admin)}
     end
 
     test "sends token through notification", %{admin: admin} do
       token =
-        extract_admin_token(fn url ->
+        extract_token_from_email(fn url ->
           Backoffice.deliver_admin_reset_password_instructions(admin, url)
         end)
 
@@ -436,10 +442,10 @@ defmodule Forka.BackofficeTest do
 
   describe "get_admin_by_reset_password_token/1" do
     setup do
-      admin = admin_fixture()
+      admin = insert(:admin)
 
       token =
-        extract_admin_token(fn url ->
+        extract_token_from_email(fn url ->
           Backoffice.deliver_admin_reset_password_instructions(admin, url)
         end)
 
@@ -465,7 +471,7 @@ defmodule Forka.BackofficeTest do
 
   describe "reset_admin_password/2" do
     setup do
-      %{admin: admin_fixture()}
+      %{admin: insert(:admin)}
     end
 
     test "validates password", %{admin: admin} do
@@ -488,7 +494,11 @@ defmodule Forka.BackofficeTest do
     end
 
     test "updates the password", %{admin: admin} do
-      {:ok, updated_admin} = Backoffice.reset_admin_password(admin, %{password: "new valid password"})
+      admin = Map.put(admin, :password, nil)
+
+      {:ok, updated_admin} =
+        Backoffice.reset_admin_password(admin, %{password: "new valid password"})
+
       assert is_nil(updated_admin.password)
       assert Backoffice.get_admin_by_email_and_password(admin.email, "new valid password")
     end

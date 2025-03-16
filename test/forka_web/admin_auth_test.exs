@@ -4,7 +4,6 @@ defmodule ForkaWeb.AdminAuthTest do
   alias Phoenix.LiveView
   alias Forka.Backoffice
   alias ForkaWeb.AdminAuth
-  import Forka.BackofficeFixtures
 
   @remember_me_cookie "_forka_web_admin_remember_me"
 
@@ -14,7 +13,7 @@ defmodule ForkaWeb.AdminAuthTest do
       |> Map.replace!(:secret_key_base, ForkaWeb.Endpoint.config(:secret_key_base))
       |> init_test_session(%{})
 
-    %{admin: admin_fixture(), conn: conn}
+    %{admin: insert(:admin), conn: conn}
   end
 
   describe "log_in_admin/3" do

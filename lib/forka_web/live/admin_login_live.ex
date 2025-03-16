@@ -1,26 +1,28 @@
 defmodule ForkaWeb.AdminLoginLive do
   use ForkaWeb, :live_view
 
+  import ForkaWeb.AdminComponents
+
   def render(assigns) do
     ~H"""
     <div class="mx-auto max-w-sm">
-      <.header class="text-center">
-        Log in to account
-      </.header>
+      <.admin_header class="text-center">
+        Log in to backoffice
+      </.admin_header>
 
-      <.simple_form for={@form} id="login_form" action={~p"/admin/log_in"} phx-update="ignore">
-        <.input field={@form[:email]} type="email" label="Email" required />
-        <.input field={@form[:password]} type="password" label="Password" required />
+      <.admin_simple_form for={@form} id="login_form" action={~p"/admin/log_in"} phx-update="ignore">
+        <.admin_input field={@form[:email]} type="email" label="Email" required />
+        <.admin_input field={@form[:password]} type="password" label="Password" required />
 
         <:actions>
-          <.input field={@form[:remember_me]} type="checkbox" label="Keep me logged in" />
+          <.admin_input field={@form[:remember_me]} type="checkbox" label="Keep me logged in" />
         </:actions>
         <:actions>
-          <.button phx-disable-with="Logging in..." class="w-full">
+          <.admin_button phx-disable-with="Logging in..." class="w-full btn-outline btn-primary">
             Log in <span aria-hidden="true">→</span>
-          </.button>
+          </.admin_button>
         </:actions>
-      </.simple_form>
+      </.admin_simple_form>
     </div>
     """
   end

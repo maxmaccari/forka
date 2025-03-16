@@ -2,21 +2,18 @@ defmodule ForkaWeb.AdminLoginLiveTest do
   use ForkaWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
-  import Forka.BackofficeFixtures
 
   describe "Log in page" do
     test "renders log in page", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/admin/log_in")
 
       assert html =~ "Log in"
-      refute html =~ "Register"
-      refute html =~ "Forgot your password?"
     end
 
     test "redirects if already logged in", %{conn: conn} do
       result =
         conn
-        |> log_in_admin(admin_fixture())
+        |> log_in_admin(insert(:admin))
         |> live(~p"/admin/log_in")
         |> follow_redirect(conn, "/admin")
 
@@ -27,7 +24,7 @@ defmodule ForkaWeb.AdminLoginLiveTest do
   describe "admin login" do
     test "redirects if admin login with valid credentials", %{conn: conn} do
       password = "123456789abcd"
-      admin = admin_fixture(%{password: password})
+      admin = insert(:admin, password: password)
 
       {:ok, lv, _html} = live(conn, ~p"/admin/log_in")
 

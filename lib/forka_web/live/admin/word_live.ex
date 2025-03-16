@@ -31,7 +31,7 @@ defmodule ForkaWeb.Admin.WordLive do
         module: Backpex.Fields.BelongsTo,
         label: "Category",
         display_field: :name,
-        live_resource: ForkaWeb.CategoryLive
+        live_resource: ForkaWeb.Admin.CategoryLive
       },
       hint: %{
         module: Backpex.Fields.Text,
