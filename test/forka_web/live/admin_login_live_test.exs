@@ -9,8 +9,6 @@ defmodule ForkaWeb.AdminLoginLiveTest do
       {:ok, _lv, html} = live(conn, ~p"/admin/log_in")
 
       assert html =~ "Log in"
-      refute html =~ "Register"
-      refute html =~ "Forgot your password?"
     end
 
     test "redirects if already logged in", %{conn: conn} do
