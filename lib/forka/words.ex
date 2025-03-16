@@ -86,8 +86,6 @@ defmodule Forka.Words do
 
     words_to_insert =
       for category <- categories, word <- words_by_category[String.downcase(category.name)] do
-        dbg(word)
-
         # Extract word data and prepare for insertion
         word_name = word["name"] || word[:name]
         word_hint = word["hint"] || word[:hint]

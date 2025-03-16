@@ -41,8 +41,6 @@ en_words =
   |> CSV.decode!(headers: true)
   |> Enum.to_list()
 
-dbg(pt_words)
-
 {:ok, inserted_pt_words} = Forka.Words.import_words(pt_words)
 {:ok, inserted_english_words} = Forka.Words.import_words(en_words)
 
