@@ -3,13 +3,13 @@ defmodule ForkaWeb.PlayerSettingsLiveTest do
 
   alias Forka.Players
   import Phoenix.LiveViewTest
-  import Forka.PlayersFixtures
+  import Forka.TestHelpers
 
   describe "Settings page" do
     test "renders settings page", %{conn: conn} do
       {:ok, _lv, html} =
         conn
-        |> log_in_player(player_fixture())
+        |> log_in_player(insert(:player))
         |> live(~p"/players/settings")
 
       assert html =~ "Change Email"
@@ -27,13 +27,12 @@ defmodule ForkaWeb.PlayerSettingsLiveTest do
 
   describe "update email form" do
     setup %{conn: conn} do
-      password = valid_player_password()
-      player = player_fixture(%{password: password})
-      %{conn: log_in_player(conn, player), player: player, password: password}
+      player = insert(:player)
+      %{conn: log_in_player(conn, player), player: player, password: player.password}
     end
 
     test "updates the player email", %{conn: conn, password: password, player: player} do
-      new_email = unique_player_email()
+      %{email: new_email} = params_for(:player)
 
       {:ok, lv, _html} = live(conn, ~p"/players/settings")
 
@@ -84,13 +83,12 @@ defmodule ForkaWeb.PlayerSettingsLiveTest do
 
   describe "update password form" do
     setup %{conn: conn} do
-      password = valid_player_password()
-      player = player_fixture(%{password: password})
-      %{conn: log_in_player(conn, player), player: player, password: password}
+      player = insert(:player)
+      %{conn: log_in_player(conn, player), player: player, password: player.password}
     end
 
     test "updates the player password", %{conn: conn, player: player, password: password} do
-      new_password = valid_player_password()
+      %{password: new_password} = params_for(:player)
 
       {:ok, lv, _html} = live(conn, ~p"/players/settings")
 
@@ -160,18 +158,27 @@ defmodule ForkaWeb.PlayerSettingsLiveTest do
 
   describe "confirm email" do
     setup %{conn: conn} do
-      player = player_fixture()
-      email = unique_player_email()
+      player = insert(:player)
+      %{email: email} = params_for(:player)
 
       token =
-        extract_player_token(fn url ->
-          Players.deliver_player_update_email_instructions(%{player | email: email}, player.email, url)
+        extract_token_from_email(fn url ->
+          Players.deliver_player_update_email_instructions(
+            %{player | email: email},
+            player.email,
+            url
+          )
         end)
 
       %{conn: log_in_player(conn, player), token: token, email: email, player: player}
     end
 
-    test "updates the player email once", %{conn: conn, player: player, token: token, email: email} do
+    test "updates the player email once", %{
+      conn: conn,
+      player: player,
+      token: token,
+      email: email
+    } do
       {:error, redirect} = live(conn, ~p"/players/settings/confirm_email/#{token}")
 
       assert {:live_redirect, %{to: path, flash: flash}} = redirect

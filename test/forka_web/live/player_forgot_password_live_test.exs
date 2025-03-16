@@ -2,7 +2,6 @@ defmodule ForkaWeb.PlayerForgotPasswordLiveTest do
   use ForkaWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
-  import Forka.PlayersFixtures
 
   alias Forka.Players
   alias Forka.Repo
@@ -19,7 +18,7 @@ defmodule ForkaWeb.PlayerForgotPasswordLiveTest do
     test "redirects if already logged in", %{conn: conn} do
       result =
         conn
-        |> log_in_player(player_fixture())
+        |> log_in_player(insert(:player))
         |> live(~p"/players/reset_password")
         |> follow_redirect(conn, ~p"/")
 
@@ -29,7 +28,7 @@ defmodule ForkaWeb.PlayerForgotPasswordLiveTest do
 
   describe "Reset link" do
     setup do
-      %{player: player_fixture()}
+      %{player: insert(:player)}
     end
 
     test "sends a new reset password token", %{conn: conn, player: player} do

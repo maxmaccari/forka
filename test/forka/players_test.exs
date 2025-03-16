@@ -3,7 +3,7 @@ defmodule Forka.PlayersTest do
 
   alias Forka.Players
 
-  import Forka.PlayersFixtures
+  import Forka.TestHelpers
   alias Forka.Players.{Player, PlayerToken}
 
   describe "get_player_by_email/1" do
@@ -12,7 +12,7 @@ defmodule Forka.PlayersTest do
     end
 
     test "returns the player if the email exists" do
-      %{id: id} = player = player_fixture()
+      %{id: id} = player = insert(:player)
       assert %Player{id: ^id} = Players.get_player_by_email(player.email)
     end
   end
@@ -23,15 +23,15 @@ defmodule Forka.PlayersTest do
     end
 
     test "does not return the player if the password is not valid" do
-      player = player_fixture()
+      player = insert(:player)
       refute Players.get_player_by_email_and_password(player.email, "invalid")
     end
 
     test "returns the player if the email and password are valid" do
-      %{id: id} = player = player_fixture()
+      %{id: id} = player = insert(:player)
 
       assert %Player{id: ^id} =
-               Players.get_player_by_email_and_password(player.email, valid_player_password())
+               Players.get_player_by_email_and_password(player.email, player.password)
     end
   end
 
@@ -43,7 +43,7 @@ defmodule Forka.PlayersTest do
     end
 
     test "returns the player with the given id" do
-      %{id: id} = player = player_fixture()
+      %{id: id} = player = insert(:player)
       assert %Player{id: ^id} = Players.get_player!(player.id)
     end
   end
@@ -75,7 +75,7 @@ defmodule Forka.PlayersTest do
     end
 
     test "validates email uniqueness" do
-      %{email: email} = player_fixture()
+      %{email: email} = insert(:player)
       {:error, changeset} = Players.register_player(%{email: email})
       assert "has already been taken" in errors_on(changeset).email
 
@@ -85,8 +85,8 @@ defmodule Forka.PlayersTest do
     end
 
     test "registers players with a hashed password" do
-      email = unique_player_email()
-      {:ok, player} = Players.register_player(valid_player_attributes(email: email))
+      %{email: email} = player_params = params_for(:player)
+      {:ok, player} = Players.register_player(player_params)
       assert player.email == email
       assert is_binary(player.hashed_password)
       assert is_nil(player.confirmed_at)
@@ -101,14 +101,13 @@ defmodule Forka.PlayersTest do
     end
 
     test "allows fields to be set" do
-      email = unique_player_email()
-      username = unique_player_username()
-      password = valid_player_password()
+      %{email: email, username: username, password: password} =
+        player_params = params_for(:player)
 
       changeset =
         Players.change_player_registration(
           %Player{},
-          valid_player_attributes(email: email, username: username, password: password)
+          player_params
         )
 
       assert changeset.valid?
@@ -128,17 +127,17 @@ defmodule Forka.PlayersTest do
 
   describe "apply_player_email/3" do
     setup do
-      %{player: player_fixture()}
+      %{player: insert(:player)}
     end
 
     test "requires email to change", %{player: player} do
-      {:error, changeset} = Players.apply_player_email(player, valid_player_password(), %{})
+      {:error, changeset} = Players.apply_player_email(player, player.password, %{})
       assert %{email: ["did not change"]} = errors_on(changeset)
     end
 
     test "validates email", %{player: player} do
       {:error, changeset} =
-        Players.apply_player_email(player, valid_player_password(), %{email: "not valid"})
+        Players.apply_player_email(player, player.password, %{email: "not valid"})
 
       assert %{email: ["must have the @ sign and no spaces"]} = errors_on(changeset)
     end
@@ -147,14 +146,14 @@ defmodule Forka.PlayersTest do
       too_long = String.duplicate("db", 100)
 
       {:error, changeset} =
-        Players.apply_player_email(player, valid_player_password(), %{email: too_long})
+        Players.apply_player_email(player, player.password, %{email: too_long})
 
       assert "should be at most 160 character(s)" in errors_on(changeset).email
     end
 
     test "validates email uniqueness", %{player: player} do
-      %{email: email} = player_fixture()
-      password = valid_player_password()
+      %{email: email} = insert(:player)
+      password = player.password
 
       {:error, changeset} = Players.apply_player_email(player, password, %{email: email})
 
@@ -162,15 +161,17 @@ defmodule Forka.PlayersTest do
     end
 
     test "validates current password", %{player: player} do
+      %{email: new_email} = params_for(:player)
+
       {:error, changeset} =
-        Players.apply_player_email(player, "invalid", %{email: unique_player_email()})
+        Players.apply_player_email(player, "invalid", %{email: new_email})
 
       assert %{current_password: ["is not valid"]} = errors_on(changeset)
     end
 
     test "applies the email without persisting it", %{player: player} do
-      email = unique_player_email()
-      {:ok, player} = Players.apply_player_email(player, valid_player_password(), %{email: email})
+      %{email: email} = params_for(:player)
+      {:ok, player} = Players.apply_player_email(player, player.password, %{email: email})
       assert player.email == email
       assert Players.get_player!(player.id).email != email
     end
@@ -178,12 +179,12 @@ defmodule Forka.PlayersTest do
 
   describe "deliver_player_update_email_instructions/3" do
     setup do
-      %{player: player_fixture()}
+      %{player: insert(:player)}
     end
 
     test "sends token through notification", %{player: player} do
       token =
-        extract_player_token(fn url ->
+        extract_token_from_email(fn url ->
           Players.deliver_player_update_email_instructions(player, "current@example.com", url)
         end)
 
@@ -197,11 +198,11 @@ defmodule Forka.PlayersTest do
 
   describe "update_player_email/2" do
     setup do
-      player = player_fixture()
-      email = unique_player_email()
+      player = insert(:player)
+      %{email: email} = params_for(:player)
 
       token =
-        extract_player_token(fn url ->
+        extract_token_from_email(fn url ->
           Players.deliver_player_update_email_instructions(
             %{player | email: email},
             player.email,
@@ -264,12 +265,12 @@ defmodule Forka.PlayersTest do
 
   describe "update_player_password/3" do
     setup do
-      %{player: player_fixture()}
+      %{player: insert(:player)}
     end
 
     test "validates password", %{player: player} do
       {:error, changeset} =
-        Players.update_player_password(player, valid_player_password(), %{
+        Players.update_player_password(player, player.password, %{
           password: "not valid",
           password_confirmation: "another"
         })
@@ -284,21 +285,26 @@ defmodule Forka.PlayersTest do
       too_long = String.duplicate("db", 100)
 
       {:error, changeset} =
-        Players.update_player_password(player, valid_player_password(), %{password: too_long})
+        Players.update_player_password(player, player.password, %{password: too_long})
 
       assert "should be at most 72 character(s)" in errors_on(changeset).password
     end
 
     test "validates current password", %{player: player} do
+      %{password: valid_player_password} = params_for(:player)
+
       {:error, changeset} =
-        Players.update_player_password(player, "invalid", %{password: valid_player_password()})
+        Players.update_player_password(player, "invalid", %{password: valid_player_password})
 
       assert %{current_password: ["is not valid"]} = errors_on(changeset)
     end
 
     test "updates the password", %{player: player} do
+      player_password = player.password
+      player = Map.put(player, :password, nil)
+
       {:ok, player} =
-        Players.update_player_password(player, valid_player_password(), %{
+        Players.update_player_password(player, player_password, %{
           password: "new valid password"
         })
 
@@ -310,7 +316,7 @@ defmodule Forka.PlayersTest do
       _ = Players.generate_player_session_token(player)
 
       {:ok, _} =
-        Players.update_player_password(player, valid_player_password(), %{
+        Players.update_player_password(player, player.password, %{
           password: "new valid password"
         })
 
@@ -320,7 +326,7 @@ defmodule Forka.PlayersTest do
 
   describe "generate_player_session_token/1" do
     setup do
-      %{player: player_fixture()}
+      %{player: insert(:player)}
     end
 
     test "generates a token", %{player: player} do
@@ -332,7 +338,7 @@ defmodule Forka.PlayersTest do
       assert_raise Ecto.ConstraintError, fn ->
         Repo.insert!(%PlayerToken{
           token: player_token.token,
-          player_id: player_fixture().id,
+          player_id: insert(:player).id,
           context: "session"
         })
       end
@@ -341,7 +347,7 @@ defmodule Forka.PlayersTest do
 
   describe "get_player_by_session_token/1" do
     setup do
-      player = player_fixture()
+      player = insert(:player)
       token = Players.generate_player_session_token(player)
       %{player: player, token: token}
     end
@@ -363,7 +369,7 @@ defmodule Forka.PlayersTest do
 
   describe "delete_player_session_token/1" do
     test "deletes the token" do
-      player = player_fixture()
+      player = insert(:player)
       token = Players.generate_player_session_token(player)
       assert Players.delete_player_session_token(token) == :ok
       refute Players.get_player_by_session_token(token)
@@ -372,12 +378,12 @@ defmodule Forka.PlayersTest do
 
   describe "deliver_player_confirmation_instructions/2" do
     setup do
-      %{player: player_fixture()}
+      %{player: insert(:player)}
     end
 
     test "sends token through notification", %{player: player} do
       token =
-        extract_player_token(fn url ->
+        extract_token_from_email(fn url ->
           Players.deliver_player_confirmation_instructions(player, url)
         end)
 
@@ -391,10 +397,10 @@ defmodule Forka.PlayersTest do
 
   describe "confirm_player/1" do
     setup do
-      player = player_fixture()
+      player = insert(:player)
 
       token =
-        extract_player_token(fn url ->
+        extract_token_from_email(fn url ->
           Players.deliver_player_confirmation_instructions(player, url)
         end)
 
@@ -425,12 +431,12 @@ defmodule Forka.PlayersTest do
 
   describe "deliver_player_reset_password_instructions/2" do
     setup do
-      %{player: player_fixture()}
+      %{player: insert(:player)}
     end
 
     test "sends token through notification", %{player: player} do
       token =
-        extract_player_token(fn url ->
+        extract_token_from_email(fn url ->
           Players.deliver_player_reset_password_instructions(player, url)
         end)
 
@@ -444,10 +450,10 @@ defmodule Forka.PlayersTest do
 
   describe "get_player_by_reset_password_token/1" do
     setup do
-      player = player_fixture()
+      player = insert(:player)
 
       token =
-        extract_player_token(fn url ->
+        extract_token_from_email(fn url ->
           Players.deliver_player_reset_password_instructions(player, url)
         end)
 
@@ -473,7 +479,7 @@ defmodule Forka.PlayersTest do
 
   describe "reset_player_password/2" do
     setup do
-      %{player: player_fixture()}
+      %{player: insert(:player)}
     end
 
     test "validates password", %{player: player} do
@@ -496,6 +502,12 @@ defmodule Forka.PlayersTest do
     end
 
     test "updates the password", %{player: player} do
+      # On tests, the player password is filled by convenience through the factory,
+      # but we need to nilify it to properly test the password reset behavior.
+      # This ensures we're testing the actual reset functionality rather than
+      # just updating a player that already has a password set.
+      player = Map.put(player, :password, nil)
+
       {:ok, updated_player} =
         Players.reset_player_password(player, %{password: "new valid password"})
 

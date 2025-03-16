@@ -102,13 +102,9 @@ defmodule Forka.BackofficeTest do
     end
 
     test "allows fields to be set" do
-      %{email: email, password: password} = params_for(:admin)
+      %{email: email, password: password} = admin_params = params_for(:admin)
 
-      changeset =
-        Backoffice.change_admin_registration(
-          %Admin{},
-          params_for(:admin, email: email, password: password)
-        )
+      changeset = Backoffice.change_admin_registration(%Admin{}, admin_params)
 
       assert changeset.valid?
       assert get_change(changeset, :email) == email
@@ -251,9 +247,7 @@ defmodule Forka.BackofficeTest do
 
     test "allows fields to be set" do
       changeset =
-        Backoffice.change_admin_password(%Admin{}, %{
-          "password" => "new valid password"
-        })
+        Backoffice.change_admin_password(%Admin{}, %{"password" => "new valid password"})
 
       assert changeset.valid?
       assert get_change(changeset, :password) == "new valid password"

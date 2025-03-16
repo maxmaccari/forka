@@ -1,17 +1,15 @@
 defmodule ForkaWeb.PlayerSessionControllerTest do
   use ForkaWeb.ConnCase, async: true
 
-  import Forka.PlayersFixtures
-
   setup do
-    %{player: player_fixture()}
+    %{player: insert(:player)}
   end
 
   describe "POST /players/log_in" do
     test "logs the player in", %{conn: conn, player: player} do
       conn =
         post(conn, ~p"/players/log_in", %{
-          "player" => %{"email" => player.email, "password" => valid_player_password()}
+          "player" => %{"email" => player.email, "password" => player.password}
         })
 
       assert get_session(conn, :player_token)
@@ -30,7 +28,7 @@ defmodule ForkaWeb.PlayerSessionControllerTest do
         post(conn, ~p"/players/log_in", %{
           "player" => %{
             "email" => player.email,
-            "password" => valid_player_password(),
+            "password" => player.password,
             "remember_me" => "true"
           }
         })
@@ -46,7 +44,7 @@ defmodule ForkaWeb.PlayerSessionControllerTest do
         |> post(~p"/players/log_in", %{
           "player" => %{
             "email" => player.email,
-            "password" => valid_player_password()
+            "password" => player.password
           }
         })
 
@@ -61,7 +59,7 @@ defmodule ForkaWeb.PlayerSessionControllerTest do
           "_action" => "registered",
           "player" => %{
             "email" => player.email,
-            "password" => valid_player_password()
+            "password" => player.password
           }
         })
 
@@ -76,7 +74,7 @@ defmodule ForkaWeb.PlayerSessionControllerTest do
           "_action" => "password_updated",
           "player" => %{
             "email" => player.email,
-            "password" => valid_player_password()
+            "password" => player.password
           }
         })
 

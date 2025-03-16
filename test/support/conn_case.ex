@@ -73,7 +73,7 @@ defmodule ForkaWeb.ConnCase do
   test context.
   """
   def register_and_log_in_player(%{conn: conn}) do
-    player = Forka.PlayersFixtures.player_fixture()
+    player = Forka.Factory.insert(:player)
     %{conn: log_in_player(conn, player), player: player}
   end
 

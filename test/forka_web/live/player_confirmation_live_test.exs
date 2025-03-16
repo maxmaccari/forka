@@ -2,13 +2,13 @@ defmodule ForkaWeb.PlayerConfirmationLiveTest do
   use ForkaWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
-  import Forka.PlayersFixtures
+  import Forka.TestHelpers
 
   alias Forka.Players
   alias Forka.Repo
 
   setup do
-    %{player: player_fixture()}
+    %{player: insert(:player)}
   end
 
   describe "Confirm player" do
@@ -19,7 +19,7 @@ defmodule ForkaWeb.PlayerConfirmationLiveTest do
 
     test "confirms the given token once", %{conn: conn, player: player} do
       token =
-        extract_player_token(fn url ->
+        extract_token_from_email(fn url ->
           Players.deliver_player_confirmation_instructions(player, url)
         end)
 

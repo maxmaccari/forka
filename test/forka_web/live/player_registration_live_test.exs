@@ -2,7 +2,6 @@ defmodule ForkaWeb.PlayerRegistrationLiveTest do
   use ForkaWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
-  import Forka.PlayersFixtures
 
   describe "Registration page" do
     test "renders registration page", %{conn: conn} do
@@ -15,7 +14,7 @@ defmodule ForkaWeb.PlayerRegistrationLiveTest do
     test "redirects if already logged in", %{conn: conn} do
       result =
         conn
-        |> log_in_player(player_fixture())
+        |> log_in_player(insert(:player))
         |> live(~p"/players/register")
         |> follow_redirect(conn, "/")
 
@@ -40,8 +39,8 @@ defmodule ForkaWeb.PlayerRegistrationLiveTest do
     test "creates account and logs the player in", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/players/register")
 
-      email = unique_player_email()
-      form = form(lv, "#registration_form", player: valid_player_attributes(email: email))
+      %{email: email} = player_params = player_registration_params()
+      form = form(lv, "#registration_form", player: player_params)
       render_submit(form)
       conn = follow_trigger_action(form, conn)
 
@@ -58,7 +57,7 @@ defmodule ForkaWeb.PlayerRegistrationLiveTest do
     test "renders errors for duplicated email", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/players/register")
 
-      player = player_fixture(%{email: "test@email.com"})
+      player = insert(:player, email: "test@email.com")
 
       result =
         lv

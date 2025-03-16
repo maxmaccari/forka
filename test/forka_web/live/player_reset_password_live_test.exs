@@ -2,15 +2,15 @@ defmodule ForkaWeb.PlayerResetPasswordLiveTest do
   use ForkaWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
-  import Forka.PlayersFixtures
+  import Forka.TestHelpers
 
   alias Forka.Players
 
   setup do
-    player = player_fixture()
+    player = insert(:player)
 
     token =
-      extract_player_token(fn url ->
+      extract_token_from_email(fn url ->
         Players.deliver_player_reset_password_instructions(player, url)
       end)
 

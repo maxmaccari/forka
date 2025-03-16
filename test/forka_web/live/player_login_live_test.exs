@@ -2,7 +2,6 @@ defmodule ForkaWeb.PlayerLoginLiveTest do
   use ForkaWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
-  import Forka.PlayersFixtures
 
   describe "Log in page" do
     test "renders log in page", %{conn: conn} do
@@ -16,7 +15,7 @@ defmodule ForkaWeb.PlayerLoginLiveTest do
     test "redirects if already logged in", %{conn: conn} do
       result =
         conn
-        |> log_in_player(player_fixture())
+        |> log_in_player(insert(:player))
         |> live(~p"/players/log_in")
         |> follow_redirect(conn, "/")
 
@@ -27,12 +26,14 @@ defmodule ForkaWeb.PlayerLoginLiveTest do
   describe "player login" do
     test "redirects if player login with valid credentials", %{conn: conn} do
       password = "123456789abcd"
-      player = player_fixture(%{password: password})
+      player = insert(:player, password: password)
 
       {:ok, lv, _html} = live(conn, ~p"/players/log_in")
 
       form =
-        form(lv, "#login_form", player: %{email: player.email, password: password, remember_me: true})
+        form(lv, "#login_form",
+          player: %{email: player.email, password: password, remember_me: true}
+        )
 
       conn = submit_form(form, conn)
 

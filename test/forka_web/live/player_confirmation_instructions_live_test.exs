@@ -2,13 +2,12 @@ defmodule ForkaWeb.PlayerConfirmationInstructionsLiveTest do
   use ForkaWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
-  import Forka.PlayersFixtures
 
   alias Forka.Players
   alias Forka.Repo
 
   setup do
-    %{player: player_fixture()}
+    %{player: insert(:player)}
   end
 
   describe "Resend confirmation" do
