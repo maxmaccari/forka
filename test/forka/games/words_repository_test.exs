@@ -1,7 +1,7 @@
-defmodule Forka.Games.WordsRepoTest do
+defmodule Forka.Games.WordsRepositoryTest do
   use Forka.DataCase
 
-  alias Forka.Games.WordsRepo
+  alias Forka.Games.WordsRepository
 
   describe "get_random_words/2" do
     test "returns the specified number of random words" do
@@ -17,12 +17,12 @@ defmodule Forka.Games.WordsRepoTest do
       insert(:word, text: "cachorro", hint: "Late", category: category3)
 
       # Test default count
-      words = WordsRepo.get_random_words()
+      words = WordsRepository.get_random_words()
       assert length(words) == 5
       assert %{text: _, hint: _, category: _, language: _} = List.first(words)
 
       # Test with specific count
-      words = WordsRepo.get_random_words(2)
+      words = WordsRepository.get_random_words(2)
       assert length(words) == 2
 
       assert Enum.all?(words, fn word ->
@@ -30,16 +30,16 @@ defmodule Forka.Games.WordsRepoTest do
              end)
 
       # Test with language filter
-      en_words = WordsRepo.get_random_words(5, language: "en")
+      en_words = WordsRepository.get_random_words(5, language: "en")
       assert length(en_words) == 4
       assert Enum.all?(en_words, fn word -> word.language == "en" end)
 
-      pt_words = WordsRepo.get_random_words(5, language: "pt")
+      pt_words = WordsRepository.get_random_words(5, language: "pt")
       assert length(pt_words) == 1
       assert Enum.all?(pt_words, fn word -> word.language == "pt" end)
 
       # Test with category_ids filter
-      category_words = WordsRepo.get_random_words(5, category_ids: [category1.id])
+      category_words = WordsRepository.get_random_words(5, category_ids: [category1.id])
       assert length(category_words) == 2
       assert Enum.all?(category_words, fn word -> word.category == "Animals" end)
     end

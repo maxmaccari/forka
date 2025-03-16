@@ -1,4 +1,4 @@
-defmodule Forka.Games.WordsRepo do
+defmodule Forka.Games.WordsRepository do
   alias Forka.Games.Word
   alias Forka.Repo
 
