@@ -2,15 +2,16 @@ defmodule Forka.Games.GameServerTest do
   use Forka.DataCase, async: true
 
   alias Forka.Games.GameServer
-  alias Forka.Games.Player
   alias Forka.Games.Game
+
+  import Forka.TestHelpers
 
   @moduletag :capture_log
 
   setup do
     insert_list(10, :word)
 
-    owner = Player.new("Owner")
+    owner = build_games_player_struct("Owner")
 
     # Create a new game using Game module
     game = Game.new(owner, "Test Game", 4)
@@ -70,7 +71,7 @@ defmodule Forka.Games.GameServerTest do
 
   describe "join_game/2" do
     test "adds a player to the game and sends update via PubSub", %{game: game} do
-      player = Player.new("Player")
+      player = build_games_player_struct("Player")
 
       assert :ok = GameServer.join_game(game.id, player)
 
@@ -82,14 +83,14 @@ defmodule Forka.Games.GameServerTest do
     test "returns error when the game is full", %{game: game} do
       # Fill the game with players up to the limit
       for i <- 1..game.max_players do
-        player = Player.new("Player #{i}")
+        player = build_games_player_struct("Player #{i}")
         GameServer.join_game(game.id, player)
       end
 
       flush_messages()
 
       # Try to add one more player
-      extra_player = Player.new("Extra Player")
+      extra_player = build_games_player_struct("Extra Player")
       assert {:error, :maximum_players} = GameServer.join_game(game.id, extra_player)
 
       # Don't receive messages in case of errors
@@ -99,7 +100,7 @@ defmodule Forka.Games.GameServerTest do
 
   describe "leave_game/2" do
     test "removes a player from the game and sends update via PubSub", %{game: game} do
-      player = Player.new("Leaving Player")
+      player = build_games_player_struct("Leaving Player")
       GameServer.join_game(game.id, player)
 
       # Clear message inbox
@@ -124,9 +125,9 @@ defmodule Forka.Games.GameServerTest do
 
     test "returns error when game is not in lobby state", %{game: game} do
       # Add players and start the game
-      player1 = Player.new("Player 1")
+      player1 = build_games_player_struct("Player 1")
       GameServer.join_game(game.id, player1)
-      player2 = Player.new("Player 2")
+      player2 = build_games_player_struct("Player 2")
       GameServer.join_game(game.id, player2)
       GameServer.start_game(game.id)
 
@@ -162,9 +163,9 @@ defmodule Forka.Games.GameServerTest do
   describe "start_game/1" do
     test "starts the game and sends update via PubSub", %{game: game} do
       # Add players to have at least 2 players
-      player1 = Player.new("Player 1")
+      player1 = build_games_player_struct("Player 1")
       GameServer.join_game(game.id, player1)
-      player2 = Player.new("Player 2")
+      player2 = build_games_player_struct("Player 2")
       GameServer.join_game(game.id, player2)
 
       flush_messages()
@@ -177,9 +178,9 @@ defmodule Forka.Games.GameServerTest do
 
     test "filters words by language when starting a game", %{game: game} do
       # Add players to have at least 2 players
-      player1 = Player.new("Player 1")
+      player1 = build_games_player_struct("Player 1")
       GameServer.join_game(game.id, player1)
-      player2 = Player.new("Player 2")
+      player2 = build_games_player_struct("Player 2")
       GameServer.join_game(game.id, player2)
 
       # Insert a Portuguese word
@@ -218,9 +219,9 @@ defmodule Forka.Games.GameServerTest do
 
     test "filters words by categories when starting a game", %{game: game} do
       # Add players to have at least 2 players
-      player1 = Player.new("Player 1")
+      player1 = build_games_player_struct("Player 1")
       GameServer.join_game(game.id, player1)
-      player2 = Player.new("Player 2")
+      player2 = build_games_player_struct("Player 2")
       GameServer.join_game(game.id, player2)
 
       # Insert a Portuguese word
@@ -261,7 +262,7 @@ defmodule Forka.Games.GameServerTest do
     end
 
     test "returns error when trying to start a game with insufficient players", %{game: game} do
-      player = Player.new("Solo Player")
+      player = build_games_player_struct("Solo Player")
       GameServer.join_game(game.id, player)
 
       flush_messages()
@@ -281,9 +282,9 @@ defmodule Forka.Games.GameServerTest do
   describe "give_up_game/2" do
     test "allows a player to give up and sends update via PubSub", %{game: game} do
       # Add players to have at least 2 players
-      player1 = Player.new("Player 1")
+      player1 = build_games_player_struct("Player 1")
       GameServer.join_game(game.id, player1)
-      player2 = Player.new("Giving Up Player")
+      player2 = build_games_player_struct("Giving Up Player")
       GameServer.join_game(game.id, player2)
 
       # Start the game
@@ -307,9 +308,9 @@ defmodule Forka.Games.GameServerTest do
 
     test "updates game to game_over when all players give up", %{game: game} do
       # Add players to the game
-      player1 = Player.new("Player 1")
+      player1 = build_games_player_struct("Player 1")
       GameServer.join_game(game.id, player1)
-      player2 = Player.new("Player 2")
+      player2 = build_games_player_struct("Player 2")
       GameServer.join_game(game.id, player2)
 
       # Start the game
@@ -338,9 +339,9 @@ defmodule Forka.Games.GameServerTest do
   describe "guess/3" do
     test "processes a guess attempt and sends update via PubSub", %{game: game} do
       # Add players and start the game
-      player1 = Player.new("Player 1")
+      player1 = build_games_player_struct("Player 1")
       GameServer.join_game(game.id, player1)
-      player2 = Player.new("Player 2")
+      player2 = build_games_player_struct("Player 2")
       GameServer.join_game(game.id, player2)
 
       :ok = GameServer.start_game(game.id)
@@ -360,9 +361,9 @@ defmodule Forka.Games.GameServerTest do
 
     test "returns error when it's not the player's turn", %{game: game} do
       # Add players and start the game
-      player1 = Player.new("Player 1")
+      player1 = build_games_player_struct("Player 1")
       GameServer.join_game(game.id, player1)
-      player2 = Player.new("Player 2")
+      player2 = build_games_player_struct("Player 2")
       GameServer.join_game(game.id, player2)
 
       GameServer.start_game(game.id)
@@ -385,7 +386,7 @@ defmodule Forka.Games.GameServerTest do
   describe "transfer_ownership/2" do
     test "transfers game ownership and sends update via PubSub", %{game: game} do
       # Add a player to transfer ownership to
-      player = Player.new("New Owner")
+      player = build_games_player_struct("New Owner")
       GameServer.join_game(game.id, player)
 
       # Clear message inbox
@@ -401,10 +402,10 @@ defmodule Forka.Games.GameServerTest do
   describe "restart_game/1" do
     test "restarts the game and sends update via PubSub", %{game: game} do
       # Add players and start the game
-      player1 = Player.new("Player 1")
+      player1 = build_games_player_struct("Player 1")
       GameServer.join_game(game.id, player1)
 
-      player2 = Player.new("Player 2")
+      player2 = build_games_player_struct("Player 2")
       GameServer.join_game(game.id, player2)
 
       GameServer.start_game(game.id)
@@ -424,10 +425,10 @@ defmodule Forka.Games.GameServerTest do
 
     test "cannot restart an ongoing game", %{game: game} do
       # Add players and start the game
-      player1 = Player.new("Player 1")
+      player1 = build_games_player_struct("Player 1")
       GameServer.join_game(game.id, player1)
 
-      player2 = Player.new("Player 2")
+      player2 = build_games_player_struct("Player 2")
       GameServer.join_game(game.id, player2)
 
       GameServer.start_game(game.id)
@@ -463,7 +464,7 @@ defmodule Forka.Games.GameServerTest do
       assert :ok = GameServer.unsubscribe(game.id)
 
       # Add a player, which should generate an update
-      player = Player.new("Subscription Test")
+      player = build_games_player_struct("Subscription Test")
       GameServer.join_game(game.id, player)
 
       # We shouldn't receive the update after unsubscribing
@@ -502,8 +503,8 @@ defmodule Forka.Games.GameServerTest do
       pid: pid
     } do
       # We will put the game in playing state
-      player1 = Player.new("Player 1")
-      player2 = Player.new("Player 2")
+      player1 = build_games_player_struct("Player 1")
+      player2 = build_games_player_struct("Player 2")
       :ok = GameServer.join_game(game.id, player1)
       :ok = GameServer.join_game(game.id, player2)
       :ok = GameServer.start_game(game.id)

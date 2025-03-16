@@ -1,9 +1,11 @@
 defmodule Forka.Games.GameTest do
   use ExUnit.Case, async: true
-  alias Forka.Games.{Game, Player, Word}
+  alias Forka.Games.{Game, Word}
+
+  import Forka.TestHelpers
 
   setup do
-    owner = Player.new("Owner")
+    owner = build_games_player_struct("Owner")
 
     %{owner: owner}
   end
@@ -28,7 +30,7 @@ defmodule Forka.Games.GameTest do
   describe "join_game/2" do
     setup %{owner: owner} do
       game = Game.new(owner, "Test Game", 4)
-      player = Player.new("Player 1")
+      player = build_games_player_struct("Player 1")
       {:ok, game: game, player: player}
     end
 
@@ -48,9 +50,9 @@ defmodule Forka.Games.GameTest do
     end
 
     test "adds players in sequential order", %{game: game} do
-      player1 = Player.new("Player 1")
-      player2 = Player.new("Player 2")
-      player3 = Player.new("Player 3")
+      player1 = build_games_player_struct("Player 1")
+      player2 = build_games_player_struct("Player 2")
+      player3 = build_games_player_struct("Player 3")
 
       {:ok, game_with_player1} = Game.join_game(game, player1)
       {:ok, game_with_player2} = Game.join_game(game_with_player1, player2)
@@ -71,7 +73,7 @@ defmodule Forka.Games.GameTest do
       game = %{game | max_players: 1}
       {:ok, game_with_player} = Game.join_game(game, player)
 
-      player2 = Player.new("Player 2")
+      player2 = build_games_player_struct("Player 2")
       assert {:error, :maximum_players} = Game.join_game(game_with_player, player2)
     end
 
@@ -84,7 +86,7 @@ defmodule Forka.Games.GameTest do
   describe "leave_game/2" do
     setup %{owner: owner} do
       game = Game.new(owner, "Test Game", 4)
-      player = Player.new("Player 1")
+      player = build_games_player_struct("Player 1")
       {:ok, game_with_player} = Game.join_game(game, player)
       {:ok, game: game_with_player, player: player}
     end
@@ -96,8 +98,8 @@ defmodule Forka.Games.GameTest do
     end
 
     test "reindexes players after removal", %{game: game_with_player1} do
-      player2 = Player.new("Player 2")
-      player3 = Player.new("Player 3")
+      player2 = build_games_player_struct("Player 2")
+      player3 = build_games_player_struct("Player 3")
 
       {:ok, game_with_player2} = Game.join_game(game_with_player1, player2)
       {:ok, game_with_player3} = Game.join_game(game_with_player2, player3)
@@ -111,7 +113,7 @@ defmodule Forka.Games.GameTest do
     end
 
     test "returns unchanged game when removing player that doesn't exist", %{game: game} do
-      unknown_player = Player.new("Unknown")
+      unknown_player = build_games_player_struct("Unknown")
       assert {:ok, ^game} = Game.leave_game(game, unknown_player.id)
     end
 
@@ -170,7 +172,7 @@ defmodule Forka.Games.GameTest do
       game = Game.new(owner, "Test Game", 10)
 
       # Add multiple players to ensure we have enough for shuffling
-      players = for i <- 1..10, do: Player.new("Player #{i}")
+      players = for i <- 1..10, do: build_games_player_struct("Player #{i}")
 
       # Add all players to the game
       game_with_players =
@@ -228,8 +230,8 @@ defmodule Forka.Games.GameTest do
   describe "start_game/1" do
     setup %{owner: owner} do
       game = Game.new(owner, "Test Game", 4)
-      player1 = Player.new("Player 1")
-      player2 = Player.new("Player 2")
+      player1 = build_games_player_struct("Player 1")
+      player2 = build_games_player_struct("Player 2")
       word = Word.new("cat", "Animals", "Meows")
 
       {:ok, game_with_player1} = Game.join_game(game, player1)
@@ -257,7 +259,7 @@ defmodule Forka.Games.GameTest do
 
     test "returns error when not enough players", %{owner: owner} do
       game = Game.new(owner, "Test Game", 4)
-      player = Player.new("Player 1")
+      player = build_games_player_struct("Player 1")
       {:ok, game_with_player} = Game.join_game(game, player)
 
       assert {:error, :game_not_ready} = Game.start_game(game_with_player)
@@ -272,8 +274,8 @@ defmodule Forka.Games.GameTest do
   describe "restart_game/1" do
     setup %{owner: owner} do
       game = Game.new(owner, "Test Game", 4)
-      player1 = Player.new("Player 1")
-      player2 = Player.new("Player 2")
+      player1 = build_games_player_struct("Player 1")
+      player2 = build_games_player_struct("Player 2")
       word = Word.new("cat", "Animals", "Meows")
 
       {:ok, game_with_player1} = Game.join_game(game, player1)
@@ -342,8 +344,8 @@ defmodule Forka.Games.GameTest do
   describe "archive_game/1" do
     setup %{owner: owner} do
       game = Game.new(owner, "Test Game", 4)
-      player1 = Player.new("Player 1")
-      player2 = Player.new("Player 2")
+      player1 = build_games_player_struct("Player 1")
+      player2 = build_games_player_struct("Player 2")
       word = Word.new("cat", "Animals", "Meows")
 
       {:ok, game_with_player1} = Game.join_game(game, player1)
@@ -380,7 +382,7 @@ defmodule Forka.Games.GameTest do
       assert archived_game.status == :archived
 
       # Verify that archived games cannot be modified
-      player = Player.new("New Player")
+      player = build_games_player_struct("New Player")
       word = Word.new("dog", "Animals", "Barks")
 
       # Test various operations on archived game
@@ -397,8 +399,8 @@ defmodule Forka.Games.GameTest do
   describe "transfer_ownership_to_player/2" do
     setup %{owner: owner} do
       game = Game.new(owner, "Test Game", 4)
-      player1 = Player.new("Player 1")
-      player2 = Player.new("Player 2")
+      player1 = build_games_player_struct("Player 1")
+      player2 = build_games_player_struct("Player 2")
 
       {:ok, game_with_player1} = Game.join_game(game, player1)
       {:ok, game_with_players} = Game.join_game(game_with_player1, player2)
@@ -415,7 +417,7 @@ defmodule Forka.Games.GameTest do
     end
 
     test "returns error when player is not in the game", %{game: game} do
-      non_player = Player.new("Non Player")
+      non_player = build_games_player_struct("Non Player")
 
       assert {:error, :player_not_found} = Game.transfer_ownership_to_player(game, non_player.id)
     end
@@ -500,8 +502,8 @@ defmodule Forka.Games.GameTest do
 
   describe "last_event_description/1" do
     test "returns human-readable descriptions for various events" do
-      owner = Player.new("Owner")
-      player = Player.new("Player")
+      owner = build_games_player_struct("Owner")
+      player = build_games_player_struct("Player")
       game = Game.new(owner, "Test Game", 4)
 
       # Test nil event

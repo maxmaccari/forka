@@ -4,14 +4,15 @@ defmodule Forka.Games.Game.GameLogicTest do
   alias Forka.Games.Game.{GameLogic, GameState, GamePlayer}
 
   import Forka.Games.Game.Helpers
+  import Forka.TestHelpers
 
   setup do
     # Create owner
-    owner = Player.new("Owner")
+    owner = build_games_player_struct("Owner")
 
     # Create players
-    player1 = Player.new("Player 1")
-    player2 = Player.new("Player 2")
+    player1 = build_games_player_struct("Player 1")
+    player2 = build_games_player_struct("Player 2")
 
     # Create words
     word1 = Word.new("cat", "animals", "Meows")
@@ -113,7 +114,7 @@ defmodule Forka.Games.Game.GameLogicTest do
     end
 
     test "returns error when player not found", %{game_state: game} do
-      unknown_player = Player.new("Unknown")
+      unknown_player = build_games_player_struct("Unknown")
       assert {:error, :player_not_found} = GameLogic.give_up_game(game, unknown_player.id)
     end
 

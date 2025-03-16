@@ -10,13 +10,13 @@ defmodule Forka.Games.Player do
   Players can join games, make guesses, and interact with the game system.
   """
 
-  defstruct id: nil, username: nil
+  use Ecto.Schema
 
-  @doc false
-  def new(username) when is_binary(username) do
-    %__MODULE__{
-      id: UUID.uuid4(),
-      username: username
-    }
+  @primary_key {:id, :binary_id, autogenerate: true}
+  @foreign_key_type :binary_id
+  schema "players" do
+    field :username, :string
+
+    timestamps(type: :utc_datetime)
   end
 end

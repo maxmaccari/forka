@@ -1,18 +1,20 @@
 defmodule Forka.Games.GameSummaryTest do
   use ExUnit.Case, async: true
-  alias Forka.Games.{Game, Player, Word, GameSummary}
+  alias Forka.Games.{Game, Word, GameSummary}
   alias Forka.Games.Game.GameWord
+
+  import Forka.TestHelpers
 
   setup do
     # Create Owner
-    owner = Player.new("owner")
+    owner = build_games_player_struct("owner")
 
     # Create a new game
     game = Game.new(owner, "Test Game", 4)
 
     # Add players
-    player1 = Player.new("Player 1")
-    player2 = Player.new("Player 2")
+    player1 = build_games_player_struct("Player 1")
+    player2 = build_games_player_struct("Player 2")
     {:ok, game_with_player1} = Game.join_game(game, player1)
     {:ok, game_with_players} = Game.join_game(game_with_player1, player2)
 
