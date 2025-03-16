@@ -18,6 +18,7 @@ defmodule ForkaWeb.PlayerSettingsLive do
           phx-submit="update_email"
           phx-change="validate_email"
         >
+          <.input field={@email_form[:username]} type="text" label="Username" disabled />
           <.input field={@email_form[:email]} type="email" label="Email" required />
           <.input
             field={@email_form[:current_password]}
