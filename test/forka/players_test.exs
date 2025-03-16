@@ -35,6 +35,33 @@ defmodule Forka.PlayersTest do
     end
   end
 
+  describe "get_player_by_credentials/2" do
+    test "does not return the player if the email or username does not exist" do
+      refute Players.get_player_by_credentials("unknown@example.com", "hello world!")
+      refute Players.get_player_by_credentials("unknown_username", "hello world!")
+    end
+
+    test "does not return the player if the password is not valid" do
+      player = insert(:player)
+      refute Players.get_player_by_credentials(player.email, "invalid")
+      refute Players.get_player_by_credentials(player.username, "invalid")
+    end
+
+    test "returns the player if the email and password are valid" do
+      %{id: id} = player = insert(:player)
+
+      assert %Player{id: ^id} =
+               Players.get_player_by_credentials(player.email, player.password)
+    end
+
+    test "returns the player if the username and password are valid" do
+      %{id: id} = player = insert(:player)
+
+      assert %Player{id: ^id} =
+               Players.get_player_by_credentials(player.username, player.password)
+    end
+  end
+
   describe "get_player!/1" do
     test "raises if id is invalid" do
       assert_raise Ecto.NoResultsError, fn ->

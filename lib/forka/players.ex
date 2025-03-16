@@ -45,6 +45,30 @@ defmodule Forka.Players do
   end
 
   @doc """
+  Gets a player by email or username, and by password.
+
+  ## Examples
+
+      iex> get_player_by_credentials("foo@example.com", "correct_password")
+      %Player{}
+
+      iex> get_player_by_credentials("foo", "correct_password")
+      %Player{}
+
+      iex> get_player_by_credentials("foo@example.com", "invalid_password")
+      nil
+
+  """
+  def get_player_by_credentials(email_or_username, password)
+      when is_binary(email_or_username) and is_binary(password) do
+    query =
+      from(p in Player, where: p.username == ^email_or_username or p.email == ^email_or_username)
+
+    player = Repo.one(query)
+    if Player.valid_password?(player, password), do: player
+  end
+
+  @doc """
   Gets a single player.
 
   Raises `Ecto.NoResultsError` if the Player does not exist.
@@ -166,9 +190,14 @@ defmodule Forka.Players do
       {:ok, %{to: ..., body: ...}}
 
   """
-  def deliver_player_update_email_instructions(%Player{} = player, current_email, update_email_url_fun)
+  def deliver_player_update_email_instructions(
+        %Player{} = player,
+        current_email,
+        update_email_url_fun
+      )
       when is_function(update_email_url_fun, 1) do
-    {encoded_token, player_token} = PlayerToken.build_email_token(player, "change:#{current_email}")
+    {encoded_token, player_token} =
+      PlayerToken.build_email_token(player, "change:#{current_email}")
 
     Repo.insert!(player_token)
     PlayerNotifier.deliver_update_email_instructions(player, update_email_url_fun.(encoded_token))
@@ -263,7 +292,11 @@ defmodule Forka.Players do
     else
       {encoded_token, player_token} = PlayerToken.build_email_token(player, "confirm")
       Repo.insert!(player_token)
-      PlayerNotifier.deliver_confirmation_instructions(player, confirmation_url_fun.(encoded_token))
+
+      PlayerNotifier.deliver_confirmation_instructions(
+        player,
+        confirmation_url_fun.(encoded_token)
+      )
     end
   end
 
@@ -286,7 +319,10 @@ defmodule Forka.Players do
   defp confirm_player_multi(player) do
     Ecto.Multi.new()
     |> Ecto.Multi.update(:player, Player.confirm_changeset(player))
-    |> Ecto.Multi.delete_all(:tokens, PlayerToken.by_player_and_contexts_query(player, ["confirm"]))
+    |> Ecto.Multi.delete_all(
+      :tokens,
+      PlayerToken.by_player_and_contexts_query(player, ["confirm"])
+    )
   end
 
   ## Reset password
@@ -304,7 +340,11 @@ defmodule Forka.Players do
       when is_function(reset_password_url_fun, 1) do
     {encoded_token, player_token} = PlayerToken.build_email_token(player, "reset_password")
     Repo.insert!(player_token)
-    PlayerNotifier.deliver_reset_password_instructions(player, reset_password_url_fun.(encoded_token))
+
+    PlayerNotifier.deliver_reset_password_instructions(
+      player,
+      reset_password_url_fun.(encoded_token)
+    )
   end
 
   @doc """

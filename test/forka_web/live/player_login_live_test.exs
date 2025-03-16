@@ -24,7 +24,7 @@ defmodule ForkaWeb.PlayerLoginLiveTest do
   end
 
   describe "player login" do
-    test "redirects if player login with valid credentials", %{conn: conn} do
+    test "redirects if player login using email with valid credentials", %{conn: conn} do
       password = "123456789abcd"
       player = insert(:player, password: password)
 
@@ -32,7 +32,23 @@ defmodule ForkaWeb.PlayerLoginLiveTest do
 
       form =
         form(lv, "#login_form",
-          player: %{email: player.email, password: password, remember_me: true}
+          player: %{email_or_username: player.email, password: password, remember_me: true}
+        )
+
+      conn = submit_form(form, conn)
+
+      assert redirected_to(conn) == ~p"/"
+    end
+
+    test "redirects if player login using username with valid credentials", %{conn: conn} do
+      password = "123456789abcd"
+      player = insert(:player, password: password)
+
+      {:ok, lv, _html} = live(conn, ~p"/players/log_in")
+
+      form =
+        form(lv, "#login_form",
+          player: %{email_or_username: player.username, password: password, remember_me: true}
         )
 
       conn = submit_form(form, conn)
@@ -47,7 +63,7 @@ defmodule ForkaWeb.PlayerLoginLiveTest do
 
       form =
         form(lv, "#login_form",
-          player: %{email: "test@email.com", password: "123456", remember_me: true}
+          player: %{email_or_username: "test@email.com", password: "123456", remember_me: true}
         )
 
       conn = submit_form(form, conn)
