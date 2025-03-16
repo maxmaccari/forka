@@ -47,7 +47,7 @@ defmodule ForkaWeb.ConnCase do
   test context.
   """
   def register_and_log_in_admin(%{conn: conn}) do
-    admin = Forka.BackofficeFixtures.admin_fixture()
+    admin = Forka.Factory.insert(:admin)
     %{conn: log_in_admin(conn, admin), admin: admin}
   end
 

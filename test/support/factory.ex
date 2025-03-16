@@ -13,4 +13,15 @@ defmodule Forka.Factory do
       category: insert(:category)
     }
   end
+
+  def admin_factory(attrs \\ %{}) do
+    password = attrs[:password] || "Password1!456"
+    email = attrs[:email] || sequence(:admin_email, &"admin#{&1}@example.com")
+
+    %Forka.Backoffice.Admin{
+      email: email,
+      password: password,
+      hashed_password: Bcrypt.hash_pwd_salt(password)
+    }
+  end
 end

@@ -2,13 +2,13 @@ defmodule ForkaWeb.AdminConfirmationLiveTest do
   use ForkaWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
-  import Forka.BackofficeFixtures
+  import Forka.TestHelpers
 
   alias Forka.Backoffice
   alias Forka.Repo
 
   setup do
-    %{admin: admin_fixture()}
+    %{admin: insert(:admin)}
   end
 
   describe "Confirm admin" do
@@ -19,7 +19,7 @@ defmodule ForkaWeb.AdminConfirmationLiveTest do
 
     test "confirms the given token once", %{conn: conn, admin: admin} do
       token =
-        extract_admin_token(fn url ->
+        extract_token_from_email(fn url ->
           Backoffice.deliver_admin_confirmation_instructions(admin, url)
         end)
 

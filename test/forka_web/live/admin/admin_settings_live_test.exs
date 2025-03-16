@@ -3,13 +3,13 @@ defmodule ForkaWeb.Admin.AdminSettingsLiveTest do
 
   alias Forka.Backoffice
   import Phoenix.LiveViewTest
-  import Forka.BackofficeFixtures
+  import Forka.TestHelpers
 
   describe "Settings page" do
     test "renders settings page", %{conn: conn} do
       {:ok, _lv, html} =
         conn
-        |> log_in_admin(admin_fixture())
+        |> log_in_admin(insert(:admin))
         |> live(~p"/admin/settings")
 
       assert html =~ "Change Email"
@@ -27,13 +27,12 @@ defmodule ForkaWeb.Admin.AdminSettingsLiveTest do
 
   describe "update email form" do
     setup %{conn: conn} do
-      password = valid_admin_password()
-      admin = admin_fixture(%{password: password})
-      %{conn: log_in_admin(conn, admin), admin: admin, password: password}
+      admin = insert(:admin)
+      %{conn: log_in_admin(conn, admin), admin: admin, password: admin.password}
     end
 
     test "updates the admin email", %{conn: conn, password: password, admin: admin} do
-      new_email = unique_admin_email()
+      %{email: new_email} = params_for(:admin)
 
       {:ok, lv, _html} = live(conn, ~p"/admin/settings")
 
@@ -84,13 +83,12 @@ defmodule ForkaWeb.Admin.AdminSettingsLiveTest do
 
   describe "update password form" do
     setup %{conn: conn} do
-      password = valid_admin_password()
-      admin = admin_fixture(%{password: password})
-      %{conn: log_in_admin(conn, admin), admin: admin, password: password}
+      admin = insert(:admin)
+      %{conn: log_in_admin(conn, admin), admin: admin, password: admin.password}
     end
 
     test "updates the admin password", %{conn: conn, admin: admin, password: password} do
-      new_password = valid_admin_password()
+      %{password: new_password} = params_for(:admin)
 
       {:ok, lv, _html} = live(conn, ~p"/admin/settings")
 
@@ -160,11 +158,11 @@ defmodule ForkaWeb.Admin.AdminSettingsLiveTest do
 
   describe "confirm email" do
     setup %{conn: conn} do
-      admin = admin_fixture()
-      email = unique_admin_email()
+      admin = insert(:admin)
+      %{email: email} = params_for(:admin)
 
       token =
-        extract_admin_token(fn url ->
+        extract_token_from_email(fn url ->
           Backoffice.deliver_admin_update_email_instructions(
             %{admin | email: email},
             admin.email,
