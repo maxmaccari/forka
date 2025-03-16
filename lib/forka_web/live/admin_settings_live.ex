@@ -1,30 +1,30 @@
 defmodule ForkaWeb.AdminSettingsLive do
   use ForkaWeb, :live_view
 
+  import ForkaWeb.AdminComponents
+
   alias Forka.Backoffice
 
   def render(assigns) do
     ~H"""
     <div class="bg-base-100 px-6 py-4">
-      <div>
-        <h2 class="flex items-center justify-between text-base-content mb-2 text-3xl font-semibold leading-relaxed">
-          Account Settings
-        </h2>
-        <p class="text-sm text-base-content">
+      <.admin_header>
+        Account Settings
+        <:subtitle>
           Manage your account email address and password settings
-        </p>
-      </div>
+        </:subtitle>
+      </.admin_header>
 
       <div class="space-y-12 divide-y">
         <div>
-          <.simple_form
+          <.admin_simple_form
             for={@email_form}
             id="email_form"
             phx-submit="update_email"
             phx-change="validate_email"
           >
-            <.input field={@email_form[:email]} type="email" label="Email" required />
-            <.input
+            <.admin_input field={@email_form[:email]} type="email" label="Email" required />
+            <.admin_input
               field={@email_form[:current_password]}
               name="current_password"
               id="current_password_for_email"
@@ -34,14 +34,14 @@ defmodule ForkaWeb.AdminSettingsLive do
               required
             />
             <:actions>
-              <button class="btn btn-sm btn-outline btn-primary" phx-disable-with="Changing...">
+              <.admin_button class="btn-sm btn-outline btn-primary" phx-disable-with="Changing...">
                 Change Email
-              </button>
+              </.admin_button>
             </:actions>
-          </.simple_form>
+          </.admin_simple_form>
         </div>
         <div>
-          <.simple_form
+          <.admin_simple_form
             for={@password_form}
             id="password_form"
             action={~p"/admin/log_in?_action=password_updated"}
@@ -56,13 +56,18 @@ defmodule ForkaWeb.AdminSettingsLive do
               id="hidden_admin_email"
               value={@current_email}
             />
-            <.input field={@password_form[:password]} type="password" label="New password" required />
-            <.input
+            <.admin_input
+              field={@password_form[:password]}
+              type="password"
+              label="New password"
+              required
+            />
+            <.admin_input
               field={@password_form[:password_confirmation]}
               type="password"
               label="Confirm new password"
             />
-            <.input
+            <.admin_input
               field={@password_form[:current_password]}
               name="current_password"
               type="password"
@@ -72,11 +77,11 @@ defmodule ForkaWeb.AdminSettingsLive do
               required
             />
             <:actions>
-              <button class="btn btn-sm btn-outline btn-primary" phx-disable-with="Changing...">
+              <.admin_button class="btn-sm btn-outline btn-primary" phx-disable-with="Changing...">
                 Change Password
-              </button>
+              </.admin_button>
             </:actions>
-          </.simple_form>
+          </.admin_simple_form>
         </div>
       </div>
     </div>
