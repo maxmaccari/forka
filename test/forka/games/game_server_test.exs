@@ -4,23 +4,20 @@ defmodule Forka.Games.GameServerTest do
   alias Forka.Games.GameServer
   alias Forka.Games.Game
 
+  alias Forka.Games.Schemas.WordOptions
+
   @moduletag :capture_log
 
   setup do
     insert_list(10, :word)
-
     owner = insert(:player)
 
-    owner_player = %Forka.Games.Schemas.Player{
-      id: owner.id,
-      username: owner.id
-    }
-
     # Create a new game using Game module
-    game = Game.new(owner_player, "Test Game", 4)
+    game = insert(:game, owner: owner) |> Repo.preload(:owner)
+    game_state = Forka.Games.Schemas.Game.to_game_state(game)
 
     # Start the game server
-    {:ok, pid} = GameServer.start_link(game)
+    {:ok, pid} = GameServer.start_link(game.id)
 
     # Allow server to colaborate with same connection
     Ecto.Adapters.SQL.Sandbox.allow(Repo, self(), pid)
@@ -37,12 +34,23 @@ defmodule Forka.Games.GameServerTest do
       end
     end)
 
-    %{game: game, pid: pid}
+    %{game: game_state, pid: pid}
   end
 
   describe "start_link/1" do
     test "starts a new game server", %{pid: pid} do
       assert Process.alive?(pid)
+    end
+
+    test "returns error when attempting to start a server for a non-existent game" do
+      non_existent_id = UUID.uuid4()
+
+      # Attempt to start a server for a non-existent game
+      assert {:error, :not_found} = GameServer.start_link(non_existent_id)
+
+      # Verify the process doesn't exist
+      refute GameServer.exists?(non_existent_id)
+      assert GameServer.whereis(non_existent_id) == nil
     end
   end
 
@@ -116,14 +124,19 @@ defmodule Forka.Games.GameServerTest do
     end
   end
 
-  describe "set_word_options/2" do
-    test "sets word options and sends update via PubSub", %{game: game} do
-      options = [language: "pt", category_ids: ["uuid1", "uuid2"]]
+  describe "update_settings/2" do
+    test "updates game settings and sends update via PubSub", %{game: game} do
+      category_ids = [insert(:category).id, insert(:category).id]
+      settings = %{word_options: %{language: "pt", category_ids: category_ids}}
 
-      assert :ok = GameServer.set_word_options(game.id, options)
+      assert :ok = GameServer.update_settings(game.id, settings)
 
       assert_receive {:game_updated, game_summary}
-      assert game_summary.word_options == options
+
+      assert %WordOptions{
+               language: "pt",
+               category_ids: ^category_ids
+             } = game_summary.word_options
     end
 
     test "returns error when game is not in lobby state", %{game: game} do
@@ -136,30 +149,12 @@ defmodule Forka.Games.GameServerTest do
 
       flush_messages()
 
-      # Try to set word options after game started
-      options = [language: "es"]
-      assert {:error, :game_not_in_lobby} = GameServer.set_word_options(game.id, options)
+      # Try to update settings after game started
+      settings = %{word_options: %{language: "es"}}
+      assert {:error, :game_not_in_lobby} = GameServer.update_settings(game.id, settings)
 
       # Don't receive messages in case of errors
       refute_receive {:game_updated, _game_summary}
-    end
-
-    test "can set only language option", %{game: game} do
-      options = [language: "fr"]
-
-      assert :ok = GameServer.set_word_options(game.id, options)
-
-      assert_receive {:game_updated, game_summary}
-      assert game_summary.word_options == options
-    end
-
-    test "can set only category_ids option", %{game: game} do
-      options = [category_ids: ["uuid3", "uuid4"]]
-
-      assert :ok = GameServer.set_word_options(game.id, options)
-
-      assert_receive {:game_updated, game_summary}
-      assert game_summary.word_options == options
     end
   end
 
@@ -194,7 +189,7 @@ defmodule Forka.Games.GameServerTest do
       )
 
       # Set language option to Portuguese
-      GameServer.set_word_options(game.id, language: "pt")
+      GameServer.update_settings(game.id, %{word_options: %{language: "pt"}})
 
       flush_messages()
 
@@ -238,7 +233,9 @@ defmodule Forka.Games.GameServerTest do
       )
 
       # Set language option to Portuguese
-      GameServer.set_word_options(game.id, category_ids: [category_1.id, category_2.id])
+      GameServer.update_settings(game.id, %{
+        word_options: %{category_ids: [category_1.id, category_2.id]}
+      })
 
       flush_messages()
 

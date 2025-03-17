@@ -1,11 +1,14 @@
 defmodule Forka.Games.Repository do
   @moduledoc false
 
+  alias Forka.Games.Schemas.WordOptions
   alias Forka.Games.Game.GameState
   alias Forka.Games.Schemas.Game
   alias Forka.Games.Schemas.Word
   alias Forka.Games.Schemas.Player
   alias Forka.Repo
+
+  import Ecto.Query
 
   @doc """
   Returns a list of random words from the database.
@@ -33,11 +36,8 @@ defmodule Forka.Games.Repository do
   A list of Word structs with text, hint, category, and language fields.
   Returns fewer words than requested if not enough words match the filters.
   """
-  def get_random_words(count \\ 5, opts \\ []) do
-    import Ecto.Query
-
-    language = Keyword.get(opts, :language)
-    category_ids = Keyword.get(opts, :category_ids)
+  def get_random_words(count \\ 5, word_options \\ %WordOptions{}) do
+    %WordOptions{language: language, category_ids: category_ids} = word_options
 
     query =
       from w in Forka.Words.Word,

@@ -28,8 +28,10 @@ defmodule Forka.Games.GameServer do
   # Public API
 
   @doc false
-  def start_link(%GameState{} = game_state) do
-    GenServer.start_link(__MODULE__, game_state, name: global_name(game_state.id))
+  def start_link(game_id) do
+    with {:ok, game_state} <- Repository.get_game_state(game_id) do
+      GenServer.start_link(__MODULE__, game_state, name: global_name(game_id))
+    end
   end
 
   defp global_name(game_id) when is_binary(game_id) do
