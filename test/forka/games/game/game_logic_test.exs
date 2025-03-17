@@ -3,7 +3,8 @@ defmodule Forka.Games.Game.GameLogicTest do
   alias Forka.Games.Game
   alias Forka.Games.Schemas.Word
   alias Forka.Games.Schemas.Player
-  alias Forka.Games.Game.{GameLogic, GameState, GamePlayer}
+  alias Forka.Games.Schemas.GamePlayer
+  alias Forka.Games.Game.{GameLogic, GameState}
 
   import Forka.Games.Game.Helpers
   import Forka.TestHelpers

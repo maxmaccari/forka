@@ -36,6 +36,7 @@ defmodule Forka.Games.Schemas.GameWord do
     |> cast(attrs, [:finished_by_id, :base_word_id])
     |> cast_embed(:word)
     |> cast_embed(:guesses)
+    |> foreign_key_constraint(:base_word_id)
   end
 
   @doc """
@@ -49,12 +50,7 @@ defmodule Forka.Games.Schemas.GameWord do
       iex> GameWord.new(word)
       #GameWord<word: #Word<hello (greeting)>, guesses: [], display: "_____", finished?: false>
   """
-  def new(%Word{} = word) do
-    %__MODULE__{
-      word: word,
-      base_word_id: word.id
-    }
-  end
+  def new(%Word{} = word), do: %__MODULE__{word: word, base_word_id: word.id}
 
   @doc """
   Processes a letter guess from a player.

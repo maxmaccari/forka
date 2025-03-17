@@ -1,4 +1,4 @@
-defmodule Forka.Games.Game.GamePlayer do
+defmodule Forka.Games.Schemas.GamePlayer do
   @moduledoc """
   This module represents a player within a specific game session.
 
@@ -18,15 +18,29 @@ defmodule Forka.Games.Game.GamePlayer do
   # Player in hangman starts with 6 lives
   @initial_lives 6
 
-  defstruct player: nil,
-            status: :alive,
-            lives: @initial_lives,
-            score: 0
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key {:id, :binary_id, autogenerate: true}
+  @foreign_key_type :binary_id
+  schema "game_players" do
+    belongs_to :player, Player
+    field :status, Ecto.Enum, values: [:alive, :dead], default: :alive
+    field :lives, :integer, default: @initial_lives
+    field :score, :integer, default: 0
+
+    timestamps(type: :utc_datetime)
+  end
+
+  def changeset(game_player, attrs) do
+    game_player
+    |> cast(attrs, [:player_id, :status, :lives, :score])
+    |> validate_required([:player_id])
+    |> foreign_key_constraint(:player_id)
+  end
 
   @doc false
-  def new(%Player{} = player) do
-    %__MODULE__{player: player}
-  end
+  def new(%Player{} = player), do: %__MODULE__{player: player, player_id: player.id}
 
   @doc false
   def decrement_lives(%__MODULE__{status: :alive, lives: lives} = game_player) when lives > 0,
