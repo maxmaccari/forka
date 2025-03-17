@@ -16,9 +16,17 @@ defmodule Forka.Games.Schemas.WordOptions do
     field :category_ids, {:array, :binary_id}, default: []
   end
 
+  @doc false
   def changeset(word_options, attrs) do
     word_options
     |> cast(attrs, [:language, :category_ids])
     |> validate_required([:language])
+  end
+
+  @doc false
+  def new(attrs \\ []) do
+    %__MODULE__{}
+    |> changeset(attrs)
+    |> apply_changes()
   end
 end

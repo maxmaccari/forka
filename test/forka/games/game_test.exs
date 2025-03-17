@@ -446,44 +446,87 @@ defmodule Forka.Games.GameTest do
     end
   end
 
-  describe "set_word_options/2" do
+  describe "update_settings/2" do
     setup %{owner: owner} do
       game = Game.new(owner, "Test Game", 4)
       {:ok, game: game}
     end
 
-    test "sets word options successfully when in lobby state", %{game: game} do
-      options = [language: "pt", category_ids: ["uuid1", "uuid2"]]
-      {:ok, updated_game} = Game.set_word_options(game, options)
+    test "updates game settings successfully when in lobby state", %{game: game} do
+      settings = %{
+        name: "New Game Name",
+        max_players: 6,
+        word_options: %{language: "pt", category_ids: ["uuid1", "uuid2"]}
+      }
 
-      assert updated_game.word_options == options
-      assert updated_game.last_event == {:words_options_set, options}
+      {:ok, updated_game} = Game.update_settings(game, settings)
+
+      assert updated_game.name == "New Game Name"
+      assert updated_game.max_players == 6
+      assert updated_game.word_options.language == "pt"
+      assert updated_game.word_options.category_ids == ["uuid1", "uuid2"]
+      assert updated_game.last_event == {:settings_updated, settings}
     end
 
-    test "sets language only", %{game: game} do
-      options = [language: "pt"]
-      {:ok, updated_game} = Game.set_word_options(game, options)
+    test "updates name only", %{game: game} do
+      settings = %{name: "New Game Name"}
+      {:ok, updated_game} = Game.update_settings(game, settings)
 
-      assert updated_game.word_options == options
-      assert updated_game.last_event == {:words_options_set, options}
+      assert updated_game.name == "New Game Name"
+      assert updated_game.last_event == {:settings_updated, settings}
     end
 
-    test "sets category IDs only", %{game: game} do
-      options = [category_ids: ["uuid1", "uuid2"]]
-      {:ok, updated_game} = Game.set_word_options(game, options)
+    test "ignores empty names", %{game: game} do
+      # Test with empty string
+      settings = %{name: ""}
+      {:ok, updated_game} = Game.update_settings(game, settings)
+      # Name unchanged
+      assert updated_game.name == "Test Game"
+      assert updated_game.last_event == {:settings_updated, settings}
 
-      assert updated_game.word_options == options
-      assert updated_game.last_event == {:words_options_set, options}
+      # Test with whitespace only
+      settings = %{name: "   "}
+      {:ok, updated_game} = Game.update_settings(game, settings)
+      # Name unchanged
+      assert updated_game.name == "Test Game"
+      assert updated_game.last_event == {:settings_updated, settings}
+    end
+
+    test "updates max_players only within allowed range", %{game: game} do
+      settings = %{max_players: 6}
+      {:ok, updated_game} = Game.update_settings(game, settings)
+
+      assert updated_game.max_players == 6
+      assert updated_game.last_event == {:settings_updated, settings}
+    end
+
+    test "ignores max_players outside allowed range", %{game: game} do
+      settings = %{max_players: 10}
+      {:ok, updated_game} = Game.update_settings(game, settings)
+
+      # Unchanged
+      assert updated_game.max_players == 4
+      assert updated_game.last_event == {:settings_updated, settings}
+    end
+
+    test "updates word_options only", %{game: game} do
+      settings = %{word_options: %{language: "es"}}
+      {:ok, updated_game} = Game.update_settings(game, settings)
+
+      assert updated_game.word_options.language == "es"
+      assert updated_game.last_event == {:settings_updated, settings}
     end
 
     test "returns error when not in lobby state", %{game: game} do
       # Test in playing state
       game_playing = %{game | status: :playing}
-      assert {:error, :game_not_in_lobby} = Game.set_word_options(game_playing, language: "en")
+
+      assert {:error, :game_not_in_lobby} =
+               Game.update_settings(game_playing, %{name: "New Name"})
 
       # Test in archived state
       game_archived = %{game | status: :archived}
-      assert {:error, :game_not_in_lobby} = Game.set_word_options(game_archived, language: "pt")
+      assert {:error, :game_not_in_lobby} = Game.update_settings(game_archived, %{max_players: 6})
     end
   end
 

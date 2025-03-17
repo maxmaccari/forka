@@ -64,8 +64,8 @@ defmodule Forka.Games.GameServer do
   end
 
   @doc false
-  def set_word_options(game_id, options) when is_binary(game_id) and is_list(options) do
-    GenServer.call(global_name(game_id), {:set_word_options, options})
+  def update_settings(game_id, settings) when is_binary(game_id) and is_map(settings) do
+    GenServer.call(global_name(game_id), {:update_settings, settings})
   end
 
   @doc false
@@ -150,8 +150,8 @@ defmodule Forka.Games.GameServer do
   end
 
   @impl true
-  def handle_call({:set_word_options, options}, _from, game) do
-    case Game.set_word_options(game, options) do
+  def handle_call({:update_settings, settings}, _from, game) do
+    case Game.update_settings(game, settings) do
       {:ok, new_game} ->
         broadcast!(new_game)
 

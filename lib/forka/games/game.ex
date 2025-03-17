@@ -1,10 +1,15 @@
 defmodule Forka.Games.Game do
-  alias Forka.Games.Schemas.Player
+  alias Forka.Games.Game.GameLogic
+  alias Forka.Games.Game.GameState
   alias Forka.Games.GameSummary
+  alias Forka.Games.Schemas.GamePlayer
   alias Forka.Games.Schemas.GameWord
   alias Forka.Games.Schemas.Guess
-  alias Forka.Games.Schemas.GamePlayer
-  alias Forka.Games.Game.{GameState, GameLogic}
+  alias Forka.Games.Schemas.Player
+  alias Forka.Games.Schemas.WordOptions
+
+  @min_players_allowed 2
+  @max_players_allowed 6
 
   @doc """
   Creates a new game state with the given name and maximum number of players.
@@ -439,23 +444,56 @@ defmodule Forka.Games.Game do
   end
 
   @doc """
-  Sets the word options for the game.
+  Updates game settings including name, max_players, and word_options.
 
   ## Parameters
     - game_state: The current GameState struct
-    - options: Keyword list of options (e.g., [language: "en", category_ids: ["uuid1"]])
+    - settings: Map containing settings to update:
+      - name: Optional new name for the game
+      - max_players: Optional new maximum number of players
+      - word_options: Optional new word options
 
   ## Returns
-    - {:ok, updated_game_state} if the options were successfully set
+    - {:ok, updated_game_state} if the settings were successfully updated
     - {:error, :game_not_in_lobby} if the game is not in lobby status
   """
-  def set_word_options(%GameState{status: :lobby} = game_state, options) when is_list(options) do
-    {:ok,
-     %GameState{game_state | word_options: options, last_event: {:words_options_set, options}}}
+  def update_settings(%GameState{status: :lobby} = game_state, settings) when is_map(settings) do
+    updated_game_state =
+      game_state
+      |> maybe_update_name(settings)
+      |> maybe_update_max_players(settings)
+      |> maybe_update_word_options(settings)
+
+    {:ok, %GameState{updated_game_state | last_event: {:settings_updated, settings}}}
   end
 
-  def set_word_options(%GameState{} = _game_state, _options),
+  def update_settings(%GameState{} = _game_state, _settings),
     do: {:error, :game_not_in_lobby}
+
+  defp maybe_update_name(game_state, %{name: name}) when is_binary(name) do
+    sanitized_name = String.trim(name)
+
+    if sanitized_name != "" do
+      %GameState{game_state | name: name}
+    else
+      game_state
+    end
+  end
+
+  defp maybe_update_name(game_state, _), do: game_state
+
+  defp maybe_update_max_players(game_state, %{max_players: max_players})
+       when is_integer(max_players) and max_players >= @min_players_allowed and
+              max_players <= @max_players_allowed,
+       do: %GameState{game_state | max_players: max_players}
+
+  defp maybe_update_max_players(game_state, _), do: game_state
+
+  defp maybe_update_word_options(game_state, %{word_options: word_options})
+       when is_map(word_options),
+       do: %GameState{game_state | word_options: WordOptions.new(word_options)}
+
+  defp maybe_update_word_options(game_state, _), do: game_state
 
   @doc """
   Converts the last_event tuple into a human-readable description.
@@ -509,27 +547,41 @@ defmodule Forka.Games.Game do
     "Game was restarted"
   end
 
-  def last_event_description(%GameState{last_event: {:word_options_set, options}}) do
-    language = Keyword.get(options, :language)
-    categories = Keyword.get(options, :category_ids, [])
+  def last_event_description(%GameState{last_event: {:settings_updated, settings}}) do
+    settings_description =
+      Enum.map_join(settings, ", ", fn {key, value} ->
+        case key do
+          :max_players ->
+            "maximum players set to #{value}"
 
-    language_text =
-      case language do
-        nil -> ""
-        language -> " to language '#{language}'"
-      end
+          :word_options ->
+            options =
+              Enum.map_join(value, ", ", fn {opt_key, opt_val} ->
+                case opt_key do
+                  :language -> "language changed to #{opt_val}"
+                  :category_ids -> "categories updated"
+                  _ -> "#{opt_key} changed"
+                end
+              end)
 
-    categories_text =
-      case categories do
-        [] -> ""
-        ids -> " with #{length(ids)} categories"
-      end
+            options
 
-    "Word options set#{language_text}#{categories_text}"
+          _ ->
+            "#{key} updated"
+        end
+      end)
+
+    "Game settings were updated: #{settings_description}"
   end
 
   # Fallback for any unhandled event types
   def last_event_description(%GameState{last_event: event}) do
     "Unknown event: #{inspect(event)}"
   end
+
+  @doc false
+  def min_players_allowed, do: @min_players_allowed
+
+  @doc false
+  def max_players_allowed, do: @max_players_allowed
 end
