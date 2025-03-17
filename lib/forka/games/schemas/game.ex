@@ -77,8 +77,9 @@ defmodule Forka.Games.Schemas.Game do
       :current_game_word_index,
       :current_game_player_index
     ])
+    |> validate_required([:status])
     |> common_changeset()
-    |> validate_status_update()
+    |> validate_status_update(game.status)
   end
 
   defp common_changeset(changeset) do
@@ -101,8 +102,8 @@ defmodule Forka.Games.Schemas.Game do
     )
   end
 
-  defp validate_status_update(changeset) do
-    case get_field(changeset, :status) do
+  defp validate_status_update(changeset, current_status) do
+    case current_status do
       :archived ->
         add_error(changeset, :status, "cannot update an archived game")
 
@@ -116,6 +117,16 @@ defmodule Forka.Games.Schemas.Game do
   defp validate_status_transition(changeset, current_status) do
     case {current_status, get_change(changeset, :status)} do
       {_, nil} ->
+        # No status change
+        changeset
+
+      {:lobby, :playing} ->
+        changeset
+
+      {:playing, new_status} when new_status in [:finished, :game_over] ->
+        changeset
+
+      {status, :archived} when status in [:lobby, :game_over, :finished] ->
         # No status change
         changeset
 

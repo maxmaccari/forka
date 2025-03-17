@@ -182,6 +182,32 @@ defmodule Forka.Games.Repository do
     end
   end
 
+  @doc """
+  Similar to `save_game_state/1`, but raises an exception if the game state cannot be saved.
+
+  ## Parameters
+
+    * `game_state` - The GameState struct to save
+
+  ## Examples
+
+      iex> save_game_state!(%GameState{})
+      %GameState{}
+
+      iex> save_game_state!(%GameState{id: "invalid"})
+      ** (Ecto.InvalidChangesetError)
+
+  ## Returns
+
+  The updated GameState if successful, otherwise raises an exception.
+  """
+  def save_game_state!(%GameState{} = game_state) do
+    case save_game_state(game_state) do
+      {:ok, new_game_state} -> new_game_state
+      {:error, changeset} -> Repo.rollback(changeset)
+    end
+  end
+
   defp game_state_to_map(%GameState{} = game_state) do
     game_state
     |> Game.from_game_state()

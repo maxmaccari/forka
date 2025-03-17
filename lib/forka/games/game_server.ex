@@ -29,10 +29,14 @@ defmodule Forka.Games.GameServer do
 
   @doc false
   def start_link(game_id) do
-    with {:ok, game_state} <- Repository.get_game_state(game_id) do
+    with {:ok, game_state} <- Repository.get_game_state(game_id),
+         :ok <- validate_status(game_state) do
       GenServer.start_link(__MODULE__, game_state, name: global_name(game_id))
     end
   end
+
+  defp validate_status(%{status: :archived}), do: {:error, :game_archived}
+  defp validate_status(_), do: :ok
 
   defp global_name(game_id) when is_binary(game_id) do
     {:global, {__MODULE__, game_id}}
@@ -126,6 +130,7 @@ defmodule Forka.Games.GameServer do
   def handle_call({:join_game, player_id}, _from, game) do
     with %Player{} = player <- Repository.get_player(player_id),
          {:ok, new_game} <- Game.join_game(game, player) do
+      Repository.save_game_state!(new_game)
       broadcast!(new_game)
 
       {:reply, :ok, new_game, @timeout_ms}
@@ -142,6 +147,7 @@ defmodule Forka.Games.GameServer do
   def handle_call({:leave_game, player_id}, _from, game) do
     case Game.leave_game(game, player_id) do
       {:ok, new_game} ->
+        Repository.save_game_state!(new_game)
         broadcast!(new_game)
 
         {:reply, :ok, new_game, @timeout_ms}
@@ -155,6 +161,7 @@ defmodule Forka.Games.GameServer do
   def handle_call({:update_settings, settings}, _from, game) do
     case Game.update_settings(game, settings) do
       {:ok, new_game} ->
+        Repository.save_game_state!(new_game)
         broadcast!(new_game)
 
         {:reply, :ok, new_game, @timeout_ms}
@@ -172,6 +179,7 @@ defmodule Forka.Games.GameServer do
 
     case game_with_words |> Game.shuffle_players() |> Game.start_game() do
       {:ok, new_game} ->
+        Repository.save_game_state!(new_game)
         broadcast!(new_game)
 
         {:reply, :ok, new_game, @timeout_ms}
@@ -185,6 +193,7 @@ defmodule Forka.Games.GameServer do
   def handle_call({:give_up, player_id}, _from, game) do
     case Game.give_up_game(game, player_id) do
       {:ok, new_game} ->
+        Repository.save_game_state!(new_game)
         broadcast!(new_game)
 
         {:reply, :ok, new_game, @timeout_ms}
@@ -198,6 +207,7 @@ defmodule Forka.Games.GameServer do
   def handle_call({:guess, letter, player_id}, _from, game) do
     case Game.guess(game, player_id, letter) do
       {:ok, new_game} ->
+        Repository.save_game_state!(new_game)
         broadcast!(new_game)
 
         {:reply, :ok, new_game, @timeout_ms}
@@ -211,6 +221,7 @@ defmodule Forka.Games.GameServer do
   def handle_call({:transfer_ownership, player_id}, _from, game) do
     case Game.transfer_ownership_to_player(game, player_id) do
       {:ok, new_game} ->
+        Repository.save_game_state!(new_game)
         broadcast!(new_game)
 
         {:reply, :ok, new_game, @timeout_ms}
@@ -224,6 +235,7 @@ defmodule Forka.Games.GameServer do
   def handle_call(:restart_game, _from, game) do
     case Game.restart_game(game) do
       {:ok, new_game} ->
+        Repository.save_game_state!(new_game)
         broadcast!(new_game)
 
         {:reply, :ok, new_game, @timeout_ms}
@@ -237,6 +249,7 @@ defmodule Forka.Games.GameServer do
   def handle_call(:archive_game, _from, game) do
     case Game.archive_game(game) do
       {:ok, new_game} ->
+        Repository.save_game_state!(new_game)
         broadcast!(new_game)
         # Return the response and stop the GenServer with normal reason
         {:stop, :normal, :ok, new_game}
@@ -251,6 +264,7 @@ defmodule Forka.Games.GameServer do
     # Server has been inactive for the timeout period, archive the game and terminate
     case Game.archive_game(game) do
       {:ok, new_game} ->
+        Repository.save_game_state!(new_game)
         broadcast!(new_game)
         {:stop, :normal, new_game}
 

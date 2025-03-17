@@ -421,6 +421,44 @@ defmodule Forka.Games.RepositoryTest do
     end
   end
 
+  describe "save_game_state!/1" do
+    test "successfully saves game state and returns the updated state" do
+      owner = insert(:player) |> to_games_player()
+      game = insert(:game, owner: owner, status: :lobby)
+
+      {:ok, game_state} = Repository.get_game_state(game.id)
+
+      # Make a change to the game state
+      updated_game_state = %{game_state | name: "Updated Game Name"}
+
+      # Save using save_game_state!
+      result = Repository.save_game_state!(updated_game_state)
+
+      # Verify it returns the updated game state
+      assert result.name == "Updated Game Name"
+      assert result.id == game.id
+
+      # Verify it was actually persisted
+      {:ok, reloaded_state} = Repository.get_game_state(game.id)
+      assert reloaded_state.name == "Updated Game Name"
+    end
+
+    test "raises an exception when game state cannot be saved" do
+      owner = insert(:player) |> to_games_player()
+      game = insert(:game, owner: owner, status: :lobby)
+
+      {:ok, game_state} = Repository.get_game_state(game.id)
+
+      # Create an invalid game state (nil id)
+      invalid_game_state = %{game_state | status: nil}
+
+      # Should raise an exception
+      assert_raise RuntimeError, fn ->
+        Repository.save_game_state!(invalid_game_state)
+      end
+    end
+  end
+
   defp to_games_player(%Forka.Players.Player{} = player) do
     %Forka.Games.Schemas.Player{
       id: player.id,
