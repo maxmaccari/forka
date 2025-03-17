@@ -1,4 +1,4 @@
-defmodule Forka.Games.Player do
+defmodule Forka.Games.Schemas.Player do
   @moduledoc """
   This module represents a player in the Forka game.
 

@@ -2,7 +2,7 @@ defmodule Forka.Games.Repository do
   @moduledoc false
 
   alias Forka.Games.Schemas.Word
-  alias Forka.Games.Player
+  alias Forka.Games.Schemas.Player
   alias Forka.Repo
 
   @doc """

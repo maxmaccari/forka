@@ -11,7 +11,7 @@ defmodule Forka.Games.GameServerTest do
 
     owner = insert(:player)
 
-    owner_player = %Forka.Games.Player{
+    owner_player = %Forka.Games.Schemas.Player{
       id: owner.id,
       username: owner.id
     }

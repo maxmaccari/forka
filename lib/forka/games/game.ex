@@ -1,5 +1,5 @@
 defmodule Forka.Games.Game do
-  alias Forka.Games.Player
+  alias Forka.Games.Schemas.Player
   alias Forka.Games.GameSummary
   alias Forka.Games.Schemas.GameWord
   alias Forka.Games.Schemas.Guess

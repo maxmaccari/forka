@@ -46,7 +46,7 @@ defmodule Forka.Games.RepositoryTest do
   end
 
   describe "get_player/1" do
-    alias Forka.Games.Player
+    alias Forka.Games.Schemas.Player
 
     test "returns the player with given id" do
       %{id: id, username: username} = player = insert(:player)

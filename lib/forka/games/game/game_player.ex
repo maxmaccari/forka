@@ -13,7 +13,7 @@ defmodule Forka.Games.Game.GamePlayer do
   allowing the same player to participate in multiple games with different states.
   """
 
-  alias Forka.Games.Player
+  alias Forka.Games.Schemas.Player
 
   # Player in hangman starts with 6 lives
   @initial_lives 6

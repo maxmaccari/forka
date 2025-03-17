@@ -16,7 +16,7 @@ defmodule Forka.Games.GameServer do
 
   alias Forka.Games.Repository
   alias Phoenix.PubSub
-  alias Forka.Games.Player
+  alias Forka.Games.Schemas.Player
   alias Forka.Games.Game
   alias Forka.Games.Game.GameState
 
