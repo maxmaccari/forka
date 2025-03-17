@@ -18,6 +18,7 @@ defmodule Forka.Games.GameSummary do
 
   alias Forka.Games.Game
   alias Forka.Games.Game.{GameState, GameWord}
+  alias Forka.Games.Schemas.GameWord
   alias Forka.Games.GameSummary.WordSummary
 
   defstruct players: %{},

@@ -1,4 +1,4 @@
-defmodule Forka.Games.Game.GameWord do
+defmodule Forka.Games.Schemas.GameWord do
   @moduledoc """
   This module represents a word being played in a game session, tracking guesses and game state.
 
@@ -11,11 +11,32 @@ defmodule Forka.Games.Game.GameWord do
   and managing the game state for a single word.
   """
 
-  alias Forka.Games.Game.GameWord
+  alias Forka.Games.Schemas.GameWord
   alias Forka.Games.Schemas.Word
   alias Forka.Games.Schemas.Guess
 
-  defstruct word: nil, guesses: [], finished_by_id: nil
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  alias Forka.Games.Schemas.Word
+  alias Forka.Games.Schemas.Guess
+
+  schema "game_words" do
+    embeds_one :word, Word
+    embeds_many :guesses, Guess
+    field :finished_by_id, :string
+
+    field :base_word_id, :binary_id
+
+    timestamps()
+  end
+
+  def changeset(game_word, attrs) do
+    game_word
+    |> cast(attrs, [:finished_by_id, :base_word_id])
+    |> cast_embed(:word)
+    |> cast_embed(:guesses)
+  end
 
   @doc """
   Creates a new GameWord struct for the given Word.
@@ -28,9 +49,10 @@ defmodule Forka.Games.Game.GameWord do
       iex> GameWord.new(word)
       #GameWord<word: #Word<hello (greeting)>, guesses: [], display: "_____", finished?: false>
   """
-  def new(word) do
+  def new(%Word{} = word) do
     %__MODULE__{
-      word: word
+      word: word,
+      base_word_id: word.id
     }
   end
 
@@ -123,10 +145,10 @@ defmodule Forka.Games.Game.GameWord do
   defp guessed_letters(guesses), do: Enum.map(guesses, & &1.letter)
 end
 
-defimpl Inspect, for: Forka.Games.Game.GameWord do
+defimpl Inspect, for: Forka.Games.Schemas.GameWord do
   import Inspect.Algebra
 
-  alias Forka.Games.Game.GameWord
+  alias Forka.Games.Schemas.GameWord
 
   def inspect(%GameWord{word: word, guesses: guesses} = game_word, opts) do
     # Computed fields

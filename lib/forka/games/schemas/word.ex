@@ -22,7 +22,6 @@ defmodule Forka.Games.Schemas.Word do
   # was when the game started, preserving the integrity of the game state regardless of
   # future word modifications.
 
-  @primary_key false
   embedded_schema do
     field :text, :string
     field :hint, :string

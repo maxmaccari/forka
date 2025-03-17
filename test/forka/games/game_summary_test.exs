@@ -2,7 +2,7 @@ defmodule Forka.Games.GameSummaryTest do
   use ExUnit.Case, async: true
   alias Forka.Games.{Game, GameSummary}
   alias Forka.Games.Schemas.Word
-  alias Forka.Games.Game.GameWord
+  alias Forka.Games.Schemas.GameWord
 
   import Forka.TestHelpers
 

@@ -1,6 +1,7 @@
 defmodule Forka.Games.GameTest do
   use ExUnit.Case, async: true
   alias Forka.Games.Game
+  alias Forka.Games.Schemas.GameWord
   alias Forka.Games.Schemas.Word
 
   import Forka.TestHelpers
@@ -147,7 +148,7 @@ defmodule Forka.Games.GameTest do
       assert updated_game.last_event == {:words_set, 2}
 
       Enum.each(updated_game.words, fn {_idx, game_word} ->
-        assert %Game.GameWord{} = game_word
+        assert %GameWord{} = game_word
         assert game_word.guesses == []
         assert game_word.finished_by_id == nil
       end)
