@@ -13,21 +13,25 @@ defmodule Forka.Games.Schemas.GamePlayer do
   allowing the same player to participate in multiple games with different states.
   """
 
+  use Ecto.Schema
+
   alias Forka.Games.Schemas.Player
+  alias Forka.Games.Schemas.Game
+
+  import Ecto.Changeset
 
   # Player in hangman starts with 6 lives
   @initial_lives 6
 
-  use Ecto.Schema
-  import Ecto.Changeset
-
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   schema "game_players" do
+    belongs_to :game, Game
     belongs_to :player, Player
     field :status, Ecto.Enum, values: [:alive, :dead], default: :alive
     field :lives, :integer, default: @initial_lives
     field :score, :integer, default: 0
+    field :position, :integer, default: 0
 
     timestamps(type: :utc_datetime)
   end

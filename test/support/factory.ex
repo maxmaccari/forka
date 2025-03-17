@@ -38,6 +38,20 @@ defmodule Forka.Factory do
     }
   end
 
+  def game_factory() do
+    owner = insert(:player)
+
+    %Forka.Games.Schemas.Game{
+      name: sequence(:game_name, &"Game #{&1}"),
+      max_players: 4,
+      status: :lobby,
+      owner_id: owner.id,
+      game_players: [],
+      game_words: [],
+      word_options: %{language: "en"}
+    }
+  end
+
   # Custom Helpers
 
   def player_registration_params(attrs \\ %{}) do

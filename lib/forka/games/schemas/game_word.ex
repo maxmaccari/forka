@@ -11,6 +11,7 @@ defmodule Forka.Games.Schemas.GameWord do
   and managing the game state for a single word.
   """
 
+  alias Forka.Games.Schemas.Game
   alias Forka.Games.Schemas.GameWord
   alias Forka.Games.Schemas.Word
   alias Forka.Games.Schemas.Guess
@@ -21,12 +22,16 @@ defmodule Forka.Games.Schemas.GameWord do
   alias Forka.Games.Schemas.Word
   alias Forka.Games.Schemas.Guess
 
+  @primary_key {:id, :binary_id, autogenerate: true}
+  @foreign_key_type :binary_id
   schema "game_words" do
+    belongs_to :game, Game
     embeds_one :word, Word
     embeds_many :guesses, Guess
-    field :finished_by_id, :string
 
+    field :finished_by_id, :binary_id
     field :base_word_id, :binary_id
+    field :position, :integer, default: 0
 
     timestamps()
   end
