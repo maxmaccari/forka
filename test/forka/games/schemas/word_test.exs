@@ -1,8 +1,8 @@
-defmodule Forka.Games.WordTest do
+defmodule Forka.Games.Schemas.WordTest do
   use ExUnit.Case, async: true
-  alias Forka.Games.Word
+  alias Forka.Games.Schemas.Word
 
-  doctest Forka.Games.Word
+  doctest Forka.Games.Schemas.Word
 
   test "new/2 creates a new Word struct" do
     assert %Word{text: "hello", category: "greeting"} = Word.new("hello", "greeting")

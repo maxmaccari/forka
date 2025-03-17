@@ -11,7 +11,7 @@ defmodule Forka.Games.GameSummary.WordSummary do
   the actual word being guessed.
   """
 
-  alias Forka.Games.Word
+  alias Forka.Games.Schemas.Word
 
   defstruct letters: 0, category: nil, hint: nil
 

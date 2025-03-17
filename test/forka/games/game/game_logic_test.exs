@@ -1,6 +1,7 @@
 defmodule Forka.Games.Game.GameLogicTest do
   use ExUnit.Case, async: true
-  alias Forka.Games.{Game, Player, Word}
+  alias Forka.Games.{Game, Player}
+  alias Forka.Games.Schemas.Word
   alias Forka.Games.Game.{GameLogic, GameState, GamePlayer}
 
   import Forka.Games.Game.Helpers

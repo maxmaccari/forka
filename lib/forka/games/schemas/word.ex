@@ -1,4 +1,4 @@
-defmodule Forka.Games.Word do
+defmodule Forka.Games.Schemas.Word do
   @moduledoc """
   This module represents a word in the Forka game, providing functionality to manage words,
   check letters, and track game progress.
@@ -11,7 +11,34 @@ defmodule Forka.Games.Word do
   The module handles special characters and accents in words automatically.
   """
 
-  defstruct text: nil, hint: nil, category: nil, language: "en"
+  use Ecto.Schema
+
+  # This module is implemented as an embedded schema because it's designed to be stored
+  # as a snapshot within `Forka.Games.Schemas.GameWord` entities. This approach ensures that any changes to the
+  # original word in the database won't affect ongoing games where players are already
+  # making guesses on that word.
+
+  # By embedding the word data directly, we create an immutable record of the word as it
+  # was when the game started, preserving the integrity of the game state regardless of
+  # future word modifications.
+
+  @primary_key false
+  embedded_schema do
+    field :text, :string
+    field :hint, :string
+    field :category, :string
+    field :language, :string, default: "en"
+  end
+
+  import Ecto.Changeset
+
+  @doc false
+  def changeset(word, attrs) do
+    word
+    |> cast(attrs, [:text, :category, :hint, :language])
+    |> validate_required([:text, :category])
+    |> update_change(:text, &(String.trim(&1) |> sanitize_text() |> String.downcase()))
+  end
 
   @doc """
   Creates a new Word struct.
@@ -240,14 +267,14 @@ defmodule Forka.Games.Word do
   end
 end
 
-defimpl String.Chars, for: Forka.Games.Word do
-  def to_string(%Forka.Games.Word{text: text}), do: text
+defimpl String.Chars, for: Forka.Games.Schemas.Word do
+  def to_string(%Forka.Games.Schemas.Word{text: text}), do: text
 end
 
-defimpl Inspect, for: Forka.Games.Word do
+defimpl Inspect, for: Forka.Games.Schemas.Word do
   import Inspect.Algebra
 
-  def inspect(%Forka.Games.Word{text: text, category: category}, _opts) do
+  def inspect(%Forka.Games.Schemas.Word{text: text, category: category}, _opts) do
     concat(["#Word<", text, " (", category, ")>"])
   end
 end

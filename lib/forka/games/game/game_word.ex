@@ -12,7 +12,7 @@ defmodule Forka.Games.Game.GameWord do
   """
 
   alias Forka.Games.Game.{GameWord, Guess}
-  alias Forka.Games.Word
+  alias Forka.Games.Schemas.Word
 
   defstruct word: nil, guesses: [], finished_by_id: nil
 
