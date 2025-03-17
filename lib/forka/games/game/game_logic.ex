@@ -1,6 +1,7 @@
 defmodule Forka.Games.Game.GameLogic do
   alias Forka.Games.Schemas.Word
-  alias Forka.Games.Game.{GameState, GameWord, GamePlayer, Guess}
+  alias Forka.Games.Schemas.Guess
+  alias Forka.Games.Game.{GameState, GameWord, GamePlayer}
 
   import Forka.Games.Game.Helpers
 

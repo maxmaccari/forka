@@ -1,7 +1,8 @@
 defmodule Forka.Games.Game do
   alias Forka.Games.Player
   alias Forka.Games.GameSummary
-  alias Forka.Games.Game.{GameState, GamePlayer, GameWord, Guess, GameLogic}
+  alias Forka.Games.Schemas.Guess
+  alias Forka.Games.Game.{GameState, GamePlayer, GameWord, GameLogic}
 
   @doc """
   Creates a new game state with the given name and maximum number of players.

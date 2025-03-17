@@ -11,8 +11,9 @@ defmodule Forka.Games.Game.GameWord do
   and managing the game state for a single word.
   """
 
-  alias Forka.Games.Game.{GameWord, Guess}
+  alias Forka.Games.Game.GameWord
   alias Forka.Games.Schemas.Word
+  alias Forka.Games.Schemas.Guess
 
   defstruct word: nil, guesses: [], finished_by_id: nil
 
@@ -49,7 +50,7 @@ defmodule Forka.Games.Game.GameWord do
       iex> game_word = GameWord.new(Word.new("hello", "greeting"))
       iex> {:ok, _game_word, guess} = GameWord.guess(game_word, "h", "player1")
       iex> Map.put(guess, :guessed_at, nil)
-      %Forka.Games.Game.Guess{letter: \"h\", guessed_by_player_id: \"player1\", correct?: true}
+      %Forka.Games.Schemas.Guess{letter: \"h\", guessed_by_player_id: \"player1\", correct?: true}
   """
   def guess(%__MODULE__{guesses: guesses, word: word} = game_word, letter, guessed_by_player_id) do
     if can_guess_letter?(guesses, letter) do

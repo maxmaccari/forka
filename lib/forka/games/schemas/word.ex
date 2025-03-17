@@ -34,6 +34,8 @@ defmodule Forka.Games.Schemas.Word do
 
   @doc false
   def changeset(word, attrs) do
+    # Used internally by Ecto when persisting through cast_embedded
+    # This function won't be called directly in application code
     word
     |> cast(attrs, [:text, :category, :hint, :language])
     |> validate_required([:text, :category])
