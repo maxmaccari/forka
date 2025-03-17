@@ -100,9 +100,9 @@ defmodule Forka.Games.Game do
     end
   end
 
-  def join_game(%GameState{status: :archived}, _player), do: {:error, :game_archived}
+  def join_game(%GameState{status: :archived}, %Player{}), do: {:error, :game_archived}
 
-  def join_game(_game_state, _player), do: {:error, :game_already_started}
+  def join_game(_game_state, %Player{}), do: {:error, :game_already_started}
 
   defp add_game_player_to_map(%{} = game_players, %Player{} = player) do
     (Map.values(game_players) ++ [GamePlayer.new(player)])

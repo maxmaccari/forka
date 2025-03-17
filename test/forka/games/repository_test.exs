@@ -96,6 +96,30 @@ defmodule Forka.Games.RepositoryTest do
       assert {:error, changeset} = Repository.insert_game(Ecto.UUID.generate(), @valid_attrs)
       assert errors_on(changeset).owner_id
     end
+
+    test "ignores non-permitted parameters" do
+      player = insert(:player)
+
+      # Include non-permitted parameters
+      attrs_with_extra =
+        Map.merge(@valid_attrs, %{
+          status: :playing,
+          current_game_word_index: 5,
+          current_game_player_index: 2,
+          non_existent_field: "should be ignored"
+        })
+
+      assert {:ok, inserted_game} = Repository.insert_game(player.id, attrs_with_extra)
+
+      # Verify that non-permitted parameters were ignored
+      assert inserted_game.name == "Test Game"
+      assert inserted_game.max_players == 4
+      # Default value, not the one we tried to set
+      assert inserted_game.status == :lobby
+      assert inserted_game.current_game_word_index == nil
+      assert inserted_game.current_game_player_index == nil
+      refute Map.has_key?(inserted_game, :non_existent_field)
+    end
   end
 
   describe "get_game_state/1" do
@@ -271,6 +295,125 @@ defmodule Forka.Games.RepositoryTest do
 
       assert reloaded_game_state.current_game_word_index == 1
       assert reloaded_game_state.current_game_player_index == 1
+    end
+
+    test "validates field updates based on game status" do
+      player = insert(:player)
+      game = insert(:game, owner: player, status: :playing)
+
+      # Get the game state
+      {:ok, game_state} = Repository.get_game_state(game.id)
+
+      # Try to update settings while in playing state
+      updated_game_state = %{
+        game_state
+        | name: "Updated Game Name",
+          max_players: 6,
+          word_options: %{
+            game_state.word_options
+            | language: "pt",
+              category_ids: ["category1", "category2"]
+          }
+      }
+
+      # Should reject settings changes in playing state
+      assert {:ok, saved_game_state} = Repository.save_game_state(updated_game_state)
+      # Name should not change
+      assert saved_game_state.name == game_state.name
+      # Max players should not change
+      assert saved_game_state.max_players == game_state.max_players
+      # Language should not change
+      assert saved_game_state.word_options.language == game_state.word_options.language
+
+      # But should allow gameplay field updates
+      gameplay_updated_state = %{
+        game_state
+        | current_game_word_index: 2,
+          current_game_player_index: 1
+      }
+
+      assert {:ok, saved_gameplay_state} = Repository.save_game_state(gameplay_updated_state)
+      assert saved_gameplay_state.current_game_word_index == 2
+      assert saved_gameplay_state.current_game_player_index == 1
+
+      # Test with finished state
+      finished_game = insert(:game, owner: player, status: :finished)
+      {:ok, finished_state} = Repository.get_game_state(finished_game.id)
+
+      # Try to update both settings and gameplay fields
+      updated_finished_state = %{
+        finished_state
+        | name: "New Finished Name",
+          max_players: 6,
+          current_game_word_index: 3,
+          current_game_player_index: 2
+      }
+
+      # Should reject all changes except status changes
+      assert {:ok, saved_finished_state} = Repository.save_game_state(updated_finished_state)
+      assert saved_finished_state.name == finished_state.name
+      assert saved_finished_state.max_players == finished_state.max_players
+
+      assert saved_finished_state.current_game_word_index ==
+               finished_state.current_game_word_index
+
+      assert saved_finished_state.current_game_player_index ==
+               finished_state.current_game_player_index
+
+      # Test owner_id updates are allowed in any state
+      new_player = insert(:player)
+      owner_updated_state = %{game_state | owner: to_games_player(new_player)}
+
+      assert {:ok, saved_owner_state} = Repository.save_game_state(owner_updated_state)
+      assert saved_owner_state.owner.id == new_player.id
+    end
+
+    test "allows ownership transfer to another player" do
+      owner = insert(:player) |> to_games_player()
+      player2 = insert(:player) |> to_games_player()
+      player3 = insert(:player) |> to_games_player()
+
+      game = insert(:game, owner: owner, status: :lobby)
+
+      # Get the game state
+      {:ok, game_state} = Repository.get_game_state(game.id)
+
+      # Add players to the game
+      {:ok, game_state} = Forka.Games.Game.join_game(game_state, player2)
+      {:ok, game_state} = Forka.Games.Game.join_game(game_state, player3)
+
+      # Transfer ownership to player2
+      {:ok, updated_game_state} =
+        Forka.Games.Game.transfer_ownership_to_player(game_state, player2.id)
+
+      # Save the updated game state
+      assert {:ok, saved_game_state} = Repository.save_game_state(updated_game_state)
+
+      # Verify ownership was transferred
+      assert saved_game_state.owner.id == player2.id
+
+      # Reload the game state to verify persistence
+      {:ok, reloaded_game_state} = Repository.get_game_state(game.id)
+      assert reloaded_game_state.owner.id == player2.id
+
+      # Test ownership transfer in playing state
+      playing_game_state =
+        Forka.Games.Game.set_words(saved_game_state, [
+          Forka.Games.Schemas.Word.new("apple", "fruits"),
+          Forka.Games.Schemas.Word.new("banana", "fruits")
+        ])
+
+      {:ok, playing_game_state} = Forka.Games.Game.start_game(playing_game_state)
+
+      # Transfer ownership to player3 while game is in progress
+      {:ok, updated_playing_state} =
+        Forka.Games.Game.transfer_ownership_to_player(playing_game_state, player3.id)
+
+      assert {:ok, saved_playing_state} = Repository.save_game_state(updated_playing_state)
+
+      # Verify ownership was transferred in playing state
+      assert saved_playing_state.owner.id == player3.id
+      assert saved_playing_state.status == :playing
     end
   end
 

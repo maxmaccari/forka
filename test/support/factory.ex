@@ -1,4 +1,5 @@
 defmodule Forka.Factory do
+  alias Forka.Games.Schemas.WordOptions
   use ExMachina.Ecto, repo: Forka.Repo
 
   def category_factory do
@@ -38,17 +39,17 @@ defmodule Forka.Factory do
     }
   end
 
-  def game_factory() do
-    owner = insert(:player)
+  def game_factory(attrs \\ %{}) do
+    owner = attrs[:owner] || insert(:player)
 
     %Forka.Games.Schemas.Game{
-      name: sequence(:game_name, &"Game #{&1}"),
-      max_players: 4,
-      status: :lobby,
-      owner_id: owner.id,
-      game_players: [],
-      game_words: [],
-      word_options: %{language: "en"}
+      name: attrs[:name] || sequence(:game_name, &"Game #{&1}"),
+      max_players: attrs[:max_players] || 4,
+      status: attrs[:status] || :lobby,
+      owner_id: attrs[:owner_id] || owner.id,
+      game_players: attrs[:game_player] || [],
+      game_words: attrs[:game_words] || [],
+      word_options: attrs[:word_options] || WordOptions.new(%{language: "en"})
     }
   end
 

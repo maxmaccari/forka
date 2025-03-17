@@ -121,7 +121,7 @@ defmodule Forka.Games.Repository do
   """
   def insert_game(owner_id, params) when is_binary(owner_id) and is_map(params) do
     %Game{owner_id: owner_id}
-    |> Game.changeset(params)
+    |> Game.insert_changeset(params)
     |> Repo.insert()
     |> case do
       {:ok, game} -> {:ok, game}
@@ -153,9 +153,10 @@ defmodule Forka.Games.Repository do
   - `{:ok, game_state}` with the game state if found
   - `{:error, :not_found}` if the game does not exist
   """
+  @game_preloads [{:game_players, :player}, :game_words, :owner]
   def get_game_state(id) when is_binary(id) do
     Repo.get(Game, id)
-    |> Repo.preload([:game_words, :game_players, :owner])
+    |> Repo.preload(@game_preloads)
     |> case do
       nil -> {:error, :not_found}
       game -> {:ok, Game.to_game_state(game)}
@@ -164,51 +165,26 @@ defmodule Forka.Games.Repository do
 
   def save_game_state(%GameState{id: id} = game_state) do
     Repo.get(Game, id)
-    |> Repo.preload([:game_words, :game_players])
-    |> Game.changeset(game_state_to_params(game_state))
+    |> Repo.preload(@game_preloads)
+    |> Game.update_changeset(game_state_to_map(game_state))
     |> Repo.update()
     |> case do
-      {:ok, game} -> {:ok, Game.to_game_state(game)}
-      {:error, changeset} -> {:error, changeset}
+      {:ok, game} ->
+        new_game_state =
+          game
+          |> Repo.preload(@game_preloads)
+          |> Game.to_game_state()
+
+        {:ok, new_game_state}
+
+      {:error, changeset} ->
+        {:error, changeset}
     end
   end
 
-  defp game_state_to_params(%GameState{} = game_state) do
-    # First convert GameState to Game schema
-    game = Game.from_game_state(game_state)
-
-    # Then convert the Game schema to a map, removing the __struct__ and other Ecto metadata
-    game_params = Map.from_struct(game)
-
-    # Clean up any virtual fields or associations that might cause issues
-    game_params
-    |> Map.drop([:__meta__, :owner, :inserted_at, :updated_at])
-    |> Map.update(:game_words, [], fn game_words ->
-      Enum.map(game_words, fn game_word ->
-        game_word
-        |> Map.from_struct()
-        |> Map.update(:word, nil, &(&1 |> Map.from_struct() |> Map.drop([:__meta__])))
-        |> Map.drop([:__meta__, :game, :game_id, :inserted_at, :updated_at])
-        |> Map.update(:guesses, [], fn guesses ->
-          Enum.map(guesses, &Map.from_struct/1)
-        end)
-      end)
-    end)
-    |> Map.update(:game_players, [], fn game_players ->
-      Enum.map(game_players, fn game_player ->
-        game_player
-        |> Map.from_struct()
-        |> Map.drop([:__meta__, :player, :game, :game_id, :inserted_at, :updated_at])
-      end)
-    end)
-    |> Map.update(:word_options, nil, fn word_options ->
-      if word_options do
-        word_options
-        |> Map.from_struct()
-        |> Map.drop([:__meta__])
-      else
-        %{}
-      end
-    end)
+  defp game_state_to_map(%GameState{} = game_state) do
+    game_state
+    |> Game.from_game_state()
+    |> Game.to_map()
   end
 end
