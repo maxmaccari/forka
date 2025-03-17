@@ -1,4 +1,5 @@
 defmodule Forka.Games do
+  alias Forka.Games.GameServer
   alias Forka.Games.Game
 
   @moduledoc """
@@ -41,31 +42,31 @@ defmodule Forka.Games do
   end
 
   defp start_supervised_game(game),
-    do: DynamicSupervisor.start_child(Forka.GamesSupervisor, {Forka.Games.GameServer, game})
+    do: DynamicSupervisor.start_child(Forka.GamesSupervisor, {GameServer, game})
 
   @doc """
   Adds a player to the game.
 
   ## Parameters
     - game_id: The ID of the game.
-    - player: The player to add.
+    - player_id: The ID of the player to join.
 
   ## Returns
     See `Forka.Games.GameServer.join_game/2` for return values.
   """
-  defdelegate join_game(game_id, player), to: Forka.Games.GameServer
+  defdelegate join_game(game_id, player_id), to: GameServer
 
   @doc """
   Removes a player from the game.
 
   ## Parameters
     - game_id: The ID of the game.
-    - player_id: The ID of the player to remove.
+    - player_id: The ID of the player to leave.
 
   ## Returns
     See `Forka.Games.GameServer.leave_game/2` for return values.
   """
-  defdelegate leave_game(game_id, player_id), to: Forka.Games.GameServer
+  defdelegate leave_game(game_id, player_id), to: GameServer
 
   @doc """
   Initializes the game.
@@ -76,7 +77,7 @@ defmodule Forka.Games do
   ## Returns
     See `Forka.Games.GameServer.start_game/1` for return values.
   """
-  defdelegate start_game(game_id), to: Forka.Games.GameServer
+  defdelegate start_game(game_id), to: GameServer
 
   @doc """
   Makes a player give up in the game.
@@ -88,7 +89,7 @@ defmodule Forka.Games do
   ## Returns
     See `Forka.Games.GameServer.give_up_game/2` for return values.
   """
-  defdelegate give_up_game(game_id, player_id), to: Forka.Games.GameServer
+  defdelegate give_up_game(game_id, player_id), to: GameServer
 
   @doc """
   Makes a guess for the current word in the game.
@@ -101,7 +102,7 @@ defmodule Forka.Games do
   ## Returns
     See `Forka.Games.GameServer.guess/3` for return values.
   """
-  defdelegate guess(game_id, player_id, letter), to: Forka.Games.GameServer
+  defdelegate guess(game_id, player_id, letter), to: GameServer
 
   @doc """
   Transfers ownership of the game to another player.
@@ -113,7 +114,7 @@ defmodule Forka.Games do
   ## Returns
     See `Forka.Games.GameServer.transfer_ownership/2` for return values.
   """
-  defdelegate transfer_ownership(game_id, player_id), to: Forka.Games.GameServer
+  defdelegate transfer_ownership(game_id, player_id), to: GameServer
 
   @doc """
   Restarts the game, returning it to the lobby state.
@@ -124,7 +125,7 @@ defmodule Forka.Games do
   ## Returns
     See `Forka.Games.GameServer.restart_game/1` for return values.
   """
-  defdelegate restart_game(game_id), to: Forka.Games.GameServer
+  defdelegate restart_game(game_id), to: GameServer
 
   @doc """
   Archives the game, marking it as completed and no longer active.
@@ -135,7 +136,7 @@ defmodule Forka.Games do
   ## Returns
     See `Forka.Games.GameServer.archive_game/1` for return values.
   """
-  defdelegate archive_game(game_id), to: Forka.Games.GameServer
+  defdelegate archive_game(game_id), to: GameServer
 
   @doc """
   Gets the current game summary.
@@ -146,7 +147,7 @@ defmodule Forka.Games do
   ## Returns
     The current game summary.
   """
-  defdelegate get_game(game_id), to: Forka.Games.GameServer
+  defdelegate get_game(game_id), to: GameServer
 
   @doc """
   Subscribes the caller to receive updates for a specific game.
@@ -158,7 +159,7 @@ defmodule Forka.Games do
     - `:ok` if the subscription is successful.
     - `{:error, term}` if the subscription fails.
   """
-  defdelegate subscribe(game_id), to: Forka.Games.GameServer
+  defdelegate subscribe(game_id), to: GameServer
 
   @doc """
   Unsubscribes the caller from receiving updates for a specific game.
@@ -170,5 +171,5 @@ defmodule Forka.Games do
     - `:ok` if the unsubscription is successful.
     - `{:error, term}` if the unsubscription fails.
   """
-  defdelegate unsubscribe(game_id), to: Forka.Games.GameServer
+  defdelegate unsubscribe(game_id), to: GameServer
 end

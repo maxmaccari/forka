@@ -97,14 +97,14 @@ defmodule Forka.Games.GameServer do
 
   ## Parameters
     - game_id: The ID of the game.
-    - player: The player to add.
+    - player_id: The ID of the player to add.
 
   ## Returns
     - `{:ok, game_state}` if successful.
     - `{:error, term}` if unsuccessful. See `Forka.Games.Game.join_game/2` for possible error reasons.
   """
-  def join_game(game_id, %Player{} = player) when is_binary(game_id) do
-    GenServer.call(global_name(game_id), {:join_game, player})
+  def join_game(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
+    GenServer.call(global_name(game_id), {:join_game, player_id})
   end
 
   @doc """
@@ -288,12 +288,15 @@ defmodule Forka.Games.GameServer do
   end
 
   @impl true
-  def handle_call({:join_game, player}, _from, game) do
-    case Game.join_game(game, player) do
-      {:ok, new_game} ->
-        broadcast!(new_game)
+  def handle_call({:join_game, player_id}, _from, game) do
+    with %Player{} = player <- Repository.get_player(player_id),
+         {:ok, new_game} <- Game.join_game(game, player) do
+      broadcast!(new_game)
 
-        {:reply, :ok, new_game, @timeout_ms}
+      {:reply, :ok, new_game, @timeout_ms}
+    else
+      nil ->
+        {:reply, {:error, :player_not_found}, game, @timeout_ms}
 
       {:error, error} ->
         {:reply, {:error, error}, game, @timeout_ms}
