@@ -1,4 +1,6 @@
 defmodule Forka.Games.Repository do
+  @moduledoc false
+
   alias Forka.Games.Word
   alias Forka.Games.Player
   alias Forka.Repo
