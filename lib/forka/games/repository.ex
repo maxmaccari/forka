@@ -1,5 +1,6 @@
-defmodule Forka.Games.WordsRepository do
+defmodule Forka.Games.Repository do
   alias Forka.Games.Word
+  alias Forka.Games.Player
   alias Forka.Repo
 
   @doc """
@@ -67,5 +68,28 @@ defmodule Forka.Games.WordsRepository do
     query
     |> Repo.all()
     |> Enum.map(&Word.from_map/1)
+  end
+
+  @doc """
+  Gets a player by ID.
+
+  ## Parameters
+
+    * `id` - The UUID of the player to retrieve
+
+  ## Examples
+
+      iex> get_player("123e4567-e89b-12d3-a456-426614174000")
+      %Player{}
+
+      iex> get_player("nonexistent-uuid")
+      nil
+
+  ## Returns
+
+  The Player struct if found, nil otherwise.
+  """
+  def get_player(id) do
+    Repo.get(Player, id)
   end
 end

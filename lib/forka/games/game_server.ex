@@ -14,7 +14,7 @@ defmodule Forka.Games.GameServer do
 
   use GenServer
 
-  alias Forka.Games.WordsRepository
+  alias Forka.Games.Repository
   alias Phoenix.PubSub
   alias Forka.Games.Player
   alias Forka.Games.Game
@@ -329,7 +329,7 @@ defmodule Forka.Games.GameServer do
   @impl true
   def handle_call(:start_game, _from, game) do
     words_count = map_size(game.players) * 2
-    words = WordsRepository.get_random_words(words_count, game.word_options)
+    words = Repository.get_random_words(words_count, game.word_options)
     game_with_words = Game.set_words(game, words)
 
     case game_with_words |> Game.shuffle_players() |> Game.start_game() do
