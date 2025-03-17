@@ -79,8 +79,8 @@ defmodule Forka.Games.Schemas.Game do
       current_game_player_index: game_state.current_game_player_index,
       word_options: game_state.word_options,
       owner_id: game_state.owner && game_state.owner.id,
-      game_words: map_to_list_with_position(game_state.words),
-      game_players: map_to_list_with_position(game_state.players)
+      game_words: map_to_list_with_position(game_state.game_words),
+      game_players: map_to_list_with_position(game_state.game_players)
     }
   end
 
@@ -95,8 +95,8 @@ defmodule Forka.Games.Schemas.Game do
       current_game_player_index: game.current_game_player_index,
       word_options: game.word_options,
       owner: game.owner,
-      words: list_to_map(game.game_words),
-      players: list_to_map(game.game_players)
+      game_words: list_to_map(game.game_words),
+      game_players: list_to_map(game.game_players)
     }
   end
 

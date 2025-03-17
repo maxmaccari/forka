@@ -164,7 +164,7 @@ defmodule Forka.Games.GameServer do
 
   @impl true
   def handle_call(:start_game, _from, game) do
-    words_count = map_size(game.players) * 2
+    words_count = map_size(game.game_players) * 2
     words = Repository.get_random_words(words_count, game.word_options)
     game_with_words = Game.set_words(game, words)
 

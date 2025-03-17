@@ -16,7 +16,7 @@ defmodule Forka.Games.Game.GameLogic do
   @doc false
   def get_current_player(%GameState{
         status: :playing,
-        players: players,
+        game_players: players,
         current_game_player_index: index
       }) do
     case Map.get(players, index) do
@@ -25,7 +25,7 @@ defmodule Forka.Games.Game.GameLogic do
 
       %GamePlayer{status: :dead} ->
         next_alive_player_index =
-          find_next_alive_game_player_index(%GameState{players: players}, index - 1)
+          find_next_alive_game_player_index(%GameState{game_players: players}, index - 1)
 
         case Map.get(players, next_alive_player_index) do
           %GamePlayer{player: player, status: :alive} -> player
@@ -37,7 +37,7 @@ defmodule Forka.Games.Game.GameLogic do
     end
   end
 
-  def get_current_player(%GameState{players: players, current_game_player_index: index}) do
+  def get_current_player(%GameState{game_players: players, current_game_player_index: index}) do
     case Map.get(players, index) do
       %GamePlayer{player: player} -> player
       nil -> nil
@@ -53,7 +53,7 @@ defmodule Forka.Games.Game.GameLogic do
 
         new_game_state = %{
           game_state
-          | players: Map.put(game_state.players, idx, updated_player),
+          | game_players: Map.put(game_state.game_players, idx, updated_player),
             last_event: {:player_gave_up, game_player.player}
         }
 
@@ -88,7 +88,7 @@ defmodule Forka.Games.Game.GameLogic do
     do: {:error, :game_not_playing}
 
   defp current_player?(game_state, player_id) do
-    %GameState{players: players, current_game_player_index: player_index} = game_state
+    %GameState{game_players: players, current_game_player_index: player_index} = game_state
     %GamePlayer{player: player, status: status} = Map.get(players, player_index)
 
     if status == :alive do
@@ -102,7 +102,7 @@ defmodule Forka.Games.Game.GameLogic do
   end
 
   defp ensure_current_or_next_alive_player(
-         %GameState{players: players, current_game_player_index: player_index} = game_state
+         %GameState{game_players: players, current_game_player_index: player_index} = game_state
        ) do
     %GamePlayer{status: status} = Map.get(players, player_index)
 
@@ -119,7 +119,7 @@ defmodule Forka.Games.Game.GameLogic do
     end
   end
 
-  defp find_next_alive_game_player_index(%GameState{players: players}, current_index) do
+  defp find_next_alive_game_player_index(%GameState{game_players: players}, current_index) do
     result =
       Enum.find(players, fn {index, game_player} ->
         game_player.status == :alive && index > current_index
@@ -181,11 +181,12 @@ defmodule Forka.Games.Game.GameLogic do
   end
 
   defp handle_player_score(
-         %GameState{players: players, current_game_player_index: player_index} = game_state,
+         %GameState{game_players: game_players, current_game_player_index: player_index} =
+           game_state,
          %GameWord{word: word} = game_word,
          %Guess{letter: letter}
        ) do
-    %GamePlayer{} = player = Map.get(players, player_index)
+    %GamePlayer{} = player = Map.get(game_players, player_index)
     base_score = Word.letters_count_in_word(word, letter) * 10
 
     updated_player =
@@ -203,12 +204,13 @@ defmodule Forka.Games.Game.GameLogic do
   end
 
   defp reduce_player_lives(
-         %GameState{players: players, current_game_player_index: player_index} = game_state
+         %GameState{game_players: game_players, current_game_player_index: player_index} =
+           game_state
        ) do
-    %GamePlayer{} = player = Map.get(players, player_index)
+    %GamePlayer{} = player = Map.get(game_players, player_index)
     updated_player = GamePlayer.decrement_lives(player)
 
-    %{game_state | players: Map.put(players, player_index, updated_player)}
+    %{game_state | game_players: Map.put(game_players, player_index, updated_player)}
   end
 
   defp handle_word_completion(game_state) do
@@ -227,20 +229,21 @@ defmodule Forka.Games.Game.GameLogic do
     end
   end
 
-  defp all_players_died?(%GameState{players: players}) do
-    players
+  defp all_players_died?(%GameState{game_players: game_players}) do
+    game_players
     |> Map.values()
     |> Enum.all?(&GamePlayer.died?/1)
   end
 
   defp next_alive_player(
-         %GameState{players: players, current_game_player_index: player_index} = game_state
+         %GameState{game_players: game_players, current_game_player_index: player_index} =
+           game_state
        ) do
-    player_count = map_size(players)
+    player_count = map_size(game_players)
     next_index = rem(player_index + 1, player_count)
     new_game_state = %{game_state | current_game_player_index: next_index}
 
-    case Map.get(players, next_index) do
+    case Map.get(game_players, next_index) do
       %GamePlayer{status: :alive} ->
         new_game_state
 
@@ -260,20 +263,21 @@ defmodule Forka.Games.Game.GameLogic do
   defp update_game_state_with_guess(game_state, new_game_word) do
     %{
       game_state
-      | words: Map.put(game_state.words, game_state.current_game_word_index, new_game_word)
+      | game_words:
+          Map.put(game_state.game_words, game_state.current_game_word_index, new_game_word)
     }
   end
 
   defp update_game_player(game_state, player_index, updated_player) do
-    %{game_state | players: Map.put(game_state.players, player_index, updated_player)}
+    %{game_state | game_players: Map.put(game_state.game_players, player_index, updated_player)}
   end
 
-  defp current_word(%GameState{words: words, current_game_word_index: word_index}) do
-    Map.get(words, word_index)
+  defp current_word(%GameState{game_words: game_words, current_game_word_index: word_index}) do
+    Map.get(game_words, word_index)
   end
 
-  defp all_words_completed?(%GameState{words: words}) do
-    Enum.all?(words, fn {_index, word} -> GameWord.finished?(word) end)
+  defp all_words_completed?(%GameState{game_words: game_words}) do
+    Enum.all?(game_words, fn {_index, word} -> GameWord.finished?(word) end)
   end
 
   defp finish_game(game_state) do

@@ -32,7 +32,7 @@ defmodule Forka.Games.RepositoryTest do
              end)
 
       # Test with language filter
-      en_words = Repository.get_random_words(5, language: "en") |> dbg()
+      en_words = Repository.get_random_words(5, language: "en")
       assert length(en_words) == 4
       assert Enum.all?(en_words, fn word -> word.language == "en" end)
 
@@ -238,36 +238,36 @@ defmodule Forka.Games.RepositoryTest do
       assert saved_game_state.current_game_player_index == 1
 
       # Verify players were saved
-      assert map_size(saved_game_state.players) == 3
+      assert map_size(saved_game_state.game_players) == 3
 
       # Verify words were saved
-      assert map_size(saved_game_state.words) == 3
-      assert saved_game_state.words[0].word.text == "apple"
-      assert saved_game_state.words[1].word.text == "banana"
-      assert saved_game_state.words[2].word.text == "orange"
+      assert map_size(saved_game_state.game_words) == 3
+      assert saved_game_state.game_words[0].word.text == "apple"
+      assert saved_game_state.game_words[1].word.text == "banana"
+      assert saved_game_state.game_words[2].word.text == "orange"
 
       # Verify guesses were saved
-      assert length(saved_game_state.words[0].guesses) == 5
-      assert Enum.any?(saved_game_state.words[0].guesses, &(&1.letter == "a"))
-      assert Enum.any?(saved_game_state.words[0].guesses, &(&1.letter == "p"))
-      assert Enum.any?(saved_game_state.words[0].guesses, &(&1.letter == "z"))
-      assert Enum.any?(saved_game_state.words[0].guesses, &(&1.letter == "l"))
-      assert Enum.any?(saved_game_state.words[0].guesses, &(&1.letter == "e"))
+      assert length(saved_game_state.game_words[0].guesses) == 5
+      assert Enum.any?(saved_game_state.game_words[0].guesses, &(&1.letter == "a"))
+      assert Enum.any?(saved_game_state.game_words[0].guesses, &(&1.letter == "p"))
+      assert Enum.any?(saved_game_state.game_words[0].guesses, &(&1.letter == "z"))
+      assert Enum.any?(saved_game_state.game_words[0].guesses, &(&1.letter == "l"))
+      assert Enum.any?(saved_game_state.game_words[0].guesses, &(&1.letter == "e"))
 
-      assert saved_game_state.words[0].finished_by_id == player2.id
+      assert saved_game_state.game_words[0].finished_by_id == player2.id
 
       # Verify player lives (player who guessed incorrectly should have lost a life)
       incorrect_player =
-        Enum.find(Map.values(saved_game_state.players), &(&1.player_id == player1.id))
+        Enum.find(Map.values(saved_game_state.game_players), &(&1.player_id == player1.id))
 
       assert incorrect_player.lives < 6
 
       # Reload the game state to verify persistence
       {:ok, reloaded_game_state} = Repository.get_game_state(game.id)
       assert reloaded_game_state.status == :playing
-      assert map_size(reloaded_game_state.players) == 3
-      assert map_size(reloaded_game_state.words) == 3
-      assert length(reloaded_game_state.words[0].guesses) == 5
+      assert map_size(reloaded_game_state.game_players) == 3
+      assert map_size(reloaded_game_state.game_words) == 3
+      assert length(reloaded_game_state.game_words[0].guesses) == 5
 
       assert reloaded_game_state.current_game_word_index == 1
       assert reloaded_game_state.current_game_player_index == 1

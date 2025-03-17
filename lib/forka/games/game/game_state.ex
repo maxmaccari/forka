@@ -5,8 +5,8 @@ defmodule Forka.Games.Game.GameState do
   A GameState holds all information about an ongoing game including:
   - Unique identifier
   - Game name
-  - Words being played (as a map of GameWord structs)
-  - Players participating (as a map of GamePlayer structs)
+  - Words being played (as a map of GameWord structs in the game_words field)
+  - Players participating (as a map of GamePlayer structs in the game_players field)
   - Current word and player indices
   - Game status (:lobby, :playing, :finished, :archived)
   - Maximum number of allowed players
@@ -24,8 +24,8 @@ defmodule Forka.Games.Game.GameState do
 
   defstruct id: nil,
             name: nil,
-            words: %{},
-            players: %{},
+            game_words: %{},
+            game_players: %{},
             owner: nil,
             current_game_word_index: nil,
             current_game_player_index: nil,

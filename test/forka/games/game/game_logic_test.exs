@@ -46,7 +46,7 @@ defmodule Forka.Games.Game.GameLogicTest do
       # Mark player1 as dead
       game_with_dead_player1 = %{
         game
-        | players: %{
+        | game_players: %{
             0 => %GamePlayer{player: player1, status: :dead},
             1 => %GamePlayer{player: player2, status: :alive}
           },
@@ -59,7 +59,7 @@ defmodule Forka.Games.Game.GameLogicTest do
     end
 
     test "returns error when no current player", %{game_state: game} do
-      game_without_players = %{game | players: %{}, current_game_player_index: nil}
+      game_without_players = %{game | game_players: %{}, current_game_player_index: nil}
       assert Game.get_current_player(game_without_players) == nil
     end
   end
@@ -141,15 +141,15 @@ defmodule Forka.Games.Game.GameLogicTest do
       assert {:ok, updated_game} = GameLogic.guess(game_state, player1.id, "c")
 
       # Check that the guess was recorded
-      current_word = get_current_word(updated_game)
+      current_word = get_current_game_word(updated_game)
 
       assert Enum.any?(current_word.guesses, fn guess ->
                guess.letter == "c" && guess.correct? == true
              end)
 
       # Player should get points for correct guess
-      player = get_current_player(updated_game)
-      assert player.score > 0
+      game_player = get_current_game_player(updated_game)
+      assert game_player.score > 0
 
       # Check if correct guess was processed correctly
       [guess] = current_word.guesses
@@ -161,7 +161,7 @@ defmodule Forka.Games.Game.GameLogicTest do
       assert {:ok, updated_game} = GameLogic.guess(game_state, player1.id, "z")
 
       # Check that the guess was recorded
-      current_word = get_current_word(updated_game)
+      current_word = get_current_game_word(updated_game)
 
       assert Enum.any?(current_word.guesses, fn guess ->
                guess.letter == "z" && guess.correct? == false
@@ -172,7 +172,7 @@ defmodule Forka.Games.Game.GameLogicTest do
       assert player.lives == 5
 
       # Turn should move to next player
-      current_player = get_current_player(updated_game)
+      current_player = get_current_game_player(updated_game)
       refute current_player.player.id == player1.id
 
       # Check if incorrect guess was processed correctly
@@ -342,12 +342,12 @@ defmodule Forka.Games.Game.GameLogicTest do
       player2: player2
     } do
       player_index = game_state.current_game_player_index
-      player = Map.get(game_state.players, player_index)
-      dead_player = %{player | status: :dead, lives: 0}
+      game_player = Map.get(game_state.game_players, player_index)
+      dead_player = %{game_player | status: :dead, lives: 0}
 
       game_with_dead_player = %{
         game_state
-        | players: Map.put(game_state.players, player_index, dead_player)
+        | game_players: Map.put(game_state.game_players, player_index, dead_player)
       }
 
       # Try to guess with player 1 (who is now dead)
@@ -359,17 +359,20 @@ defmodule Forka.Games.Game.GameLogicTest do
   end
 
   # Helper functions
-  defp get_current_word(%GameState{words: words, current_game_word_index: index}) do
-    Map.get(words, index)
+  defp get_current_game_word(%GameState{game_words: game_words, current_game_word_index: index}) do
+    Map.get(game_words, index)
   end
 
-  defp get_current_player(%GameState{players: players, current_game_player_index: index}) do
-    Map.get(players, index)
+  defp get_current_game_player(%GameState{
+         game_players: game_players,
+         current_game_player_index: index
+       }) do
+    Map.get(game_players, index)
   end
 
-  defp get_player_by_id(%GameState{players: players}, player_id) do
+  defp get_player_by_id(%GameState{game_players: game_players}, player_id) do
     {_idx, player} =
-      Enum.find(players, fn {_idx, game_player} ->
+      Enum.find(game_players, fn {_idx, game_player} ->
         game_player.player.id == player_id
       end)
 

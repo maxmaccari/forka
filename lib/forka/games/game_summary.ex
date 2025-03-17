@@ -45,9 +45,9 @@ defmodule Forka.Games.GameSummary do
   """
   def from_game_state(
         %GameState{
-          players: players,
+          game_players: game_players,
           owner: owner,
-          words: words,
+          game_words: game_words,
           current_game_word_index: word_index,
           status: :playing,
           last_event: last_event,
@@ -56,12 +56,12 @@ defmodule Forka.Games.GameSummary do
       ) do
     current_player = Game.get_current_player(game_state)
 
-    %GameWord{guesses: guesses, word: word} = game_word = Map.get(words, word_index)
-    remaining_words = map_size(words) - word_index
+    %GameWord{guesses: guesses, word: word} = game_word = Map.get(game_words, word_index)
+    remaining_words = map_size(game_words) - word_index
     current_word_letters = GameWord.display_word_letters(game_word)
 
     %__MODULE__{
-      players: players,
+      players: game_players,
       owner: owner,
       current_player_id: current_player && current_player.id,
       guesses: guesses,
@@ -76,13 +76,13 @@ defmodule Forka.Games.GameSummary do
 
   def from_game_state(%GameState{
         status: status,
-        players: players,
+        game_players: game_players,
         owner: owner,
         last_event: last_event,
         word_options: word_options
       }) do
     %__MODULE__{
-      players: players,
+      players: game_players,
       owner: owner,
       game_status: status,
       last_event: last_event,

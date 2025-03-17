@@ -22,8 +22,8 @@ defmodule Forka.Games.GameTest do
       assert game.name == name
       assert game.max_players == max_players
       assert game.status == :lobby
-      assert game.words == %{}
-      assert game.players == %{}
+      assert game.game_words == %{}
+      assert game.game_players == %{}
       assert game.current_game_word_index == nil
       assert game.current_game_player_index == nil
     end
@@ -39,10 +39,10 @@ defmodule Forka.Games.GameTest do
     test "adds player successfully when in lobby", %{game: game, player: player} do
       {:ok, updated_game} = Game.join_game(game, player)
 
-      assert map_size(updated_game.players) == 1
+      assert map_size(updated_game.game_players) == 1
       assert updated_game.last_event == {:player_joined, player}
 
-      assert %{0 => game_player} = updated_game.players
+      assert %{0 => game_player} = updated_game.game_players
 
       assert game_player.player.id == player.id
       assert game_player.player.username == player.username
@@ -60,10 +60,10 @@ defmodule Forka.Games.GameTest do
       {:ok, game_with_player2} = Game.join_game(game_with_player1, player2)
       {:ok, game_with_player3} = Game.join_game(game_with_player2, player3)
 
-      assert map_size(game_with_player3.players) == 3
-      assert %{0 => %{player: %{username: "Player 1"}}} = game_with_player3.players
-      assert %{1 => %{player: %{username: "Player 2"}}} = game_with_player3.players
-      assert %{2 => %{player: %{username: "Player 3"}}} = game_with_player3.players
+      assert map_size(game_with_player3.game_players) == 3
+      assert %{0 => %{player: %{username: "Player 1"}}} = game_with_player3.game_players
+      assert %{1 => %{player: %{username: "Player 2"}}} = game_with_player3.game_players
+      assert %{2 => %{player: %{username: "Player 3"}}} = game_with_player3.game_players
     end
 
     test "returns error when game already started", %{game: game, player: player} do
@@ -95,7 +95,7 @@ defmodule Forka.Games.GameTest do
 
     test "removes player successfully when in lobby", %{game: game, player: player} do
       {:ok, updated_game} = Game.leave_game(game, player.id)
-      assert map_size(updated_game.players) == 0
+      assert map_size(updated_game.game_players) == 0
       assert updated_game.last_event == {:player_left, player}
     end
 
@@ -109,9 +109,9 @@ defmodule Forka.Games.GameTest do
       {:ok, updated_game} = Game.leave_game(game_with_player3, player2.id)
 
       # Check that player3 is now at index 1 (second position)
-      assert map_size(updated_game.players) == 2
-      assert %{0 => %{player: %{username: "Player 1"}}} = updated_game.players
-      assert %{1 => %{player: %{username: "Player 3"}}} = updated_game.players
+      assert map_size(updated_game.game_players) == 2
+      assert %{0 => %{player: %{username: "Player 1"}}} = updated_game.game_players
+      assert %{1 => %{player: %{username: "Player 3"}}} = updated_game.game_players
     end
 
     test "returns unchanged game when removing player that doesn't exist", %{game: game} do
@@ -144,10 +144,10 @@ defmodule Forka.Games.GameTest do
 
     test "sets words successfully", %{game: game, words: words} do
       assert updated_game = Game.set_words(game, words)
-      assert map_size(updated_game.words) == 2
+      assert map_size(updated_game.game_words) == 2
       assert updated_game.last_event == {:words_set, 2}
 
-      Enum.each(updated_game.words, fn {_idx, game_word} ->
+      Enum.each(updated_game.game_words, fn {_idx, game_word} ->
         assert %GameWord{} = game_word
         assert game_word.guesses == []
         assert game_word.finished_by_id == nil
@@ -157,7 +157,7 @@ defmodule Forka.Games.GameTest do
     test "removes duplicate words", %{game: game, words: words} do
       duplicate_words = words ++ [List.first(words)]
       updated_game = Game.set_words(game, duplicate_words)
-      assert map_size(updated_game.words) == 2
+      assert map_size(updated_game.game_words) == 2
     end
 
     test "does not set words when game is not in lobby state", %{game: game, words: words} do
@@ -194,16 +194,16 @@ defmodule Forka.Games.GameTest do
 
       # The player IDs should be the same, but potentially in different order
       original_player_ids =
-        game.players |> Map.values() |> Enum.map(& &1.player.id) |> MapSet.new()
+        game.game_players |> Map.values() |> Enum.map(& &1.player.id) |> MapSet.new()
 
       shuffled_player_ids =
-        shuffled_game.players |> Map.values() |> Enum.map(& &1.player.id) |> MapSet.new()
+        shuffled_game.game_players |> Map.values() |> Enum.map(& &1.player.id) |> MapSet.new()
 
       assert original_player_ids == shuffled_player_ids
 
       # Verify player indices are sequential and start from 0
-      player_indices = shuffled_game.players |> Map.keys() |> Enum.sort()
-      assert player_indices == Enum.to_list(0..(map_size(shuffled_game.players) - 1))
+      player_indices = shuffled_game.game_players |> Map.keys() |> Enum.sort()
+      assert player_indices == Enum.to_list(0..(map_size(shuffled_game.game_players) - 1))
 
       # Test in playing state - should not shuffle
       game_playing = %{game | status: :playing}
@@ -218,10 +218,10 @@ defmodule Forka.Games.GameTest do
       shuffled_game = Game.shuffle_players(game)
 
       # Player count should remain the same
-      assert map_size(game.players) == map_size(shuffled_game.players)
+      assert map_size(game.game_players) == map_size(shuffled_game.game_players)
 
       # Each player should maintain their properties
-      Enum.each(shuffled_game.players, fn {_idx, game_player} ->
+      Enum.each(shuffled_game.game_players, fn {_idx, game_player} ->
         assert game_player.status == :alive
         assert game_player.lives == 6
         assert game_player.score == 0
@@ -249,8 +249,8 @@ defmodule Forka.Games.GameTest do
       assert initialized_game.status == :playing
       assert initialized_game.current_game_word_index == 0
       assert initialized_game.current_game_player_index == 0
-      assert map_size(initialized_game.players) == 2
-      assert map_size(initialized_game.words) == 1
+      assert map_size(initialized_game.game_players) == 2
+      assert map_size(initialized_game.game_words) == 1
       assert initialized_game.last_event == :game_started
     end
 
@@ -292,12 +292,12 @@ defmodule Forka.Games.GameTest do
       # Simulate a player with reduced lives and dead status
       updated_players =
         Map.update!(
-          finished_game.players,
+          finished_game.game_players,
           0,
           fn player -> %{player | lives: 0, status: :dead} end
         )
 
-      finished_game_with_player_changes = %{finished_game | players: updated_players}
+      finished_game_with_player_changes = %{finished_game | game_players: updated_players}
 
       {:ok,
        game_lobby: game_with_words,
@@ -312,7 +312,7 @@ defmodule Forka.Games.GameTest do
       assert restarted_game.status == :lobby
 
       # Check that player lives and status are reset
-      Enum.each(restarted_game.players, fn {_idx, player} ->
+      Enum.each(restarted_game.game_players, fn {_idx, player} ->
         assert player.lives == 6
         assert player.status == :alive
       end)
@@ -320,7 +320,7 @@ defmodule Forka.Games.GameTest do
       # Check that game state is properly reset
       assert restarted_game.current_game_player_index == nil
       assert restarted_game.current_game_word_index == nil
-      assert restarted_game.words == %{}
+      assert restarted_game.game_words == %{}
       assert restarted_game.last_event == :game_restarted
     end
 

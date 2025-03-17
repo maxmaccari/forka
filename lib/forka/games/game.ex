@@ -22,7 +22,7 @@ defmodule Forka.Games.Game do
   A new GameState struct with:
   - A unique UUID as id
   - The provided name and max_players
-  - Default empty values for words and players
+  - Default empty values for game_words and game_players
   - Initial :lobby status
   - No current word or player selected
   - Specified options for words (defaults to language: "en")
@@ -34,8 +34,8 @@ defmodule Forka.Games.Game do
         name: "Fun Game",
         max_players: 4,
         status: :lobby,
-        words: %{},
-        players: %{},
+        game_words: %{},
+        game_players: %{},
         current_game_word_index: nil,
         current_game_player_index: nil,
         word_options: [language: "en"]
@@ -47,8 +47,8 @@ defmodule Forka.Games.Game do
         name: "Jogo Divertido",
         max_players: 4,
         status: :lobby,
-        words: %{},
-        players: %{},
+        game_words: %{},
+        game_players: %{},
         current_game_word_index: nil,
         current_game_player_index: nil,
         word_options: [language: "pt", category_ids: ["uuid1", "uuid2"]]
@@ -80,13 +80,16 @@ defmodule Forka.Games.Game do
   - `{:error, :game_already_started}` if game state is not in lobby state
   - `{:error, :game_archived}` if game state is archived
 
-  The player is converted to a GamePlayer and added to the game state's players map.
+  The player is converted to a GamePlayer and added to the game state's game_players map.
   """
-  def join_game(%GameState{players: players, status: :lobby} = game_state, %Player{} = player) do
-    new_players = add_game_player_to_map(players, player)
+  def join_game(
+        %GameState{game_players: game_players, status: :lobby} = game_state,
+        %Player{} = player
+      ) do
+    new_game_players = add_game_player_to_map(game_players, player)
 
-    if map_size(new_players) <= game_state.max_players do
-      {:ok, %{game_state | players: new_players, last_event: {:player_joined, player}}}
+    if map_size(new_game_players) <= game_state.max_players do
+      {:ok, %{game_state | game_players: new_game_players, last_event: {:player_joined, player}}}
     else
       {:error, :maximum_players}
     end
@@ -96,8 +99,8 @@ defmodule Forka.Games.Game do
 
   def join_game(_game_state, _player), do: {:error, :game_already_started}
 
-  defp add_game_player_to_map(%{} = players, %Player{} = player) do
-    (Map.values(players) ++ [GamePlayer.new(player)])
+  defp add_game_player_to_map(%{} = game_players, %Player{} = player) do
+    (Map.values(game_players) ++ [GamePlayer.new(player)])
     |> Enum.uniq_by(& &1.player.id)
     |> indexed_map()
   end
@@ -117,21 +120,22 @@ defmodule Forka.Games.Game do
   Players are reindexed after removal to maintain sequential ordering.
   If the player is not found in the game, returns the unchanged game state.
   """
-  def leave_game(%GameState{status: :lobby, players: players} = game_state, player_id)
+  def leave_game(%GameState{status: :lobby, game_players: game_players} = game_state, player_id)
       when is_binary(player_id) do
     left_player =
-      Enum.find_value(players, fn {_, game_player} ->
+      Enum.find_value(game_players, fn {_, game_player} ->
         if game_player.player.id == player_id, do: game_player.player
       end)
 
     if left_player do
-      new_players =
-        players
+      new_game_players =
+        game_players
         |> Map.values()
         |> Enum.reject(&(&1.player.id == player_id))
         |> indexed_map()
 
-      {:ok, %{game_state | players: new_players, last_event: {:player_left, left_player}}}
+      {:ok,
+       %{game_state | game_players: new_game_players, last_event: {:player_left, left_player}}}
     else
       {:ok, game_state}
     end
@@ -151,16 +155,16 @@ defmodule Forka.Games.Game do
     - words: List of words to add to the game state
 
   ## Returns
-    - A GameState struct with words set if the game is in lobby state
+    - A GameState struct with game_words set if the game is in lobby state
     - The unchanged game_state if the game is not in lobby state
   """
   def set_words(%GameState{status: :lobby} = game_state, words) when is_list(words) do
-    new_words =
+    new_game_words =
       words
       |> Enum.uniq()
       |> indexed_map(&GameWord.new/1)
 
-    %{game_state | words: new_words, last_event: {:words_set, length(words)}}
+    %{game_state | game_words: new_game_words, last_event: {:words_set, length(words)}}
   end
 
   def set_words(%GameState{} = game_state, words) when is_list(words),
@@ -177,21 +181,21 @@ defmodule Forka.Games.Game do
     - The unchanged game_state if the game is not in lobby state
 
   ## Examples
-      iex> game_state = %GameState{status: :lobby, players: %{0 => player1, 1 => player2, 2 => player3}}
+      iex> game_state = %GameState{status: :lobby, game_players: %{0 => player1, 1 => player2, 2 => player3}}
       iex> shuffled = Game.shuffle_players(game_state)
-      iex> Map.keys(shuffled.players) == Map.keys(game_state.players)
+      iex> Map.keys(shuffled.game_players) == Map.keys(game_state.game_players)
       true
-      iex> Map.values(shuffled.players) |> Enum.sort() == Map.values(game_state.players) |> Enum.sort()
+      iex> Map.values(shuffled.game_players) |> Enum.sort() == Map.values(game_state.game_players) |> Enum.sort()
       true
   """
-  def shuffle_players(%GameState{players: players, status: :lobby} = game_state) do
-    shuffled_players =
-      players
+  def shuffle_players(%GameState{game_players: game_players, status: :lobby} = game_state) do
+    shuffled_game_players =
+      game_players
       |> Map.values()
       |> Enum.shuffle()
       |> indexed_map()
 
-    %{game_state | players: shuffled_players, last_event: :players_shuffled}
+    %{game_state | game_players: shuffled_game_players, last_event: :players_shuffled}
   end
 
   def shuffle_players(%GameState{} = game_state),
@@ -210,7 +214,7 @@ defmodule Forka.Games.Game do
     - `{:error, :game_archived}` if the game is archived
 
   ## Examples
-      iex> game_state = %GameState{status: :lobby, players: %{0 => player1, 1 => player2}, words: %{0 => word1}}
+      iex> game_state = %GameState{status: :lobby, game_players: %{0 => player1, 1 => player2}, game_words: %{0 => word1}}
       iex> {:ok, updated_game} = Game.start_game(game_state)
       iex> updated_game.status
       :playing
@@ -235,8 +239,9 @@ defmodule Forka.Games.Game do
 
   def start_game(%GameState{}), do: {:error, :game_already_initialized}
 
-  defp can_start?(%GameState{} = game_state),
-    do: map_size(game_state.players) >= 2 && map_size(game_state.words) >= 1
+  defp can_start?(%GameState{game_players: game_players, game_words: game_words}) do
+    map_size(game_players) >= 2 and map_size(game_words) >= 1
+  end
 
   defp indexed_map(enum, transform \\ & &1) do
     enum
@@ -358,7 +363,7 @@ defmodule Forka.Games.Game do
   def restart_game(%GameState{} = game_state) do
     # Reset player lives and status
     updated_players =
-      game_state.players
+      game_state.game_players
       |> Enum.map(fn {idx, game_player} ->
         {idx, GamePlayer.reset_lives(game_player)}
       end)
@@ -369,10 +374,10 @@ defmodule Forka.Games.Game do
      %GameState{
        game_state
        | status: :lobby,
-         players: updated_players,
+         game_players: updated_players,
          current_game_player_index: nil,
          current_game_word_index: nil,
-         words: %{},
+         game_words: %{},
          last_event: :game_restarted
      }}
   end
@@ -402,7 +407,7 @@ defmodule Forka.Games.Game do
       when is_binary(player_id) do
     # Check if player exists in the game
     player_exists =
-      game_state.players
+      game_state.game_players
       |> Map.values()
       |> Enum.any?(fn game_player -> game_player.player.id == player_id end)
 
@@ -417,9 +422,9 @@ defmodule Forka.Games.Game do
 
       # Transfer ownership
       true ->
-        # Find the player struct from players map
+        # Find the player struct from game_players map
         new_owner =
-          game_state.players
+          game_state.game_players
           |> Map.values()
           |> Enum.find(fn game_player -> game_player.player.id == player_id end)
           |> Map.get(:player)
