@@ -1,16 +1,16 @@
 defmodule Forka.Games.GameServer do
-  @moduledoc """
-  A GenServer implementation for managing game state and operations.
+  @moduledoc false
 
-  The GameServer is responsible for:
-  - Creating and managing game insstances
-  - Handling player actions (joining, leaving, guessing)
-  - Managing game lifecycle (starting, restarting, archiving)
-  - Maintaining game state throughout play
+  # A GenServer implementation for managing game state and operations.
 
-  Each game has its own dedicated server process identified by a unique ID.
-  The server handles all game operations and maintains the state between player interactions.
-  """
+  # The GameServer is responsible for:
+  # - Creating and managing game instances
+  # - Handling player actions (joining, leaving, guessing)
+  # - Managing game lifecycle (starting, restarting, archiving)
+  # - Maintaining game state throughout play
+
+  # Each game has its own dedicated server process identified by a unique ID.
+  # The server handles all game operations and maintains the state between player interactions.
 
   use GenServer
 
@@ -27,18 +27,7 @@ defmodule Forka.Games.GameServer do
 
   # Public API
 
-  @doc """
-  Starts the GameServer.
-
-  ## Parameters
-    - owner: The player who created the game.
-    - opts: Options for the game, including:
-      - name: The name of the game (default: "Jogo").
-      - max_players: The maximum number of players allowed in the game (default: 2).
-
-  ## Returns
-    - `{:ok, pid}` if the server is started successfully.
-  """
+  @doc false
   def start_link(%GameState{} = game_state) do
     GenServer.start_link(__MODULE__, game_state, name: global_name(game_state.id))
   end
@@ -47,231 +36,75 @@ defmodule Forka.Games.GameServer do
     {:global, {__MODULE__, game_id}}
   end
 
-  @doc """
-  Checks if a game server exists for the given game ID.
-
-  ## Parameters
-    - game_id: The ID of the game to check.
-
-  ## Returns
-    - `true` if the game server exists.
-    - `false` if the game server does not exist.
-  """
+  @doc false
   def exists?(game_id) when is_binary(game_id) do
     game_id |> whereis() |> is_pid()
   end
 
-  @doc """
-  Finds the process ID for a game server with the given game ID.
-
-  ## Parameters
-    - game_id: The ID of the game to locate.
-
-  ## Returns
-    - The PID of the game server if it exists.
-    - `nil` if the game server does not exist.
-  """
+  @doc false
   def whereis(game_id) do
     game_id
     |> global_name()
     |> GenServer.whereis()
   end
 
-  @doc """
-  Gets the current game summary.
-
-  ## Parameters
-    - game_id: The ID of the game.
-
-  ## Returns
-    - The current game summary.
-  """
+  @doc false
   def get_game(game_id) when is_binary(game_id) do
     GenServer.call(global_name(game_id), :get_game)
   end
 
-  @doc """
-  Adds a player to the game.
-
-  Delegates to `Forka.Games.Game.join_game/2`.
-
-  ## Parameters
-    - game_id: The ID of the game.
-    - player_id: The ID of the player to add.
-
-  ## Returns
-    - `{:ok, game_state}` if successful.
-    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.join_game/2` for possible error reasons.
-  """
+  @doc false
   def join_game(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
     GenServer.call(global_name(game_id), {:join_game, player_id})
   end
 
-  @doc """
-  Removes a player from the game.
-
-  Delegates to `Forka.Games.Game.leave_game/2`.
-
-  ## Parameters
-    - game_id: The ID of the game.
-    - player_id: The ID of the player to remove.
-
-  ## Returns
-    - `{:ok, game_state}` if successful.
-    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.leave_game/2` for possible error reasons.
-  """
+  @doc false
   def leave_game(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
     GenServer.call(global_name(game_id), {:leave_game, player_id})
   end
 
-  @doc """
-  Sets the word options for the game.
-
-  Delegates to `Forka.Games.Game.set_word_options/2`.
-
-  ## Parameters
-    - game_id: The ID of the game.
-    - options: Keyword list of options (e.g., [language: "en", category_ids: ["uuid1"]])
-
-  ## Returns
-    - `{:ok, game_state}` if successful.
-    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.set_word_options/2` for possible error reasons.
-  """
+  @doc false
   def set_word_options(game_id, options) when is_binary(game_id) and is_list(options) do
     GenServer.call(global_name(game_id), {:set_word_options, options})
   end
 
-  @doc """
-  Initializes the game.
-
-  Delegates to `Forka.Games.Game.start_game/1`.
-
-  ## Parameters
-    - game_id: The ID of the game.
-
-  ## Returns
-    - `{:ok, game_state}` if successful.
-    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.start_game/1` for possible error reasons.
-  """
+  @doc false
   def start_game(game_id) when is_binary(game_id) do
     GenServer.call(global_name(game_id), :start_game)
   end
 
-  @doc """
-  Makes a player give up in the game.
-
-  Delegates to `Forka.Games.Game.give_up_game/2`.
-
-  ## Parameters
-    - game_id: The ID of the game.
-    - player_id: The ID of the player who is giving up.
-
-  ## Returns
-    - `{:ok, game_state}` if successful.
-    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.give_up_game/2` for possible error reasons.
-  """
+  @doc false
   def give_up_game(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
     GenServer.call(global_name(game_id), {:give_up, player_id})
   end
 
-  @doc """
-  Makes a guess for the current word in the game.
-
-  Delegates to `Forka.Games.Game.guess/3`.
-
-  ## Parameters
-    - game_id: The ID of the game.
-    - player_id: The ID of the player making the guess.
-    - letter: The letter being guessed.
-
-  ## Returns
-    - `{:ok, game_state}` if successful.
-    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.guess/3` for possible error reasons.
-  """
+  @doc false
   def guess(game_id, player_id, letter)
       when is_binary(game_id) and is_binary(letter) and is_binary(player_id) do
     GenServer.call(global_name(game_id), {:guess, letter, player_id})
   end
 
-  @doc """
-  Transfers ownership of the game to another player.
-
-  Delegates to `Forka.Games.Game.transfer_ownership_to_player/2`.
-
-  ## Parameters
-    - game_id: The ID of the game.
-    - player_id: The ID of the player who will become the new owner.
-
-  ## Returns
-    - `{:ok, game_state}` if successful.
-    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.transfer_ownership_to_player/2` for possible error reasons.
-  """
+  @doc false
   def transfer_ownership(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
     GenServer.call(global_name(game_id), {:transfer_ownership, player_id})
   end
 
-  @doc """
-  Restarts the game, returning it to the lobby state.
-
-  Delegates to `Forka.Games.Game.restart_game/1`.
-
-  ## Parameters
-    - game_id: The ID of the game.
-
-  ## Returns
-    - `{:ok, game_state}` if successful.
-    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.restart_game/1` for possible error reasons.
-  """
+  @doc false
   def restart_game(game_id) when is_binary(game_id) do
     GenServer.call(global_name(game_id), :restart_game)
   end
 
-  @doc """
-  Archives the game, marking it as completed and no longer active.
-  This will stop the server process.
-
-  Delegates to `Forka.Games.Game.archive_game/1`.
-
-  ## Parameters
-    - game_id: The ID of the game.
-
-  ## Returns
-    - `{:ok, game_state}` if successful.
-    - `{:error, term}` if unsuccessful. See `Forka.Games.Game.archive_game/1` for possible error reasons.
-  """
+  @doc false
   def archive_game(game_id) when is_binary(game_id) do
     GenServer.call(global_name(game_id), :archive_game)
   end
 
-  @doc """
-  Subscribes the caller to receive updates for a specific game.
-
-  When events occur in the game (like player actions or state changes),
-  subscribers will receive messages in the format `{:game_updated, game_summary}`.
-
-  ## Parameters
-    - game_id: The ID of the game to subscribe to.
-
-  ## Returns
-    - `:ok` if the subscription is successful.
-    - `{:error, term}` if the subscription fails.
-  """
+  @doc false
   def subscribe(game_id) when is_binary(game_id) do
     PubSub.subscribe(Forka.PubSub, topic(game_id))
   end
 
-  @doc """
-  Unsubscribes the caller from receiving updates for a specific game.
-
-  This stops the process from receiving messages about game events.
-
-  ## Parameters
-    - game_id: The ID of the game to unsubscribe from.
-
-  ## Returns
-    - `:ok` if the unsubscription is successful.
-    - `{:error, term}` if the unsubscription fails.
-  """
+  @doc false
   def unsubscribe(game_id) when is_binary(game_id) do
     PubSub.unsubscribe(Forka.PubSub, topic(game_id))
   end
