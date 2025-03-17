@@ -10,11 +10,11 @@ defmodule Forka.Games.Game.GameLogicTest do
 
   setup do
     # Create owner
-    owner = build_games_player_struct("Owner")
+    owner = build_games_player("Owner")
 
     # Create players
-    player1 = build_games_player_struct("Player 1")
-    player2 = build_games_player_struct("Player 2")
+    player1 = build_games_player("Player 1")
+    player2 = build_games_player("Player 2")
 
     # Create words
     word1 = Word.new("cat", "animals", "Meows")
@@ -116,7 +116,7 @@ defmodule Forka.Games.Game.GameLogicTest do
     end
 
     test "returns error when player not found", %{game_state: game} do
-      unknown_player = build_games_player_struct("Unknown")
+      unknown_player = build_games_player("Unknown")
       assert {:error, :player_not_found} = GameLogic.give_up_game(game, unknown_player.id)
     end
 

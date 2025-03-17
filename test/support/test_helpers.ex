@@ -10,7 +10,7 @@ defmodule Forka.TestHelpers do
     token
   end
 
-  def build_games_player_struct(username) do
+  def build_games_player(username) do
     %Games.Schemas.Player{
       id: UUID.uuid4(),
       username: username

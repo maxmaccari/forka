@@ -8,14 +8,14 @@ defmodule Forka.Games.GameSummaryTest do
 
   setup do
     # Create Owner
-    owner = build_games_player_struct("owner")
+    owner = build_games_player("owner")
 
     # Create a new game
     game = Game.new(owner, "Test Game", 4)
 
     # Add players
-    player1 = build_games_player_struct("Player 1")
-    player2 = build_games_player_struct("Player 2")
+    player1 = build_games_player("Player 1")
+    player2 = build_games_player("Player 2")
     {:ok, game_with_player1} = Game.join_game(game, player1)
     {:ok, game_with_players} = Game.join_game(game_with_player1, player2)
 
