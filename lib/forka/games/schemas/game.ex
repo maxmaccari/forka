@@ -12,16 +12,17 @@ defmodule Forka.Games.Schemas.Game do
   @foreign_key_type :binary_id
   schema "games" do
     field :name, :string
+    field :max_players, :integer
+    embeds_one :word_options, WordOptions, on_replace: :delete
+
+    belongs_to :owner, Player
 
     field :status, Ecto.Enum,
       values: [:lobby, :playing, :finished, :archived, :game_over],
       default: :lobby
 
-    field :max_players, :integer
     field :current_game_word_index, :integer
     field :current_game_player_index, :integer
-
-    embeds_one :word_options, WordOptions, on_replace: :delete
 
     has_many :game_words, GameWord,
       foreign_key: :game_id,
@@ -33,12 +34,16 @@ defmodule Forka.Games.Schemas.Game do
       preload_order: [asc: :position],
       on_replace: :delete
 
-    belongs_to :owner, Player
-
     timestamps(type: :utc_datetime)
   end
 
   # Changeset
+  # TODO: Make three changesets: insert_changeset and update_changeset.
+  # insert_changeset will make it able only to set the name, status, and max_players
+  # update_changeset will make it able to set other fields, but according to state
+  # lobby state will allow to change settings and owner
+  # archived state won't allow to change nothing
+  # playing state will allow to change anything else but settings (it will allow to change owner too)
   @doc false
   def changeset(game, attrs) do
     game
