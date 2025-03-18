@@ -107,81 +107,9 @@ defmodule Forka.Games.Schemas.Game do
       :archived ->
         add_error(changeset, :status, "cannot update an archived game")
 
-      current_status ->
-        changeset
-        |> validate_status_transition(current_status)
-        |> validate_field_updates_for_status(current_status)
-    end
-  end
-
-  defp validate_status_transition(changeset, current_status) do
-    case {current_status, get_change(changeset, :status)} do
-      {_, nil} ->
-        # No status change
-        changeset
-
-      {:lobby, :playing} ->
-        changeset
-
-      {:playing, new_status} when new_status in [:finished, :game_over] ->
-        changeset
-
-      {status, :archived} when status in [:lobby, :game_over, :finished] ->
-        # No status change
-        changeset
-
-      {:game_over, :lobby} ->
-        # Valid transition: game_over -> lobby
-        changeset
-
-      {:finished, :lobby} ->
-        # Valid transition: finished -> lobby
-        changeset
-
-      {_, new_status} when current_status == new_status ->
-        # Same status, no change
-        changeset
-
-      {_, _} ->
-        # Invalid transition
-        add_error(changeset, :status, "invalid status transition")
-    end
-  end
-
-  # Note: Forka.Games.Game handles the gameplay logic, but here the goal is to
-  # keep the data integrity when persisting it in database. These validation
-  # functions ensure that only appropriate fields can be modified based on the
-  # current game status, preventing invalid state transitions or modifications.
-  defp validate_field_updates_for_status(changeset, status) do
-    settings_fields = [:name, :max_players, :word_options]
-    gameplay_fields = [:current_game_word_index, :current_game_player_index]
-
-    case status do
-      :lobby ->
-        # In lobby, we can change anything
-        changeset
-
-      :playing ->
-        # In playing, only gameplay attributes can be updated
-        reject_changes_for_fields(changeset, settings_fields)
-
-      status when status in [:game_over, :finished] ->
-        # In game_over or finished, only status can be updated to lobby
-        reject_changes_for_fields(changeset, settings_fields ++ gameplay_fields)
-
       _ ->
         changeset
     end
-  end
-
-  defp reject_changes_for_fields(changeset, fields) do
-    Enum.reduce(fields, changeset, fn field, acc ->
-      if get_change(acc, field) do
-        delete_change(acc, field)
-      else
-        acc
-      end
-    end)
   end
 
   # Conversion functions

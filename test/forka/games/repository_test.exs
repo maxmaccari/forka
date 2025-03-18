@@ -301,75 +301,22 @@ defmodule Forka.Games.RepositoryTest do
       assert reloaded_game_state.current_game_player_index == 1
     end
 
-    test "validates field updates based on game status" do
+    test "rejects updates to fields when game is archived" do
       player = insert(:player)
-      game = insert(:game, owner: player, status: :playing)
+      archived_game = insert(:game, owner: player, status: :archived)
 
-      # Get the game state
-      {:ok, game_state} = Repository.get_game_state(game.id)
+      {:ok, archived_state} = Repository.get_game_state(archived_game.id)
 
-      # Try to update settings while in playing state
-      updated_game_state = %{
-        game_state
-        | name: "Updated Game Name",
-          max_players: 6,
-          word_options: %{
-            game_state.word_options
-            | language: "pt",
-              category_ids: ["category1", "category2"]
-          }
-      }
-
-      # Should reject settings changes in playing state
-      assert {:ok, saved_game_state} = Repository.save_game_state(updated_game_state)
-      # Name should not change
-      assert saved_game_state.name == game_state.name
-      # Max players should not change
-      assert saved_game_state.max_players == game_state.max_players
-      # Language should not change
-      assert saved_game_state.word_options.language == game_state.word_options.language
-
-      # But should allow gameplay field updates
-      gameplay_updated_state = %{
-        game_state
-        | current_game_word_index: 2,
-          current_game_player_index: 1
-      }
-
-      assert {:ok, saved_gameplay_state} = Repository.save_game_state(gameplay_updated_state)
-      assert saved_gameplay_state.current_game_word_index == 2
-      assert saved_gameplay_state.current_game_player_index == 1
-
-      # Test with finished state
-      finished_game = insert(:game, owner: player, status: :finished)
-      {:ok, finished_state} = Repository.get_game_state(finished_game.id)
-
-      # Try to update both settings and gameplay fields
-      updated_finished_state = %{
-        finished_state
-        | name: "New Finished Name",
+      updated_archived_state = %{
+        archived_state
+        | name: "New Archived Name",
           max_players: 6,
           current_game_word_index: 3,
           current_game_player_index: 2
       }
 
-      # Should reject all changes except status changes
-      assert {:ok, saved_finished_state} = Repository.save_game_state(updated_finished_state)
-      assert saved_finished_state.name == finished_state.name
-      assert saved_finished_state.max_players == finished_state.max_players
-
-      assert saved_finished_state.current_game_word_index ==
-               finished_state.current_game_word_index
-
-      assert saved_finished_state.current_game_player_index ==
-               finished_state.current_game_player_index
-
-      # Test owner_id updates are allowed in any state
-      new_player = insert(:player)
-      owner_updated_state = %{game_state | owner: to_games_player(new_player)}
-
-      assert {:ok, saved_owner_state} = Repository.save_game_state(owner_updated_state)
-      assert saved_owner_state.owner.id == new_player.id
+      # Should reject all changes in archived state
+      assert {:error, _reason} = Repository.save_game_state(updated_archived_state)
     end
 
     test "allows ownership transfer to another player" do
