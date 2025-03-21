@@ -4,9 +4,10 @@ defmodule Forka.Games.Game do
   alias Forka.Games.GameSummary
   alias Forka.Games.Schemas.GamePlayer
   alias Forka.Games.Schemas.GameWord
-  alias Forka.Games.Schemas.Guess
   alias Forka.Games.Schemas.Player
   alias Forka.Games.Schemas.WordOptions
+
+  import Forka.Games.Game.Helpers, only: [increment_tick: 1, push_event: 2, push_event: 3]
 
   @min_players_allowed 2
   @max_players_allowed 6
@@ -94,7 +95,12 @@ defmodule Forka.Games.Game do
     new_game_players = add_game_player_to_map(game_players, player)
 
     if map_size(new_game_players) <= game_state.max_players do
-      {:ok, %{game_state | game_players: new_game_players, last_event: {:player_joined, player}}}
+      new_game_state =
+        %{game_state | game_players: new_game_players}
+        |> increment_tick()
+        |> push_event(:player_joined, player)
+
+      {:ok, new_game_state}
     else
       {:error, :maximum_players}
     end
@@ -139,8 +145,12 @@ defmodule Forka.Games.Game do
         |> Enum.reject(&(&1.player.id == player_id))
         |> indexed_map()
 
-      {:ok,
-       %{game_state | game_players: new_game_players, last_event: {:player_left, left_player}}}
+      new_game_state =
+        %{game_state | game_players: new_game_players}
+        |> increment_tick()
+        |> push_event(:player_left, left_player)
+
+      {:ok, new_game_state}
     else
       {:ok, game_state}
     end
@@ -169,7 +179,9 @@ defmodule Forka.Games.Game do
       |> Enum.uniq()
       |> indexed_map(&GameWord.new/1)
 
-    %{game_state | game_words: new_game_words, last_event: {:words_set, length(words)}}
+    %{game_state | game_words: new_game_words}
+    |> increment_tick()
+    |> push_event(:words_set, %{count: map_size(new_game_words)})
   end
 
   def set_words(%GameState{} = game_state, words) when is_list(words),
@@ -200,7 +212,9 @@ defmodule Forka.Games.Game do
       |> Enum.shuffle()
       |> indexed_map()
 
-    %{game_state | game_players: shuffled_game_players, last_event: :players_shuffled}
+    %{game_state | game_players: shuffled_game_players}
+    |> increment_tick()
+    |> push_event(:players_shuffled)
   end
 
   def shuffle_players(%GameState{} = game_state),
@@ -226,13 +240,15 @@ defmodule Forka.Games.Game do
   """
   def start_game(%GameState{status: :lobby} = game_state) do
     if can_start?(game_state) do
-      new_game_state = %{
-        game_state
-        | current_game_word_index: 0,
-          current_game_player_index: 0,
-          status: :playing,
-          last_event: :game_started
-      }
+      new_game_state =
+        %{
+          game_state
+          | current_game_word_index: 0,
+            current_game_player_index: 0,
+            status: :playing
+        }
+        |> increment_tick()
+        |> push_event(:game_started)
 
       {:ok, new_game_state}
     else
@@ -339,7 +355,12 @@ defmodule Forka.Games.Game do
   end
 
   def archive_game(%GameState{} = game_state) do
-    {:ok, %GameState{game_state | status: :archived, last_event: :game_archived}}
+    new_game_state =
+      %GameState{game_state | status: :archived}
+      |> increment_tick()
+      |> push_event(:game_archived)
+
+    {:ok, new_game_state}
   end
 
   @doc """
@@ -374,17 +395,20 @@ defmodule Forka.Games.Game do
       end)
       |> Map.new()
 
+    new_game_state =
+      %GameState{
+        game_state
+        | status: :lobby,
+          game_players: updated_players,
+          current_game_player_index: nil,
+          current_game_word_index: nil,
+          game_words: %{}
+      }
+      |> increment_tick()
+      |> push_event(:game_restarted)
+
     # Return to lobby state
-    {:ok,
-     %GameState{
-       game_state
-       | status: :lobby,
-         game_players: updated_players,
-         current_game_player_index: nil,
-         current_game_word_index: nil,
-         game_words: %{},
-         last_event: :game_restarted
-     }}
+    {:ok, new_game_state}
   end
 
   @doc """
@@ -434,12 +458,15 @@ defmodule Forka.Games.Game do
           |> Enum.find(fn game_player -> game_player.player.id == player_id end)
           |> Map.get(:player)
 
-        {:ok,
-         %GameState{
-           game_state
-           | owner: new_owner,
-             last_event: {:ownership_transferred_to, new_owner}
-         }}
+        new_game_state =
+          %GameState{game_state | owner: new_owner}
+          |> increment_tick()
+          |> push_event(:ownership_transferred_to, %{
+            from_player_id: game_state.owner.id,
+            to_player_id: new_owner.id
+          })
+
+        {:ok, new_game_state}
     end
   end
 
@@ -463,8 +490,10 @@ defmodule Forka.Games.Game do
       |> maybe_update_name(settings)
       |> maybe_update_max_players(settings)
       |> maybe_update_word_options(settings)
+      |> increment_tick()
+      |> push_event(:settings_updated, settings)
 
-    {:ok, %GameState{updated_game_state | last_event: {:settings_updated, settings}}}
+    {:ok, updated_game_state}
   end
 
   def update_settings(%GameState{} = _game_state, _settings),
@@ -494,90 +523,6 @@ defmodule Forka.Games.Game do
        do: %GameState{game_state | word_options: WordOptions.new(word_options)}
 
   defp maybe_update_word_options(game_state, _), do: game_state
-
-  @doc """
-  Converts the last_event tuple into a human-readable description.
-
-  ## Parameters
-    - game_state: The current GameState struct
-
-  ## Returns
-    - A string with a friendly description of the last event
-    - nil if there's no last event
-  """
-  def last_event_description(%GameState{last_event: nil}), do: nil
-
-  def last_event_description(%GameState{last_event: {:player_joined, player}}) do
-    "#{player.username} joined the game"
-  end
-
-  def last_event_description(%GameState{last_event: {:player_left, player}}) do
-    "#{player.username} left the game"
-  end
-
-  def last_event_description(%GameState{last_event: {:game_started, _owner}}) do
-    "Game started"
-  end
-
-  def last_event_description(%GameState{
-        last_event: {:player_guessed, %Guess{letter: letter, correct?: true}}
-      }) do
-    "Player correctly guessed the letter '#{letter}'"
-  end
-
-  def last_event_description(%GameState{
-        last_event: {:player_guessed, %Guess{letter: letter, correct?: false}}
-      }) do
-    "Player incorrectly guessed the letter '#{letter}'"
-  end
-
-  def last_event_description(%GameState{last_event: {:player_gave_up, player}}) do
-    "#{player.username} gave up"
-  end
-
-  def last_event_description(%GameState{last_event: {:ownership_transferred_to, player}}) do
-    "Game ownership transferred to #{player.username}"
-  end
-
-  def last_event_description(%GameState{last_event: :game_archived}) do
-    "Game was archived"
-  end
-
-  def last_event_description(%GameState{last_event: :game_restarted}) do
-    "Game was restarted"
-  end
-
-  def last_event_description(%GameState{last_event: {:settings_updated, settings}}) do
-    settings_description =
-      Enum.map_join(settings, ", ", fn {key, value} ->
-        case key do
-          :max_players ->
-            "maximum players set to #{value}"
-
-          :word_options ->
-            options =
-              Enum.map_join(value, ", ", fn {opt_key, opt_val} ->
-                case opt_key do
-                  :language -> "language changed to #{opt_val}"
-                  :category_ids -> "categories updated"
-                  _ -> "#{opt_key} changed"
-                end
-              end)
-
-            options
-
-          _ ->
-            "#{key} updated"
-        end
-      end)
-
-    "Game settings were updated: #{settings_description}"
-  end
-
-  # Fallback for any unhandled event types
-  def last_event_description(%GameState{last_event: event}) do
-    "Unknown event: #{inspect(event)}"
-  end
 
   @doc false
   def min_players_allowed, do: @min_players_allowed

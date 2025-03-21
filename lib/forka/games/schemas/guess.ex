@@ -37,4 +37,14 @@ defmodule Forka.Games.Schemas.Guess do
       guessed_at: DateTime.utc_now()
     }
   end
+
+  @doc false
+  def to_map(%__MODULE__{} = guess) do
+    %{
+      letter: guess.letter,
+      guessed_by_player_id: guess.guessed_by_player_id,
+      guessed_at: guess.guessed_at,
+      correct: guess.correct?
+    }
+  end
 end

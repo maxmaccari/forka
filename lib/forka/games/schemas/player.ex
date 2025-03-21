@@ -19,4 +19,12 @@ defmodule Forka.Games.Schemas.Player do
 
     timestamps(type: :utc_datetime)
   end
+
+  @doc false
+  def to_map(player) do
+    %{
+      id: player.id,
+      username: player.username
+    }
+  end
 end

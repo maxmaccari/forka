@@ -36,12 +36,21 @@ defmodule Forka.Games.Schemas.GameWord do
     timestamps()
   end
 
+  @doc false
   def changeset(game_word, attrs) do
     game_word
     |> cast(attrs, [:finished_by_id, :base_word_id])
     |> cast_embed(:word)
     |> cast_embed(:guesses)
     |> foreign_key_constraint(:base_word_id)
+  end
+
+  def to_map(%__MODULE__{} = game_word) do
+    %{
+      id: game_word.id,
+      word: Word.to_map(game_word.word),
+      finished_by_id: game_word.finished_by_id
+    }
   end
 
   @doc """

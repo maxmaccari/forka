@@ -11,6 +11,7 @@ defmodule Forka.Repo.Migrations.CreateGames do
       add :word_options, :map, default: %{}
       add :current_game_word_index, :integer
       add :current_game_player_index, :integer
+      add :tick, :integer, null: false, default: 0
 
       timestamps(type: :utc_datetime)
     end

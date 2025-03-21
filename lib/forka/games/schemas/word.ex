@@ -41,6 +41,16 @@ defmodule Forka.Games.Schemas.Word do
     |> update_change(:text, &(String.trim(&1) |> sanitize_text() |> String.downcase()))
   end
 
+  @doc false
+  def to_map(%__MODULE__{} = word) do
+    %{
+      text: word.text,
+      category: word.category,
+      hint: word.hint,
+      language: word.language
+    }
+  end
+
   @doc """
   Creates a new Word struct.
 

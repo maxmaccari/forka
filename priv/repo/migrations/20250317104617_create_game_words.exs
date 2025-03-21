@@ -13,7 +13,7 @@ defmodule Forka.Repo.Migrations.CreateGameWords do
       add :base_word_id, references(:words, type: :binary_id, on_delete: :nilify_all)
       add :position, :integer
 
-      timestamps()
+      timestamps(type: :utc_datetime)
     end
 
     create index(:game_words, [:game_id])

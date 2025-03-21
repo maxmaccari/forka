@@ -68,7 +68,12 @@ defmodule Forka.Games.Game.GameLogicTest do
     test "makes player give up successfully", %{game_state: game, player1: player} do
       {:ok, updated_game} = GameLogic.give_up_game(game, player.id)
 
-      assert updated_game.last_event == {:player_gave_up, player}
+      assert updated_game.tick == game.tick + 1
+
+      assert_last_events(updated_game, [
+        %{type: :next_player_turn},
+        %{type: :player_gave_up, payload: %{player_id: player.id}}
+      ])
 
       {_idx, game_player} = find_game_player_by_id(updated_game, player.id)
       assert game_player.status == :dead
@@ -86,6 +91,11 @@ defmodule Forka.Games.Game.GameLogicTest do
       # Check that the current player is now Player 2
       assert %Player{id: current_player_id} = GameLogic.get_current_player(updated_game)
       assert current_player_id == player2.id
+
+      assert_last_events(updated_game, [
+        %{type: :next_player_turn, payload: %{player_id: current_player_id}},
+        %{type: :player_gave_up, payload: %{player_id: player1.id}}
+      ])
     end
 
     test "game is over when all players give up", %{
@@ -114,6 +124,11 @@ defmodule Forka.Games.Game.GameLogicTest do
       # Current player and word indices should be nil in game over state
       assert game_after_p2.current_game_player_index == nil
       assert game_after_p2.current_game_word_index == nil
+
+      assert_last_events(game_after_p2, [
+        %{type: :game_over},
+        %{type: :player_gave_up, payload: %{player_id: player2.id}}
+      ])
     end
 
     test "returns error when player not found", %{game_state: game} do
@@ -153,7 +168,15 @@ defmodule Forka.Games.Game.GameLogicTest do
 
       # Check if correct guess was processed correctly
       [guess] = current_word.guesses
-      assert updated_game.last_event == {:player_guessed, guess}
+
+      # Check that the events were generated correctly
+      assert_last_events(updated_game, [
+        %{type: :player_scored, payload: %{player_id: player1.id}},
+        %{
+          type: :player_guessed,
+          payload: %{player_id: player1.id, letter: guess.letter, correct?: guess.correct?}
+        }
+      ])
     end
 
     test "processes incorrect guess successfully", %{game_state: game_state, player1: player1} do
@@ -175,9 +198,12 @@ defmodule Forka.Games.Game.GameLogicTest do
       current_player = get_current_game_player(updated_game)
       refute current_player.player.id == player1.id
 
-      # Check if incorrect guess was processed correctly
-      [guess] = current_word.guesses
-      assert updated_game.last_event == {:player_guessed, guess}
+      # Check that the events were generated correctly
+      assert_last_events(updated_game, [
+        %{type: :next_player_turn, payload: %{player_id: current_player.player.id}},
+        %{type: :player_lost_life, payload: %{player_id: player1.id}},
+        %{type: :player_guessed, payload: %{player_id: player1.id, letter: "z", correct?: false}}
+      ])
     end
 
     test "returns error for already guessed letter", %{game_state: game_state, player1: player1} do
@@ -230,6 +256,14 @@ defmodule Forka.Games.Game.GameLogicTest do
 
       # Player's lives should be reset
       assert player.lives == 6
+
+      # Check that the events were pushed correctly
+      assert_last_events(game_after_t, [
+        %{type: :player_guessed},
+        %{type: :player_scored},
+        %{type: :word_completed, payload: %{player_id: player1.id}},
+        %{type: :moved_to_next_word}
+      ])
     end
 
     test "player wins the game by completing all words", %{
@@ -248,6 +282,23 @@ defmodule Forka.Games.Game.GameLogicTest do
 
       # Game should be finished
       assert game_after_g.status == :finished
+
+      # Check that the game finished event was pushed
+      assert_last_events(game_after_g, [
+        %{type: :player_guessed},
+        %{type: :player_scored},
+        %{type: :word_completed},
+        %{type: :game_finished}
+      ])
+
+      # Verify the final state
+      assert game_after_g.current_game_word_index == 1
+      assert game_after_g.current_game_player_index == 0
+
+      # Check player's final score
+      player = get_player_by_id(game_after_g, player1.id)
+      # Should have points from both words
+      assert player.score > 60
     end
 
     test "one player wins while another dies", %{
@@ -282,6 +333,13 @@ defmodule Forka.Games.Game.GameLogicTest do
       # Player 2 should be dead
       player2_state = get_player_by_id(game_after_a, player2.id)
       assert player2_state.status == :dead
+
+      # Check that the player_died event was pushed
+      assert_last_events(game_after_a, [
+        %{type: :player_guessed},
+        %{type: :player_died, payload: %{player_id: player2.id}},
+        %{type: :next_player_turn}
+      ])
 
       # Player 1 completes the words and wins
       {:ok, game_after_c} = GameLogic.guess(game_after_m, player1.id, "c")
@@ -332,6 +390,12 @@ defmodule Forka.Games.Game.GameLogicTest do
       player2_state = get_player_by_id(game_after_o1, player2.id)
       assert player1_state.status == :dead
       assert player2_state.status == :dead
+
+      assert_last_events(game_after_o1, [
+        %{type: :player_guessed},
+        %{type: :player_died},
+        %{type: :game_over}
+      ])
     end
   end
 

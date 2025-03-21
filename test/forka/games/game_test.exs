@@ -26,6 +26,8 @@ defmodule Forka.Games.GameTest do
       assert game.game_players == %{}
       assert game.current_game_word_index == nil
       assert game.current_game_player_index == nil
+      assert game.tick == 0
+      assert game.events == []
     end
   end
 
@@ -40,7 +42,10 @@ defmodule Forka.Games.GameTest do
       {:ok, updated_game} = Game.join_game(game, player)
 
       assert map_size(updated_game.game_players) == 1
-      assert updated_game.last_event == {:player_joined, player}
+
+      assert updated_game.tick == game.tick + 1
+
+      assert_last_events(updated_game, [%{type: :player_joined, payload: %{player_id: player.id}}])
 
       assert %{0 => game_player} = updated_game.game_players
 
@@ -96,7 +101,12 @@ defmodule Forka.Games.GameTest do
     test "removes player successfully when in lobby", %{game: game, player: player} do
       {:ok, updated_game} = Game.leave_game(game, player.id)
       assert map_size(updated_game.game_players) == 0
-      assert updated_game.last_event == {:player_left, player}
+
+      assert updated_game.tick == game.tick + 1
+
+      assert assert_last_events(updated_game, [
+               %{type: :player_left, payload: %{player_id: player.id}}
+             ])
     end
 
     test "reindexes players after removal", %{game: game_with_player1} do
@@ -145,7 +155,10 @@ defmodule Forka.Games.GameTest do
     test "sets words successfully", %{game: game, words: words} do
       assert updated_game = Game.set_words(game, words)
       assert map_size(updated_game.game_words) == 2
-      assert updated_game.last_event == {:words_set, 2}
+
+      assert updated_game.tick == game.tick + 1
+
+      assert_last_events(updated_game, [%{type: :words_set, payload: %{count: 2}}])
 
       Enum.each(updated_game.game_words, fn {_idx, game_word} ->
         assert %GameWord{} = game_word
@@ -190,7 +203,9 @@ defmodule Forka.Games.GameTest do
       # Test in lobby state
       shuffled_game = Game.shuffle_players(game)
       assert shuffled_game.status == :lobby
-      assert shuffled_game.last_event == :players_shuffled
+
+      assert shuffled_game.tick == game.tick + 1
+      assert_last_events(shuffled_game, [%{type: :players_shuffled}])
 
       # The player IDs should be the same, but potentially in different order
       original_player_ids =
@@ -251,7 +266,9 @@ defmodule Forka.Games.GameTest do
       assert initialized_game.current_game_player_index == 0
       assert map_size(initialized_game.game_players) == 2
       assert map_size(initialized_game.game_words) == 1
-      assert initialized_game.last_event == :game_started
+
+      assert initialized_game.tick == game.tick + 1
+      assert_last_events(initialized_game, [%{type: :game_started}])
     end
 
     test "returns error when game not in lobby", %{game: game} do
@@ -321,7 +338,9 @@ defmodule Forka.Games.GameTest do
       assert restarted_game.current_game_player_index == nil
       assert restarted_game.current_game_word_index == nil
       assert restarted_game.game_words == %{}
-      assert restarted_game.last_event == :game_restarted
+
+      assert restarted_game.tick == game.tick + 1
+      assert_last_events(restarted_game, [%{type: :game_restarted}])
     end
 
     test "restarts game successfully when in lobby status", %{game_lobby: game} do
@@ -366,7 +385,9 @@ defmodule Forka.Games.GameTest do
     test "archives game successfully when in lobby status", %{game_lobby: game} do
       assert {:ok, archived_game} = Game.archive_game(game)
       assert archived_game.status == :archived
-      assert archived_game.last_event == :game_archived
+
+      assert archived_game.tick == game.tick + 1
+      assert_last_events(archived_game, [%{type: :game_archived}])
     end
 
     test "archives game successfully when in finished status", %{game_finished: game} do
@@ -415,7 +436,15 @@ defmodule Forka.Games.GameTest do
 
       assert updated_game.owner.id == player1.id
       assert updated_game.owner.username == player1.username
-      assert updated_game.last_event == {:ownership_transferred_to, player1}
+
+      assert updated_game.tick == game.tick + 1
+
+      assert_last_events(updated_game, [
+        %{
+          type: :ownership_transferred_to,
+          payload: %{from_player_id: game.owner.id, to_player_id: player1.id}
+        }
+      ])
     end
 
     test "returns error when player is not in the game", %{game: game} do
@@ -465,7 +494,10 @@ defmodule Forka.Games.GameTest do
       assert updated_game.max_players == 6
       assert updated_game.word_options.language == "pt"
       assert updated_game.word_options.category_ids == ["uuid1", "uuid2"]
-      assert updated_game.last_event == {:settings_updated, settings}
+
+      assert updated_game.tick == game.tick + 1
+
+      assert_last_events(updated_game, [%{type: :settings_updated, payload: settings}])
     end
 
     test "updates name only", %{game: game} do
@@ -473,7 +505,6 @@ defmodule Forka.Games.GameTest do
       {:ok, updated_game} = Game.update_settings(game, settings)
 
       assert updated_game.name == "New Game Name"
-      assert updated_game.last_event == {:settings_updated, settings}
     end
 
     test "ignores empty names", %{game: game} do
@@ -482,14 +513,12 @@ defmodule Forka.Games.GameTest do
       {:ok, updated_game} = Game.update_settings(game, settings)
       # Name unchanged
       assert updated_game.name == "Test Game"
-      assert updated_game.last_event == {:settings_updated, settings}
 
       # Test with whitespace only
       settings = %{name: "   "}
       {:ok, updated_game} = Game.update_settings(game, settings)
       # Name unchanged
       assert updated_game.name == "Test Game"
-      assert updated_game.last_event == {:settings_updated, settings}
     end
 
     test "updates max_players only within allowed range", %{game: game} do
@@ -497,7 +526,6 @@ defmodule Forka.Games.GameTest do
       {:ok, updated_game} = Game.update_settings(game, settings)
 
       assert updated_game.max_players == 6
-      assert updated_game.last_event == {:settings_updated, settings}
     end
 
     test "ignores max_players outside allowed range", %{game: game} do
@@ -506,7 +534,6 @@ defmodule Forka.Games.GameTest do
 
       # Unchanged
       assert updated_game.max_players == 4
-      assert updated_game.last_event == {:settings_updated, settings}
     end
 
     test "updates word_options only", %{game: game} do
@@ -514,7 +541,6 @@ defmodule Forka.Games.GameTest do
       {:ok, updated_game} = Game.update_settings(game, settings)
 
       assert updated_game.word_options.language == "es"
-      assert updated_game.last_event == {:settings_updated, settings}
     end
 
     test "returns error when not in lobby state", %{game: game} do
@@ -542,31 +568,6 @@ defmodule Forka.Games.GameTest do
       summary = Game.to_game_summary(game)
 
       assert %Forka.Games.GameSummary{} = summary
-    end
-  end
-
-  describe "last_event_description/1" do
-    test "returns human-readable descriptions for various events" do
-      owner = build_games_player("Owner")
-      player = build_games_player("Player")
-      game = Game.new(owner, "Test Game", 4)
-
-      # Test nil event
-      assert Game.last_event_description(%{game | last_event: nil}) == nil
-
-      # Test player joined event
-      game_with_join = %{game | last_event: {:player_joined, player}}
-      assert Game.last_event_description(game_with_join) == "Player joined the game"
-
-      # Test player left event
-      game_with_left = %{game | last_event: {:player_left, player}}
-      assert Game.last_event_description(game_with_left) == "Player left the game"
-
-      # Test ownership transfer event
-      game_with_transfer = %{game | last_event: {:ownership_transferred_to, player}}
-
-      assert Game.last_event_description(game_with_transfer) ==
-               "Game ownership transferred to Player"
     end
   end
 end

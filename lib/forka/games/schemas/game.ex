@@ -46,6 +46,7 @@ defmodule Forka.Games.Schemas.Game do
 
     field :current_game_word_index, :integer
     field :current_game_player_index, :integer
+    field :tick, :integer, default: 0
 
     has_many :game_words, GameWord,
       foreign_key: :game_id,
@@ -63,7 +64,7 @@ defmodule Forka.Games.Schemas.Game do
   @doc false
   def insert_changeset(game, attrs) do
     game
-    |> cast(attrs, [:name, :max_players, :owner_id])
+    |> cast(attrs, [:name, :max_players, :owner_id, :tick])
     |> common_changeset()
   end
 
@@ -75,7 +76,8 @@ defmodule Forka.Games.Schemas.Game do
       :owner_id,
       :status,
       :current_game_word_index,
-      :current_game_player_index
+      :current_game_player_index,
+      :tick
     ])
     |> validate_required([:status])
     |> common_changeset()
@@ -90,6 +92,7 @@ defmodule Forka.Games.Schemas.Game do
     |> cast_embed(:word_options)
     |> cast_assoc(:game_words)
     |> cast_assoc(:game_players)
+    |> validate_number(:tick, greater_than_or_equal_to: 0)
   end
 
   defp validate_settings(changeset) do

@@ -20,8 +20,6 @@ defmodule Forka.Games.Game.GameState do
   it transitions to :finished status. Games can also be archived.
   """
 
-  # TODO: In the future, this will be an Ecto module referencing to "games" table
-
   defstruct id: nil,
             name: nil,
             game_words: %{},
@@ -32,5 +30,7 @@ defmodule Forka.Games.Game.GameState do
             status: :lobby,
             max_players: 0,
             last_event: nil,
-            word_options: [language: "en"]
+            word_options: [language: "en"],
+            tick: 0,
+            events: []
 end
