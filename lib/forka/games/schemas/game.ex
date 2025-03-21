@@ -23,11 +23,12 @@ defmodule Forka.Games.Schemas.Game do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Forka.Games.Schemas.GameWord
-  alias Forka.Games.Schemas.GamePlayer
-  alias Forka.Games.Schemas.WordOptions
-  alias Forka.Games.Schemas.Player
   alias Forka.Games.Game.GameState
+  alias Forka.Games.Schemas.Event
+  alias Forka.Games.Schemas.GamePlayer
+  alias Forka.Games.Schemas.GameWord
+  alias Forka.Games.Schemas.Player
+  alias Forka.Games.Schemas.WordOptions
 
   import Forka.Games.Game, only: [min_players_allowed: 0, max_players_allowed: 0]
 
@@ -56,6 +57,11 @@ defmodule Forka.Games.Schemas.Game do
     has_many :game_players, GamePlayer,
       foreign_key: :game_id,
       preload_order: [asc: :position],
+      on_replace: :delete
+
+    has_many :events, Event,
+      foreign_key: :game_id,
+      preload_order: [desc: :tick, desc: :at],
       on_replace: :delete
 
     timestamps(type: :utc_datetime)
@@ -89,9 +95,10 @@ defmodule Forka.Games.Schemas.Game do
     |> validate_required([:owner_id])
     |> validate_settings()
     |> foreign_key_constraint(:owner_id)
-    |> cast_embed(:word_options)
+    |> cast_assoc(:events)
     |> cast_assoc(:game_words)
     |> cast_assoc(:game_players)
+    |> cast_embed(:word_options)
     |> validate_number(:tick, greater_than_or_equal_to: 0)
   end
 
@@ -129,7 +136,8 @@ defmodule Forka.Games.Schemas.Game do
       word_options: game_state.word_options,
       owner_id: game_state.owner && game_state.owner.id,
       game_words: map_to_list_with_position(game_state.game_words),
-      game_players: map_to_list_with_position(game_state.game_players)
+      game_players: map_to_list_with_position(game_state.game_players),
+      events: game_state.events
     }
   end
 
@@ -146,7 +154,8 @@ defmodule Forka.Games.Schemas.Game do
       word_options: game.word_options,
       owner: game.owner,
       game_words: list_to_map(game.game_words),
-      game_players: list_to_map(game.game_players)
+      game_players: list_to_map(game.game_players),
+      events: game.events
     }
   end
 

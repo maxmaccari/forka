@@ -44,6 +44,9 @@ defmodule Forka.Games.GameSummaryTest do
     assert summary.current_word_letters == nil
     assert summary.game_status == :lobby
     assert summary.word_options == [language: "en"]
+
+    assert is_list(summary.last_events)
+    assert Enum.all?(summary.last_events, fn event -> event.tick == game_state.tick end)
   end
 
   test "creates a game summary from playing state", %{initialized_game: game_state} do
@@ -73,8 +76,10 @@ defmodule Forka.Games.GameSummaryTest do
              )
 
     assert summary.game_status == :playing
-    assert summary.last_event == game_state.last_event
     assert summary.word_options == [language: "en"]
+
+    assert is_list(summary.last_events)
+    assert Enum.all?(summary.last_events, fn event -> event.tick == game_state.tick end)
   end
 
   test "creates a game summary and skips dead player", %{initialized_game: game_state} do
@@ -115,7 +120,6 @@ defmodule Forka.Games.GameSummaryTest do
              )
 
     assert summary.game_status == :playing
-    assert summary.last_event == game_state.last_event
   end
 
   test "creates a game summary for game_over state", %{initialized_game: game_state} do
@@ -156,7 +160,7 @@ defmodule Forka.Games.GameSummaryTest do
 
   test "creates a game summary for archived state", %{initialized_game: game_state} do
     # Set game to archived state
-    archived_state = %{game_state | status: :archived, last_event: :game_archived}
+    archived_state = %{game_state | status: :archived}
 
     summary = GameSummary.from_game_state(archived_state)
 
@@ -164,6 +168,33 @@ defmodule Forka.Games.GameSummaryTest do
     assert summary.players == archived_state.game_players
     assert summary.owner == archived_state.owner
     assert summary.game_status == :archived
-    assert summary.last_event == :game_archived
+  end
+
+  test "loads all events when load_all_events option is set to true", %{
+    initialized_game: game_state
+  } do
+    # Add some events to the game state
+    events = [
+      %{type: "player_joined", payload: %{player_id: "player1"}, tick: 1},
+      %{type: "game_started", payload: %{}, tick: 2},
+      %{type: "letter_guessed", payload: %{letter: "a"}, tick: 3}
+    ]
+
+    game_state_with_events = %{game_state | events: events, tick: 3}
+
+    # Get summary with default options (only current tick events)
+    default_summary = GameSummary.from_game_state(game_state_with_events)
+
+    # Get summary with load_all_events option
+    all_events_summary =
+      GameSummary.from_game_state(game_state_with_events, load_all_events: true)
+
+    # Default should only have events from current tick (3)
+    assert length(default_summary.last_events) ==
+             Enum.count(events, fn event -> event.tick == 3 end)
+
+    # With load_all_events, should have all events
+    assert length(all_events_summary.last_events) == length(events)
+    assert all_events_summary.last_events == events
   end
 end

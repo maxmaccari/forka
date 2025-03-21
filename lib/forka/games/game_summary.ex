@@ -29,7 +29,7 @@ defmodule Forka.Games.GameSummary do
             current_word_summary: nil,
             current_word_letters: nil,
             game_status: nil,
-            last_event: nil,
+            last_events: [],
             word_options: nil
 
   @doc """
@@ -43,6 +43,8 @@ defmodule Forka.Games.GameSummary do
   When in :lobby status, only includes basic game information.
   When in :playing status, includes additional game progress information.
   """
+  def from_game_state(game_state, opts \\ [])
+
   def from_game_state(
         %GameState{
           game_players: game_players,
@@ -50,9 +52,11 @@ defmodule Forka.Games.GameSummary do
           game_words: game_words,
           current_game_word_index: word_index,
           status: :playing,
-          last_event: last_event,
+          events: events,
+          tick: tick,
           word_options: word_options
-        } = game_state
+        } = game_state,
+        opts
       ) do
     current_player = Game.get_current_player(game_state)
 
@@ -69,24 +73,36 @@ defmodule Forka.Games.GameSummary do
       current_word_summary: WordSummary.from_word(word),
       current_word_letters: current_word_letters,
       game_status: :playing,
-      last_event: last_event,
+      last_events: get_last_events(events, tick, opts),
       word_options: word_options
     }
   end
 
-  def from_game_state(%GameState{
-        status: status,
-        game_players: game_players,
-        owner: owner,
-        last_event: last_event,
-        word_options: word_options
-      }) do
+  def from_game_state(
+        %GameState{
+          status: status,
+          game_players: game_players,
+          owner: owner,
+          events: events,
+          tick: tick,
+          word_options: word_options
+        },
+        opts
+      ) do
     %__MODULE__{
       players: game_players,
       owner: owner,
       game_status: status,
-      last_event: last_event,
+      last_events: get_last_events(events, tick, opts),
       word_options: word_options
     }
+  end
+
+  defp get_last_events(events, tick, opts) do
+    if Keyword.get(opts, :load_all_events, false) do
+      events
+    else
+      Enum.filter(events, fn event -> event.tick == tick end)
+    end
   end
 end

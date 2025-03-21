@@ -29,7 +29,6 @@ defmodule Forka.Games.Game.GameState do
             current_game_player_index: nil,
             status: :lobby,
             max_players: 0,
-            last_event: nil,
             word_options: [language: "en"],
             tick: 0,
             events: []
