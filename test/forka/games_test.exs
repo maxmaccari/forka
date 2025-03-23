@@ -5,6 +5,62 @@ defmodule Forka.GamesTest do
 
   import Forka.TestHelpers
 
+  describe "list_games/1" do
+    test "returns paginated games with count" do
+      # Create test data
+      owner = insert(:player)
+
+      # Create games with different statuses
+      insert(:game, owner: owner, status: :lobby, name: "Lobby Game 1")
+      insert(:game, owner: owner, status: :lobby, name: "Lobby Game 2")
+      insert(:game, owner: owner, status: :playing, name: "Playing Game 1")
+      insert(:game, owner: owner, status: :playing, name: "Playing Game 2")
+      insert(:game, owner: owner, status: :playing, name: "Playing Game 3")
+      insert(:game, owner: owner, status: :archived, name: "Archived Game 1")
+
+      # Test default pagination (first page)
+      result = Games.list_games()
+      assert %{games: games, games_count: count} = result
+      assert length(games) == 6
+      assert count == 6
+
+      # Test with per_page option
+      result = Games.list_games(per_page: 2)
+      assert %{games: games, games_count: count} = result
+      assert length(games) == 2
+      assert count == 6
+
+      # Test with page option
+      result = Games.list_games(page: 2, per_page: 2)
+      assert %{games: games, games_count: count} = result
+      assert length(games) == 2
+      assert count == 6
+
+      # Test with game_status filter
+      result = Games.list_games(game_status: :playing)
+      assert %{games: games, games_count: count} = result
+      assert length(games) == 3
+      assert count == 3
+      assert Enum.all?(games, fn game -> game.status == :playing end)
+
+      # Test with combined pagination and status filter
+      result = Games.list_games(page: 1, per_page: 1, game_status: :lobby)
+      assert %{games: games, games_count: count} = result
+      assert length(games) == 1
+      assert count == 2
+      assert hd(games).status == :lobby
+
+      # Test with empty result
+      result = Games.list_games(game_status: :finished)
+      assert %{games: [], games_count: 0} = result
+    end
+
+    test "returns empty result when no games exist" do
+      result = Games.list_games()
+      assert %{games: [], games_count: 0} = result
+    end
+  end
+
   describe "create_game/2" do
     test "creates a game with valid parameters" do
       owner = insert(:player)

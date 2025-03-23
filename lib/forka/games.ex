@@ -18,8 +18,74 @@ defmodule Forka.Games do
   Internal implementation details are handled by other modules in the Games context.
   """
 
+  import Ecto.Query
+
+  alias Forka.Repo
   alias Forka.Games.GameServer
   alias Forka.Games.Repository
+  alias Forka.Games.Schemas.Game
+
+  @doc """
+  Lists games with pagination and optional filtering.
+
+  ## Parameters
+
+    * `opts` - A keyword list of options:
+      * `:page` - The page number (default: 1)
+      * `:per_page` - Number of games per page (default: 10)
+      * `:game_status` - Filter games by status (e.g., :lobby, :playing, :archived)
+
+  ## Examples
+
+      iex> list_games()
+      %{games: [%Game{}, ...], games_count: 10}
+
+      iex> list_games(page: 2, per_page: 5, game_status: :playing)
+      %{games: [%Game{}, ...], games_count: 15}
+
+  ## Returns
+
+  A map containing:
+  - `games` - A list of games for the requested page
+  - `games_count` - The total count of games matching the filter criteria
+  """
+  def list_games(opts \\ []) do
+    page = Keyword.get(opts, :page, 1)
+    per_page = Keyword.get(opts, :per_page, 10)
+    game_status = Keyword.get(opts, :game_status)
+
+    offset = (page - 1) * per_page
+
+    query =
+      from g in Game,
+        order_by: [desc: g.inserted_at]
+
+    query =
+      if game_status do
+        from g in query, where: g.status == ^game_status
+      else
+        query
+      end
+
+    games =
+      query
+      |> limit(^per_page)
+      |> offset(^offset)
+      |> Repo.all()
+
+    games_count =
+      query
+      |> exclude(:order_by)
+      |> exclude(:limit)
+      |> exclude(:offset)
+      |> select(count())
+      |> Repo.one()
+
+    %{
+      games: games,
+      games_count: games_count
+    }
+  end
 
   @doc """
   Creates a new game with the given parameters.
