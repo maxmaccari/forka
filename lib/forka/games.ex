@@ -2,14 +2,20 @@ defmodule Forka.Games do
   @moduledoc """
   The Games context.
 
-  This module provides functions for managing game operations, including:
-  - Creating and initializing games
-  - Managing players (adding, removing)
-  - Game state operations
-  - Subscribing to game updates
+  This module serves as the public interface for all game-related operations in the Forka application.
+  It provides a complete API for managing games, including:
 
-  It serves as the main interface for game-related operations, delegating
-  most functionality to the GameServer implementation.
+  - Game lifecycle (create, start, restart, archive)
+  - Player management (join, leave, transfer ownership)
+  - Gameplay operations (make guesses, give up)
+  - Game state monitoring (subscribe to updates)
+  - Game settings management
+
+  All operations are handled through game servers, ensuring each game maintains its own
+  isolated state and can handle concurrent player interactions safely.
+
+  This is the only module that should be used by other contexts to interact with games.
+  Internal implementation details are handled by other modules in the Games context.
   """
 
   alias Forka.Games.GameServer
@@ -66,7 +72,8 @@ defmodule Forka.Games do
     - player_id: The ID of the player to join.
 
   ## Returns
-    See `Forka.Games.GameServer.join_game/2` for return values.
+    - `:ok` if the player successfully joined the game
+    - `{:error, reason}` if the player could not join
   """
   def join_game(game_id, player_id) do
     ensure_game_server_available(game_id, fn -> GameServer.join_game(game_id, player_id) end)
@@ -80,7 +87,8 @@ defmodule Forka.Games do
     - player_id: The ID of the player to leave.
 
   ## Returns
-    See `Forka.Games.GameServer.leave_game/2` for return values.
+    - `:ok` if the player successfully left the game
+    - `{:error, reason}` if the player could not leave
   """
   def leave_game(game_id, player_id) do
     ensure_game_server_available(game_id, fn -> GameServer.leave_game(game_id, player_id) end)
@@ -179,8 +187,8 @@ defmodule Forka.Games do
       - load_all_events: When true, includes all game events in the summary (default: false)
 
   ## Returns
-    - The game summary if the game exists
-    - `nil` if the game doesn't exist
+    - A GameSummary struct containing the current game state if found
+    - `nil` if the game does not exist
   """
   def get_game_summary(game_id, opts \\ []) do
     ensure_game_server_available_with_nil(game_id, fn -> GameServer.get_game(game_id, opts) end)
@@ -193,8 +201,8 @@ defmodule Forka.Games do
     - game_id: The ID of the game to subscribe to.
 
   ## Returns
-    - `:ok` if the subscription is successful.
-    - `{:error, term}` if the subscription fails.
+    - `:ok` if the subscription is successful
+    - `{:error, reason}` if the subscription fails
   """
   def subscribe(game_id) do
     ensure_game_server_available(game_id, fn -> GameServer.subscribe(game_id) end)
@@ -207,8 +215,8 @@ defmodule Forka.Games do
     - game_id: The ID of the game to unsubscribe from.
 
   ## Returns
-    - `:ok` if the unsubscription is successful.
-    - `{:error, term}` if the unsubscription fails.
+    - `:ok` if the unsubscription is successful
+    - `{:error, reason}` if the unsubscription fails
   """
   def unsubscribe(game_id) do
     ensure_game_server_available(game_id, fn -> GameServer.unsubscribe(game_id) end)

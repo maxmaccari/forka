@@ -1,23 +1,24 @@
 defmodule Forka.Games.Schemas.Game do
   @moduledoc """
-  Schema for game records in the database.
+  Database schema for game records.
 
-  This schema represents the persistent storage model for games in the Forka application.
-  It includes fields for game configuration, state tracking, and relationships to players
-  and words used in the game.
+  This schema defines the database structure for persisting games in the Forka application.
+  It handles the mapping between database records and Elixir structs, including:
 
-  The Game schema is used to:
-  - Store game configuration (name, max players, word options)
-  - Track game state (status, current word/player indices)
-  - Maintain relationships with players and words
-  - Support conversion to and from the runtime GameState struct
+  - Basic game information (name, max players)
+  - Game configuration (word options)
+  - Current game state (status, indices)
+  - Relationships (players, words, events)
 
-  Game records progress through several statuses:
+  Game records can have the following statuses:
   - `:lobby` - Initial state where players can join
   - `:playing` - Active gameplay
   - `:finished` - Game completed normally
   - `:game_over` - Game ended prematurely
   - `:archived` - Game no longer active
+
+  This schema is used internally by the Games context and should not be used directly
+  by other contexts. All game interactions should go through the Games context module.
   """
 
   use Ecto.Schema

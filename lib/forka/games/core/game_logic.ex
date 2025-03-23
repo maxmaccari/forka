@@ -37,6 +37,7 @@ defmodule Forka.Games.Core.GameLogic do
     end
   end
 
+  @doc false
   def get_current_player(%GameState{game_players: players, current_game_player_index: index}) do
     case Map.get(players, index) do
       %GamePlayer{player: player} -> player
@@ -66,12 +67,15 @@ defmodule Forka.Games.Core.GameLogic do
     end
   end
 
+  @doc false
   def give_up_game(%GameState{status: :archived}, _player_id),
     do: {:error, :game_archived}
 
+  @doc false
   def give_up_game(%GameState{}, player_id) when is_binary(player_id),
     do: {:error, :game_not_playing}
 
+  @doc false
   def guess(%GameState{status: :playing} = game_state, player_id, letter)
       when is_binary(letter) and is_binary(player_id) do
     if current_player?(game_state, player_id) do
@@ -83,9 +87,11 @@ defmodule Forka.Games.Core.GameLogic do
     end
   end
 
+  @doc false
   def guess(%GameState{status: :archived}, _player_id, _letter),
     do: {:error, :game_archived}
 
+  @doc false
   def guess(%GameState{}, player_id, letter) when is_binary(letter) and is_binary(player_id),
     do: {:error, :game_not_playing}
 
