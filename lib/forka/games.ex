@@ -270,7 +270,7 @@ defmodule Forka.Games do
     - `:ok` if the subscription is successful
     - `{:error, reason}` if the subscription fails
   """
-  def subscribe(game_id) do
+  def subscribe_to_game(game_id) do
     ensure_game_server_available(game_id, fn -> GameServer.subscribe(game_id) end)
   end
 
@@ -284,7 +284,7 @@ defmodule Forka.Games do
     - `:ok` if the unsubscription is successful
     - `{:error, reason}` if the unsubscription fails
   """
-  def unsubscribe(game_id) do
+  def unsubscribe_from_game(game_id) do
     ensure_game_server_available(game_id, fn -> GameServer.unsubscribe(game_id) end)
   end
 

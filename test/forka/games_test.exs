@@ -290,7 +290,7 @@ defmodule Forka.GamesTest do
       insert(:word)
       owner = insert(:player)
       {:ok, game} = Games.create_game(owner.id, params_for(:game))
-      :ok = Games.subscribe(game.id)
+      :ok = Games.subscribe_to_game(game.id)
       %{game: game}
     end
 
@@ -312,6 +312,14 @@ defmodule Forka.GamesTest do
 
       assert_receive {:game_updated, game_summary}
       assert game_summary.game_status == :playing
+    end
+
+    test "subscribers can unsubscribe from game updates", %{game: game} do
+      :ok = Games.unsubscribe_from_game(game.id)
+      player = insert(:player)
+      :ok = Games.join_game(game.id, player.id)
+
+      refute_receive {:game_updated, _}
     end
   end
 end
