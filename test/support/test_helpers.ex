@@ -39,4 +39,13 @@ defmodule Forka.TestHelpers do
       end)
     end)
   end
+
+  # Helper function to clear the message inbox
+  def flush_messages do
+    receive do
+      _ -> flush_messages()
+    after
+      0 -> :ok
+    end
+  end
 end

@@ -179,12 +179,11 @@ defmodule Forka.Games do
       - load_all_events: When true, includes all game events in the summary (default: false)
 
   ## Returns
-    - The current game summary if the game exists
-    - `{:error, :not_found}` if the game doesn't exist
-    - `{:error, reason}` if another error occurs
+    - The game summary if the game exists
+    - `nil` if the game doesn't exist
   """
-  def get_game(game_id) do
-    ensure_game_server_available(game_id, fn -> GameServer.get_game(game_id) end)
+  def get_game_summary(game_id, opts \\ []) do
+    ensure_game_server_available_with_nil(game_id, fn -> GameServer.get_game(game_id, opts) end)
   end
 
   @doc """
@@ -234,6 +233,14 @@ defmodule Forka.Games do
           {:error, reason} ->
             {:error, reason}
         end
+    end
+  end
+
+  defp ensure_game_server_available_with_nil(game_id, action) do
+    case ensure_game_server_available(game_id, action) do
+      {:error, :not_found} -> nil
+      {:error, error} -> raise "Game server error: #{inspect(error)}"
+      result -> result
     end
   end
 end

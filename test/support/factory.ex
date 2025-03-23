@@ -10,7 +10,7 @@ defmodule Forka.Factory do
 
   def word_factory do
     %Forka.Words.Word{
-      text: sequence(:word, &"Word #{&1}"),
+      text: sequence(:word, &unique_random_sequence_of_letters/1),
       category: insert(:category)
     }
   end
@@ -63,5 +63,40 @@ defmodule Forka.Factory do
 
   defp unique_player_username() do
     sequence(:player_username, &"player#{&1}") |> String.slice(0, 20)
+  end
+
+  defp unique_random_sequence_of_letters(number) do
+    letters = "abcdefghijklmnopqrstuvwxyz"
+
+    base = number_to_letters(number)
+
+    random_part =
+      1..10
+      |> Enum.map(fn _ -> String.at(letters, :rand.uniform(26) - 1) end)
+      |> Enum.join("")
+
+    base <> random_part
+  end
+
+  defp number_to_letters(number) do
+    # Base case: if number is 0, return an empty string
+    if number < 0 do
+      ""
+    else
+      # Convert number to base-26 representation
+      # We subtract 1 from the remainder to map 0->a, 1->b, etc.
+      remainder = rem(number, 26)
+      quotient = div(number, 26)
+
+      # Convert the remainder to a letter (a-z)
+      letter = <<remainder + ?a>>
+
+      # Recursively process the quotient and append the current letter
+      if quotient == 0 do
+        letter
+      else
+        number_to_letters(quotient - 1) <> letter
+      end
+    end
   end
 end

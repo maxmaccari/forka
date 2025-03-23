@@ -30,7 +30,9 @@ defmodule Forka.Games.GameSummary do
             current_word_letters: nil,
             game_status: nil,
             last_events: [],
-            word_options: nil
+            word_options: nil,
+            max_players: nil,
+            name: nil
 
   @doc """
   Creates a GameSummary from a GameState.
@@ -54,7 +56,9 @@ defmodule Forka.Games.GameSummary do
           status: :playing,
           events: events,
           tick: tick,
-          word_options: word_options
+          word_options: word_options,
+          max_players: max_players,
+          name: name
         } = game_state,
         opts
       ) do
@@ -74,7 +78,9 @@ defmodule Forka.Games.GameSummary do
       current_word_letters: current_word_letters,
       game_status: :playing,
       last_events: get_last_events(events, tick, opts),
-      word_options: word_options
+      word_options: word_options,
+      max_players: max_players,
+      name: name
     }
   end
 
@@ -85,7 +91,9 @@ defmodule Forka.Games.GameSummary do
           owner: owner,
           events: events,
           tick: tick,
-          word_options: word_options
+          word_options: word_options,
+          max_players: max_players,
+          name: name
         },
         opts
       ) do
@@ -94,7 +102,9 @@ defmodule Forka.Games.GameSummary do
       owner: owner,
       game_status: status,
       last_events: get_last_events(events, tick, opts),
-      word_options: word_options
+      word_options: word_options,
+      max_players: max_players,
+      name: name
     }
   end
 

@@ -7,6 +7,8 @@ defmodule Forka.Games.GameServerTest do
 
   alias Forka.Games.Schemas.WordOptions
 
+  import Forka.TestHelpers
+
   @moduletag :capture_log
 
   setup do
@@ -813,15 +815,6 @@ defmodule Forka.Games.GameServerTest do
       # Verify the loaded state matches what was persisted
       loaded_summary = GameServer.get_game(game.id)
       assert loaded_summary.game_status == :playing
-    end
-  end
-
-  # Helper function to clear the message inbox
-  defp flush_messages do
-    receive do
-      _ -> flush_messages()
-    after
-      0 -> :ok
     end
   end
 end
