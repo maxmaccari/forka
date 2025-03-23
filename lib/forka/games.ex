@@ -20,10 +20,11 @@ defmodule Forka.Games do
 
   import Ecto.Query
 
-  alias Forka.Repo
+  alias Forka.Games.GameListNotifier
   alias Forka.Games.GameServer
   alias Forka.Games.Repository
   alias Forka.Games.Schemas.Game
+  alias Forka.Repo
 
   @doc """
   Lists games with pagination and optional filtering.
@@ -103,6 +104,11 @@ defmodule Forka.Games do
   def create_game(owner_id, params \\ %{}) do
     with {:ok, game} <- Repository.insert_game(owner_id, params),
          {:ok, _pid} <- start_supervised_game(game.id) do
+      game
+      |> Repo.preload([:owner, :game_players, :game_words])
+      |> Game.to_game_state()
+      |> GameListNotifier.broadcast_created()
+
       {:ok, game}
     end
   end
@@ -258,6 +264,26 @@ defmodule Forka.Games do
   """
   def get_game_summary(game_id, opts \\ []) do
     ensure_game_server_available_with_nil(game_id, fn -> GameServer.get_game(game_id, opts) end)
+  end
+
+  @doc """
+  Subscribes the caller to receive updates for the game list.
+
+  ## Returns
+    - `:ok` if the subscription is successful
+  """
+  def subscribe_to_game_list do
+    Forka.Games.GameListNotifier.subscribe()
+  end
+
+  @doc """
+  Unsubscribes the caller from receiving updates for the game list.
+
+  ## Returns
+    - `:ok` if the unsubscription is successful
+  """
+  def unsubscribe_from_game_list do
+    Forka.Games.GameListNotifier.unsubscribe()
   end
 
   @doc """

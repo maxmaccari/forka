@@ -322,4 +322,93 @@ defmodule Forka.GamesTest do
       refute_receive {:game_updated, _}
     end
   end
+
+  describe "game list subscriptions" do
+    setup do
+      # Subscribe to the game list before each test
+      :ok = Games.subscribe_to_game_list()
+      %{}
+    end
+
+    test "subscribers receive game creation notification" do
+      owner = insert(:player)
+      {:ok, game} = Games.create_game(owner.id, params_for(:game))
+
+      assert_receive {:game_list_updated, game_list_data}
+      assert game_list_data.id == game.id
+      assert game_list_data.action == :created
+      assert game_list_data.status == :lobby
+      assert game_list_data.player_count == 0
+      assert game_list_data.owner.id == owner.id
+    end
+
+    test "subscribers receive updates when players join" do
+      owner = insert(:player)
+      player = insert(:player)
+      {:ok, game} = Games.create_game(owner.id, params_for(:game))
+
+      # Flush the creation message
+      assert_receive {:game_list_updated, _}
+
+      # Join a player
+      :ok = Games.join_game(game.id, player.id)
+
+      assert_receive {:game_list_updated, game_list_data}
+      assert game_list_data.id == game.id
+      assert game_list_data.action == :updated
+      assert game_list_data.player_count == 1
+    end
+
+    test "subscribers receive updates when game status changes" do
+      # Create game with enough players to start
+      owner = insert(:player)
+      {:ok, game} = Games.create_game(owner.id, params_for(:game))
+      player1 = insert(:player)
+      player2 = insert(:player)
+      :ok = Games.join_game(game.id, player1.id)
+      :ok = Games.join_game(game.id, player2.id)
+
+      # Add a word so the game can start
+      insert(:word)
+
+      # Flush previous messages
+      flush_messages()
+
+      # Start the game
+      :ok = Games.start_game(game.id)
+
+      assert_receive {:game_list_updated, game_list_data}
+      assert game_list_data.id == game.id
+      assert game_list_data.action == :updated
+      assert game_list_data.status == :playing
+    end
+
+    test "subscribers receive updates when games are archived" do
+      owner = insert(:player)
+      {:ok, game} = Games.create_game(owner.id, params_for(:game))
+
+      # Flush the creation message
+      assert_receive {:game_list_updated, _}
+
+      # Archive the game
+      :ok = Games.archive_game(game.id)
+
+      # Sleep to ensure the message has time to propagate
+      Process.sleep(10)
+
+      assert_receive {:game_list_updated, game_list_data}
+      assert game_list_data.id == game.id
+      assert game_list_data.action == :updated
+      assert game_list_data.status == :archived
+    end
+
+    test "subscribers can unsubscribe from game list updates" do
+      :ok = Games.unsubscribe_from_game_list()
+
+      owner = insert(:player)
+      {:ok, _game} = Games.create_game(owner.id, params_for(:game))
+
+      refute_receive {:game_list_updated, _}
+    end
+  end
 end

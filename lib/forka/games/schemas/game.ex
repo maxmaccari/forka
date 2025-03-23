@@ -71,7 +71,7 @@ defmodule Forka.Games.Schemas.Game do
   @doc false
   def insert_changeset(game, attrs) do
     game
-    |> cast(attrs, [:name, :max_players, :owner_id, :tick])
+    |> cast(attrs, [:name, :max_players, :tick])
     |> common_changeset()
   end
 

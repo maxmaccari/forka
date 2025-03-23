@@ -15,6 +15,7 @@ defmodule Forka.Games.GameServer do
   use GenServer
 
   alias Forka.Games.Repository
+  alias Forka.Games.GameListNotifier
   alias Phoenix.PubSub
   alias Forka.Games.Schemas.Player
   alias Forka.Games.Core
@@ -132,6 +133,7 @@ defmodule Forka.Games.GameServer do
          {:ok, new_game} <- Core.join_game(game, player) do
       saved_game = Repository.save_game_state!(new_game)
       broadcast!(saved_game)
+      GameListNotifier.broadcast_update(saved_game)
 
       {:reply, :ok, saved_game, @timeout_ms}
     else
@@ -149,6 +151,7 @@ defmodule Forka.Games.GameServer do
       {:ok, new_game} ->
         saved_game = Repository.save_game_state!(new_game)
         broadcast!(saved_game)
+        GameListNotifier.broadcast_update(saved_game)
 
         {:reply, :ok, saved_game, @timeout_ms}
 
@@ -163,6 +166,7 @@ defmodule Forka.Games.GameServer do
       {:ok, new_game} ->
         saved_game = Repository.save_game_state!(new_game)
         broadcast!(saved_game)
+        GameListNotifier.broadcast_update(saved_game)
 
         {:reply, :ok, saved_game, @timeout_ms}
 
@@ -181,6 +185,7 @@ defmodule Forka.Games.GameServer do
       {:ok, new_game} ->
         saved_game = Repository.save_game_state!(new_game)
         broadcast!(saved_game)
+        GameListNotifier.broadcast_update(saved_game)
 
         {:reply, :ok, saved_game, @timeout_ms}
 
@@ -251,6 +256,7 @@ defmodule Forka.Games.GameServer do
       {:ok, new_game} ->
         saved_game = Repository.save_game_state!(new_game)
         broadcast!(saved_game)
+        GameListNotifier.broadcast_update(saved_game)
         # Return the response and stop the GenServer with normal reason
         {:stop, :normal, :ok, saved_game}
 
@@ -266,6 +272,7 @@ defmodule Forka.Games.GameServer do
       {:ok, new_game} ->
         saved_game = Repository.save_game_state!(new_game)
         broadcast!(saved_game)
+        GameListNotifier.broadcast_update(saved_game)
 
         {:stop, :normal, saved_game}
 
