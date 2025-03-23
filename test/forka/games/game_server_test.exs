@@ -658,6 +658,29 @@ defmodule Forka.Games.GameServerTest do
       # Now we should receive the update
       assert_receive {:game_updated, _}
     end
+
+    test "subscription persists across server restarts", %{game: game} do
+      # We're already subscribed in setup
+
+      # Stop the server
+      pid = GameServer.whereis(game.id)
+      GenServer.stop(pid, :normal)
+
+      # Wait for the server to stop
+      Process.sleep(100)
+      refute Process.alive?(pid)
+
+      # Start the server again
+      {:ok, pid} = GameServer.start_link(game.id)
+      Ecto.Adapters.SQL.Sandbox.allow(Repo, self(), pid)
+
+      # Make a change to the game
+      player = insert(:player)
+      GameServer.join_game(game.id, player.id)
+
+      # We should still receive updates without having to resubscribe
+      assert_receive {:game_updated, _}
+    end
   end
 
   describe "timeout handling" do
