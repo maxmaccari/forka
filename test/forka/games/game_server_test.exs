@@ -92,6 +92,11 @@ defmodule Forka.Games.GameServerTest do
     test "returns the current game summary", %{game: game} do
       assert GameServer.get_game(game.id) == Game.to_game_summary(game)
     end
+
+    test "returns all the current game summary with all events", %{game: game} do
+      assert GameServer.get_game(game.id, load_all_events: true) ==
+               Game.to_game_summary(game, load_all_events: true)
+    end
   end
 
   describe "join_game/2" do

@@ -332,7 +332,8 @@ defmodule Forka.Games.Game do
   ## Returns
     - A GameSummary struct containing shareable game information
   """
-  def to_game_summary(%GameState{} = game_state), do: GameSummary.from_game_state(game_state)
+  def to_game_summary(%GameState{} = game_state, opts \\ []),
+    do: GameSummary.from_game_state(game_state, opts)
 
   @doc """
   Archives a game, marking it as completed and no longer active.

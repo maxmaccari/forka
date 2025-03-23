@@ -175,9 +175,13 @@ defmodule Forka.Games do
 
   ## Parameters
     - game_id: The ID of the game.
+    - opts: (optional) Options for retrieving the game summary:
+      - load_all_events: When true, includes all game events in the summary (default: false)
 
   ## Returns
-    The current game summary.
+    - The current game summary if the game exists
+    - `{:error, :not_found}` if the game doesn't exist
+    - `{:error, reason}` if another error occurs
   """
   def get_game(game_id) do
     ensure_game_server_available(game_id, fn -> GameServer.get_game(game_id) end)

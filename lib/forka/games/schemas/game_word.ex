@@ -39,7 +39,7 @@ defmodule Forka.Games.Schemas.GameWord do
   @doc false
   def changeset(game_word, attrs) do
     game_word
-    |> cast(attrs, [:finished_by_id, :base_word_id])
+    |> cast(attrs, [:finished_by_id, :base_word_id, :position])
     |> cast_embed(:word)
     |> cast_embed(:guesses)
     |> foreign_key_constraint(:base_word_id)

@@ -55,8 +55,8 @@ defmodule Forka.Games.GameServer do
   end
 
   @doc false
-  def get_game(game_id) when is_binary(game_id) do
-    GenServer.call(global_name(game_id), :get_game)
+  def get_game(game_id, opts \\ []) when is_binary(game_id) do
+    GenServer.call(global_name(game_id), {:get_game, opts})
   end
 
   @doc false
@@ -122,8 +122,8 @@ defmodule Forka.Games.GameServer do
   end
 
   @impl true
-  def handle_call(:get_game, _from, game) do
-    {:reply, Game.to_game_summary(game), game, @timeout_ms}
+  def handle_call({:get_game, opts}, _from, game) do
+    {:reply, Game.to_game_summary(game, opts), game, @timeout_ms}
   end
 
   @impl true
