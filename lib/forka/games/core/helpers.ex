@@ -1,8 +1,8 @@
-defmodule Forka.Games.Game.Helpers do
+defmodule Forka.Games.Core.Helpers do
   @moduledoc false
 
   alias Forka.Games.Schemas.Event
-  alias Forka.Games.Game.GameState
+  alias Forka.Games.Core.GameState
 
   # This module provides helper functions to manage and manipulate the game state.
 

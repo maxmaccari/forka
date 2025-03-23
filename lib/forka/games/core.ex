@@ -1,13 +1,13 @@
-defmodule Forka.Games.Game do
-  alias Forka.Games.Game.GameLogic
-  alias Forka.Games.Game.GameState
+defmodule Forka.Games.Core do
+  alias Forka.Games.Core.GameLogic
+  alias Forka.Games.Core.GameState
   alias Forka.Games.GameSummary
   alias Forka.Games.Schemas.GamePlayer
   alias Forka.Games.Schemas.GameWord
   alias Forka.Games.Schemas.Player
   alias Forka.Games.Schemas.WordOptions
 
-  import Forka.Games.Game.Helpers, only: [increment_tick: 1, push_event: 2, push_event: 3]
+  import Forka.Games.Core.Helpers, only: [increment_tick: 1, push_event: 2, push_event: 3]
 
   @min_players_allowed 2
   @max_players_allowed 6

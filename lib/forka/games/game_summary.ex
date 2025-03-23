@@ -16,8 +16,8 @@ defmodule Forka.Games.GameSummary do
   sensitive details like the actual words being guessed.
   """
 
-  alias Forka.Games.Game
-  alias Forka.Games.Game.{GameState, GameWord}
+  alias Forka.Games.Core
+  alias Forka.Games.Core.{GameState, GameWord}
   alias Forka.Games.Schemas.GameWord
   alias Forka.Games.GameSummary.WordSummary
 
@@ -62,7 +62,7 @@ defmodule Forka.Games.GameSummary do
         } = game_state,
         opts
       ) do
-    current_player = Game.get_current_player(game_state)
+    current_player = Core.get_current_player(game_state)
 
     %GameWord{guesses: guesses, word: word} = game_word = Map.get(game_words, word_index)
     remaining_words = map_size(game_words) - word_index

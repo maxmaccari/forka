@@ -1,7 +1,8 @@
 defmodule Forka.Games.RepositoryTest do
-  use Forka.DataCase
+  use Forka.DataCase, async: true
 
-  alias Forka.Games.Game.GameState
+  alias Forka.Games.Core
+  alias Forka.Games.Core.GameState
   alias Forka.Games.Repository
   alias Forka.Games.Schemas.Player
   alias Forka.Games.Schemas.WordOptions
@@ -217,9 +218,9 @@ defmodule Forka.Games.RepositoryTest do
       {:ok, game_state} = Repository.get_game_state(game.id)
 
       # Add players to the game using Game module
-      {:ok, game_state} = Forka.Games.Game.join_game(game_state, player1)
-      {:ok, game_state} = Forka.Games.Game.join_game(game_state, player2)
-      {:ok, game_state} = Forka.Games.Game.join_game(game_state, player3)
+      {:ok, game_state} = Core.join_game(game_state, player1)
+      {:ok, game_state} = Core.join_game(game_state, player2)
+      {:ok, game_state} = Core.join_game(game_state, player3)
 
       # Add words to the game
       words = [
@@ -244,18 +245,18 @@ defmodule Forka.Games.RepositoryTest do
       ]
 
       # Set words using Game module
-      game_state = Forka.Games.Game.set_words(game_state, words)
+      game_state = Core.set_words(game_state, words)
 
       # Start the game
-      {:ok, game_state} = Forka.Games.Game.start_game(game_state)
+      {:ok, game_state} = Core.start_game(game_state)
 
       # Make some guesses
-      {:ok, game_state} = Forka.Games.Game.guess(game_state, player1.id, "a")
-      {:ok, game_state} = Forka.Games.Game.guess(game_state, player1.id, "p")
-      {:ok, game_state} = Forka.Games.Game.guess(game_state, player1.id, "z")
+      {:ok, game_state} = Core.guess(game_state, player1.id, "a")
+      {:ok, game_state} = Core.guess(game_state, player1.id, "p")
+      {:ok, game_state} = Core.guess(game_state, player1.id, "z")
 
-      {:ok, game_state} = Forka.Games.Game.guess(game_state, player2.id, "l")
-      {:ok, game_state} = Forka.Games.Game.guess(game_state, player2.id, "e")
+      {:ok, game_state} = Core.guess(game_state, player2.id, "l")
+      {:ok, game_state} = Core.guess(game_state, player2.id, "e")
 
       # Save the complete game state
       assert {:ok, saved_game_state} = Repository.save_game_state(game_state)
@@ -330,12 +331,12 @@ defmodule Forka.Games.RepositoryTest do
       {:ok, game_state} = Repository.get_game_state(game.id)
 
       # Add players to the game
-      {:ok, game_state} = Forka.Games.Game.join_game(game_state, player2)
-      {:ok, game_state} = Forka.Games.Game.join_game(game_state, player3)
+      {:ok, game_state} = Core.join_game(game_state, player2)
+      {:ok, game_state} = Core.join_game(game_state, player3)
 
       # Transfer ownership to player2
       {:ok, updated_game_state} =
-        Forka.Games.Game.transfer_ownership_to_player(game_state, player2.id)
+        Core.transfer_ownership_to_player(game_state, player2.id)
 
       # Save the updated game state
       assert {:ok, saved_game_state} = Repository.save_game_state(updated_game_state)
@@ -349,16 +350,16 @@ defmodule Forka.Games.RepositoryTest do
 
       # Test ownership transfer in playing state
       playing_game_state =
-        Forka.Games.Game.set_words(saved_game_state, [
+        Core.set_words(saved_game_state, [
           Forka.Games.Schemas.Word.new("apple", "fruits"),
           Forka.Games.Schemas.Word.new("banana", "fruits")
         ])
 
-      {:ok, playing_game_state} = Forka.Games.Game.start_game(playing_game_state)
+      {:ok, playing_game_state} = Core.start_game(playing_game_state)
 
       # Transfer ownership to player3 while game is in progress
       {:ok, updated_playing_state} =
-        Forka.Games.Game.transfer_ownership_to_player(playing_game_state, player3.id)
+        Core.transfer_ownership_to_player(playing_game_state, player3.id)
 
       assert {:ok, saved_playing_state} = Repository.save_game_state(updated_playing_state)
 

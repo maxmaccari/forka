@@ -1,4 +1,4 @@
-defmodule Forka.Games.Game.GameState do
+defmodule Forka.Games.Core.GameState do
   @moduledoc """
   Represents the state of a Forka (Hangman) game session.
 

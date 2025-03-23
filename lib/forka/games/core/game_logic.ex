@@ -1,11 +1,11 @@
-defmodule Forka.Games.Game.GameLogic do
+defmodule Forka.Games.Core.GameLogic do
   alias Forka.Games.Schemas.Word
   alias Forka.Games.Schemas.Guess
   alias Forka.Games.Schemas.GameWord
   alias Forka.Games.Schemas.GamePlayer
-  alias Forka.Games.Game.GameState
+  alias Forka.Games.Core.GameState
 
-  import Forka.Games.Game.Helpers
+  import Forka.Games.Core.Helpers
 
   @moduledoc false
 

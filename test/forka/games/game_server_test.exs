@@ -1,10 +1,11 @@
 defmodule Forka.Games.GameServerTest do
   use Forka.DataCase, async: true
 
+  alias Forka.Games.Core
+  alias Forka.Games.Core
   alias Forka.Games.GameServer
-  alias Forka.Games.Game
   alias Forka.Games.Repository
-
+  alias Forka.Games.Schemas.Game
   alias Forka.Games.Schemas.WordOptions
 
   import Forka.TestHelpers
@@ -17,7 +18,7 @@ defmodule Forka.Games.GameServerTest do
 
     # Create a new game using Game module
     game = insert(:game, owner: owner) |> Repo.preload([:owner, :events])
-    game_state = Forka.Games.Schemas.Game.to_game_state(game)
+    game_state = Game.to_game_state(game)
 
     # Start the game server
     {:ok, pid} = GameServer.start_link(game.id)
@@ -92,12 +93,12 @@ defmodule Forka.Games.GameServerTest do
 
   describe "get_game/1" do
     test "returns the current game summary", %{game_state: game_state} do
-      assert GameServer.get_game(game_state.id) == Game.to_game_summary(game_state)
+      assert GameServer.get_game(game_state.id) == Core.to_game_summary(game_state)
     end
 
     test "returns all the current game summary with all events", %{game_state: game_state} do
       assert GameServer.get_game(game_state.id, load_all_events: true) ==
-               Game.to_game_summary(game_state, load_all_events: true)
+               Core.to_game_summary(game_state, load_all_events: true)
     end
   end
 
@@ -119,7 +120,7 @@ defmodule Forka.Games.GameServerTest do
 
       # Verify the game state was persisted
       {:ok, persisted_game_state} = Repository.get_game_state(game_state.id)
-      persisted_summary = Game.to_game_summary(persisted_game_state)
+      persisted_summary = Core.to_game_summary(persisted_game_state)
 
       assert Enum.any?(persisted_summary.players, fn {_, player_state} ->
                player_state.player.id == player.id
@@ -166,7 +167,7 @@ defmodule Forka.Games.GameServerTest do
 
       # Verify the game state was persisted
       {:ok, persisted_game_state} = Repository.get_game_state(game_state.id)
-      persisted_summary = Game.to_game_summary(persisted_game_state)
+      persisted_summary = Core.to_game_summary(persisted_game_state)
 
       refute Enum.any?(persisted_summary.players, fn {_, player_state} ->
                player_state.player.id == player.id
@@ -197,7 +198,7 @@ defmodule Forka.Games.GameServerTest do
 
       # Verify the gate state was persisted
       {:ok, persisted_game_state} = Repository.get_game_state(game_state.id)
-      persisted_summary = Game.to_game_summary(persisted_game_state)
+      persisted_summary = Core.to_game_summary(persisted_game_state)
       assert persisted_summary.word_options.language == "pt"
       assert persisted_summary.word_options.category_ids == category_ids
     end
@@ -248,7 +249,7 @@ defmodule Forka.Games.GameServerTest do
 
       # Verify the game state was persisted
       {:ok, persisted_game_state} = Repository.get_game_state(game_state.id)
-      persisted_summary = Game.to_game_summary(persisted_game_state)
+      persisted_summary = Core.to_game_summary(persisted_game_state)
       assert persisted_summary.game_status == :playing
     end
 
@@ -400,7 +401,7 @@ defmodule Forka.Games.GameServerTest do
 
       # Verify the game state was persisted
       {:ok, persisted_game_state} = Repository.get_game_state(game_state.id)
-      persisted_summary = Game.to_game_summary(persisted_game_state)
+      persisted_summary = Core.to_game_summary(persisted_game_state)
 
       player2_state =
         persisted_summary.players
@@ -441,7 +442,7 @@ defmodule Forka.Games.GameServerTest do
 
       # Verify the game state was persisted with game_over status
       {:ok, persisted_game_state} = Repository.get_game_state(game_state.id)
-      persisted_summary = Game.to_game_summary(persisted_game_state)
+      persisted_summary = Core.to_game_summary(persisted_game_state)
       assert persisted_summary.game_status == :game_over
     end
   end
@@ -484,7 +485,7 @@ defmodule Forka.Games.GameServerTest do
 
       # Get the initial state
       {:ok, initial_game} = Repository.get_game_state(game_state.id)
-      initial_summary = Game.to_game_summary(initial_game)
+      initial_summary = Core.to_game_summary(initial_game)
       initial_guesses = initial_summary.guesses
 
       # Make a guess with letter 'a'
@@ -492,7 +493,7 @@ defmodule Forka.Games.GameServerTest do
 
       # Verify the game state was persisted with the new guess
       {:ok, persisted_game_state} = Repository.get_game_state(game_state.id)
-      persisted_summary = Game.to_game_summary(persisted_game_state)
+      persisted_summary = Core.to_game_summary(persisted_game_state)
       assert persisted_summary.guesses != initial_guesses
       assert "a" in Enum.map(persisted_summary.guesses, & &1.letter)
     end
@@ -545,7 +546,7 @@ defmodule Forka.Games.GameServerTest do
 
       # Verify the game state was persisted with new owner
       {:ok, persisted_game_state} = Repository.get_game_state(game_state.id)
-      persisted_summary = Game.to_game_summary(persisted_game_state)
+      persisted_summary = Core.to_game_summary(persisted_game_state)
       assert persisted_summary.owner.id == player.id
     end
   end
@@ -592,7 +593,7 @@ defmodule Forka.Games.GameServerTest do
 
       # Verify the game state was persisted with lobby status
       {:ok, persisted_game_state} = Repository.get_game_state(game_state.id)
-      persisted_summary = Game.to_game_summary(persisted_game_state)
+      persisted_summary = Core.to_game_summary(persisted_game_state)
       assert persisted_summary.game_status == :lobby
       assert persisted_summary.guesses == []
     end
@@ -638,7 +639,7 @@ defmodule Forka.Games.GameServerTest do
 
       # Verify the game state was persisted with archived status
       {:ok, persisted_game_state} = Repository.get_game_state(game_state.id)
-      persisted_summary = Game.to_game_summary(persisted_game_state)
+      persisted_summary = Core.to_game_summary(persisted_game_state)
       assert persisted_summary.game_status == :archived
     end
   end
@@ -710,7 +711,7 @@ defmodule Forka.Games.GameServerTest do
 
       # Verify the game state was persisted with archived status
       {:ok, persisted_game_state} = Repository.get_game_state(game_state.id)
-      persisted_summary = Game.to_game_summary(persisted_game_state)
+      persisted_summary = Core.to_game_summary(persisted_game_state)
       assert persisted_summary.game_status == :archived
     end
 
@@ -734,7 +735,7 @@ defmodule Forka.Games.GameServerTest do
 
       # Verify we receive a game update with archived status
       # We don't receive any message because the game is in playing state
-      # and Game.archive_game/1 returns {:error, :game_in_progress}
+      # and Core.archive_game/1 returns {:error, :game_in_progress}
       refute_receive {:game_updated, _}
 
       # Give time for the process to terminate
@@ -769,7 +770,7 @@ defmodule Forka.Games.GameServerTest do
 
       # Verify the game state was persisted with archived status
       {:ok, persisted_game_state} = Repository.get_game_state(game_state.id)
-      persisted_summary = Game.to_game_summary(persisted_game_state)
+      persisted_summary = Core.to_game_summary(persisted_game_state)
       assert persisted_summary.game_status == :archived
     end
 
@@ -813,7 +814,7 @@ defmodule Forka.Games.GameServerTest do
 
       # Verify the game state was persisted with archived status
       {:ok, persisted_game_state} = Repository.get_game_state(game_state.id)
-      persisted_summary = Game.to_game_summary(persisted_game_state)
+      persisted_summary = Core.to_game_summary(persisted_game_state)
       assert persisted_summary.game_status == :playing
 
       # Start a new server for the same game to verify state is loaded correctly

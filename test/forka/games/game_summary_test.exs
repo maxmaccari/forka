@@ -1,8 +1,9 @@
 defmodule Forka.Games.GameSummaryTest do
   use ExUnit.Case, async: true
-  alias Forka.Games.{Game, GameSummary}
-  alias Forka.Games.Schemas.Word
+  alias Forka.Games.Core
+  alias Forka.Games.GameSummary
   alias Forka.Games.Schemas.GameWord
+  alias Forka.Games.Schemas.Word
 
   import Forka.TestHelpers
 
@@ -11,13 +12,13 @@ defmodule Forka.Games.GameSummaryTest do
     owner = build_games_player("owner")
 
     # Create a new game
-    game = Game.new(owner, "Test Game", 4)
+    game = Core.new(owner, "Test Game", 4)
 
     # Add players
     player1 = build_games_player("Player 1")
     player2 = build_games_player("Player 2")
-    {:ok, game_with_player1} = Game.join_game(game, player1)
-    {:ok, game_with_players} = Game.join_game(game_with_player1, player2)
+    {:ok, game_with_player1} = Core.join_game(game, player1)
+    {:ok, game_with_players} = Core.join_game(game_with_player1, player2)
 
     # Set words
     words = [
@@ -25,8 +26,8 @@ defmodule Forka.Games.GameSummaryTest do
       Word.new("dog", "animals", "Barks")
     ]
 
-    game_with_words = Game.set_words(game_with_players, words)
-    {:ok, initialized_game} = Game.start_game(game_with_words)
+    game_with_words = Core.set_words(game_with_players, words)
+    {:ok, initialized_game} = Core.start_game(game_with_words)
 
     {:ok, lobby_game: game_with_words, initialized_game: initialized_game}
   end

@@ -17,8 +17,8 @@ defmodule Forka.Games.GameServer do
   alias Forka.Games.Repository
   alias Phoenix.PubSub
   alias Forka.Games.Schemas.Player
-  alias Forka.Games.Game
-  alias Forka.Games.Game.GameState
+  alias Forka.Games.Core
+  alias Forka.Games.Core.GameState
 
   @pubsub_topic_prefix "game"
   @message_tagger :game_updated
@@ -123,13 +123,13 @@ defmodule Forka.Games.GameServer do
 
   @impl true
   def handle_call({:get_game, opts}, _from, game) do
-    {:reply, Game.to_game_summary(game, opts), game, @timeout_ms}
+    {:reply, Core.to_game_summary(game, opts), game, @timeout_ms}
   end
 
   @impl true
   def handle_call({:join_game, player_id}, _from, game) do
     with %Player{} = player <- Repository.get_player(player_id),
-         {:ok, new_game} <- Game.join_game(game, player) do
+         {:ok, new_game} <- Core.join_game(game, player) do
       saved_game = Repository.save_game_state!(new_game)
       broadcast!(saved_game)
 
@@ -145,7 +145,7 @@ defmodule Forka.Games.GameServer do
 
   @impl true
   def handle_call({:leave_game, player_id}, _from, game) do
-    case Game.leave_game(game, player_id) do
+    case Core.leave_game(game, player_id) do
       {:ok, new_game} ->
         saved_game = Repository.save_game_state!(new_game)
         broadcast!(saved_game)
@@ -159,7 +159,7 @@ defmodule Forka.Games.GameServer do
 
   @impl true
   def handle_call({:update_settings, settings}, _from, game) do
-    case Game.update_settings(game, settings) do
+    case Core.update_settings(game, settings) do
       {:ok, new_game} ->
         saved_game = Repository.save_game_state!(new_game)
         broadcast!(saved_game)
@@ -175,9 +175,9 @@ defmodule Forka.Games.GameServer do
   def handle_call(:start_game, _from, game) do
     words_count = map_size(game.game_players) * 2
     words = Repository.get_random_words(words_count, game.word_options)
-    game_with_words = Game.set_words(game, words)
+    game_with_words = Core.set_words(game, words)
 
-    case game_with_words |> Game.shuffle_players() |> Game.start_game() do
+    case game_with_words |> Core.shuffle_players() |> Core.start_game() do
       {:ok, new_game} ->
         saved_game = Repository.save_game_state!(new_game)
         broadcast!(saved_game)
@@ -191,7 +191,7 @@ defmodule Forka.Games.GameServer do
 
   @impl true
   def handle_call({:give_up, player_id}, _from, game) do
-    case Game.give_up_game(game, player_id) do
+    case Core.give_up_game(game, player_id) do
       {:ok, new_game} ->
         saved_game = Repository.save_game_state!(new_game)
         broadcast!(saved_game)
@@ -205,7 +205,7 @@ defmodule Forka.Games.GameServer do
 
   @impl true
   def handle_call({:guess, letter, player_id}, _from, game) do
-    case Game.guess(game, player_id, letter) do
+    case Core.guess(game, player_id, letter) do
       {:ok, new_game} ->
         saved_game = Repository.save_game_state!(new_game)
         broadcast!(saved_game)
@@ -219,7 +219,7 @@ defmodule Forka.Games.GameServer do
 
   @impl true
   def handle_call({:transfer_ownership, player_id}, _from, game) do
-    case Game.transfer_ownership_to_player(game, player_id) do
+    case Core.transfer_ownership_to_player(game, player_id) do
       {:ok, new_game} ->
         saved_game = Repository.save_game_state!(new_game)
         broadcast!(saved_game)
@@ -233,7 +233,7 @@ defmodule Forka.Games.GameServer do
 
   @impl true
   def handle_call(:restart_game, _from, game) do
-    case Game.restart_game(game) do
+    case Core.restart_game(game) do
       {:ok, new_game} ->
         saved_game = Repository.save_game_state!(new_game)
         broadcast!(saved_game)
@@ -247,7 +247,7 @@ defmodule Forka.Games.GameServer do
 
   @impl true
   def handle_call(:archive_game, _from, game) do
-    case Game.archive_game(game) do
+    case Core.archive_game(game) do
       {:ok, new_game} ->
         saved_game = Repository.save_game_state!(new_game)
         broadcast!(saved_game)
@@ -262,7 +262,7 @@ defmodule Forka.Games.GameServer do
   @impl true
   def handle_info(:timeout, game) do
     # Server has been inactive for the timeout period, archive the game and terminate
-    case Game.archive_game(game) do
+    case Core.archive_game(game) do
       {:ok, new_game} ->
         saved_game = Repository.save_game_state!(new_game)
         broadcast!(saved_game)
@@ -280,7 +280,7 @@ defmodule Forka.Games.GameServer do
   defp topic(game_id), do: "#{@pubsub_topic_prefix}:#{game_id}"
 
   defp broadcast!(%GameState{id: game_id} = game_state) do
-    game_summary = Game.to_game_summary(game_state)
+    game_summary = Core.to_game_summary(game_state)
     PubSub.broadcast!(Forka.PubSub, topic(game_id), {@message_tagger, game_summary})
   end
 end

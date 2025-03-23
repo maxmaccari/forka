@@ -1,12 +1,12 @@
-defmodule Forka.Games.Game.GameLogicTest do
+defmodule Forka.Games.Core.GameLogicTest do
   use ExUnit.Case, async: true
-  alias Forka.Games.Game
+  alias Forka.Games.Core
   alias Forka.Games.Schemas.Word
   alias Forka.Games.Schemas.Player
   alias Forka.Games.Schemas.GamePlayer
-  alias Forka.Games.Game.{GameLogic, GameState}
+  alias Forka.Games.Core.{GameLogic, GameState}
 
-  import Forka.Games.Game.Helpers
+  import Forka.Games.Core.Helpers
   import Forka.TestHelpers
 
   setup do
@@ -22,11 +22,11 @@ defmodule Forka.Games.Game.GameLogicTest do
     word2 = Word.new("dog", "animals", "Barks")
 
     # Create a game
-    game = Game.new(owner, "Test Game", 4)
-    {:ok, game_with_player1} = Game.join_game(game, player1)
-    {:ok, game_with_players} = Game.join_game(game_with_player1, player2)
-    game_with_words = Game.set_words(game_with_players, [word1, word2])
-    {:ok, initialized_game} = Game.start_game(game_with_words)
+    game = Core.new(owner, "Test Game", 4)
+    {:ok, game_with_player1} = Core.join_game(game, player1)
+    {:ok, game_with_players} = Core.join_game(game_with_player1, player2)
+    game_with_words = Core.set_words(game_with_players, [word1, word2])
+    {:ok, initialized_game} = Core.start_game(game_with_words)
 
     {:ok,
      game_state: initialized_game, player1: player1, player2: player2, word1: word1, word2: word2}
@@ -34,7 +34,7 @@ defmodule Forka.Games.Game.GameLogicTest do
 
   describe "get_current_player/1" do
     test "returns the current player", %{game_state: game, player1: player1} do
-      assert %Player{id: player_id} = Game.get_current_player(game)
+      assert %Player{id: player_id} = Core.get_current_player(game)
       assert player_id == player1.id
     end
 
@@ -54,13 +54,13 @@ defmodule Forka.Games.Game.GameLogicTest do
       }
 
       # Get the current player, which should now be player2
-      assert %Player{id: player_id} = Game.get_current_player(game_with_dead_player1)
+      assert %Player{id: player_id} = Core.get_current_player(game_with_dead_player1)
       assert player_id == player2.id
     end
 
     test "returns error when no current player", %{game_state: game} do
       game_without_players = %{game | game_players: %{}, current_game_player_index: nil}
-      assert Game.get_current_player(game_without_players) == nil
+      assert Core.get_current_player(game_without_players) == nil
     end
   end
 

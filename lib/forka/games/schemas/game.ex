@@ -23,14 +23,14 @@ defmodule Forka.Games.Schemas.Game do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Forka.Games.Game.GameState
+  alias Forka.Games.Core.GameState
   alias Forka.Games.Schemas.Event
   alias Forka.Games.Schemas.GamePlayer
   alias Forka.Games.Schemas.GameWord
   alias Forka.Games.Schemas.Player
   alias Forka.Games.Schemas.WordOptions
 
-  import Forka.Games.Game, only: [min_players_allowed: 0, max_players_allowed: 0]
+  import Forka.Games.Core, only: [min_players_allowed: 0, max_players_allowed: 0]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
