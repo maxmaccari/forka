@@ -400,7 +400,7 @@ defmodule Forka.Games.RepositoryTest do
       invalid_game_state = %{game_state | status: nil}
 
       # Should raise an exception
-      assert_raise RuntimeError, fn ->
+      assert_raise Ecto.InvalidChangesetError, fn ->
         Repository.save_game_state!(invalid_game_state)
       end
     end

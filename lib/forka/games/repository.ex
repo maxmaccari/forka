@@ -153,7 +153,7 @@ defmodule Forka.Games.Repository do
   - `{:ok, game_state}` with the game state if found
   - `{:error, :not_found}` if the game does not exist
   """
-  @game_preloads [{:game_players, :player}, :game_words, :owner]
+  @game_preloads [{:game_players, :player}, :game_words, :owner, :events]
   def get_game_state(id) when is_binary(id) do
     Repo.get(Game, id)
     |> Repo.preload(@game_preloads)
@@ -203,8 +203,11 @@ defmodule Forka.Games.Repository do
   """
   def save_game_state!(%GameState{} = game_state) do
     case save_game_state(game_state) do
-      {:ok, new_game_state} -> new_game_state
-      {:error, changeset} -> Repo.rollback(changeset)
+      {:ok, new_game_state} ->
+        new_game_state
+
+      {:error, changeset} ->
+        raise Ecto.InvalidChangesetError, action: :update, changeset: changeset
     end
   end
 

@@ -10,6 +10,8 @@ defmodule Forka.Games.Schemas.Event do
   @event_types [
     :player_joined,
     :player_left,
+    :players_shuffled,
+    :words_set,
     :game_started,
     :player_guessed,
     :player_gave_up,
@@ -17,6 +19,8 @@ defmodule Forka.Games.Schemas.Event do
     :player_died,
     :player_scored,
     :next_player_turn,
+    :word_completed,
+    :moved_to_next_word,
     :ownership_transferred_to,
     :settings_updated,
     :game_finished,
@@ -25,6 +29,8 @@ defmodule Forka.Games.Schemas.Event do
     :game_restarted
   ]
 
+  @primary_key {:id, :binary_id, autogenerate: true}
+  @foreign_key_type :binary_id
   schema "events" do
     field :type, Ecto.Enum, values: @event_types
     field :payload, :map
@@ -39,8 +45,8 @@ defmodule Forka.Games.Schemas.Event do
   @doc false
   def changeset(event, attrs) do
     event
-    |> cast(attrs, [:type, :payload, :tick])
-    |> validate_required([:type, :tick])
+    |> cast(attrs, [:type, :payload, :tick, :at])
+    |> validate_required([:type, :tick, :at])
     |> validate_number(:tick, greater_than_or_equal_to: 0)
   end
 

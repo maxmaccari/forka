@@ -220,5 +220,8 @@ defmodule Forka.Games.Schemas.Game do
         %{}
       end
     end)
+    |> Map.update(:events, [], fn events ->
+      Enum.map(events, &Event.to_map/1)
+    end)
   end
 end

@@ -14,7 +14,7 @@ defmodule Forka.Games.GameServerTest do
     owner = insert(:player)
 
     # Create a new game using Game module
-    game = insert(:game, owner: owner) |> Repo.preload(:owner)
+    game = insert(:game, owner: owner) |> Repo.preload([:owner, :events])
     game_state = Forka.Games.Schemas.Game.to_game_state(game)
 
     # Start the game server

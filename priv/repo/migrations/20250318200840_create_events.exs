@@ -5,6 +5,7 @@ defmodule Forka.Repo.Migrations.CreateEvents do
     create table(:events, primary_key: false) do
       add :id, :binary_id, primary_key: true
       add :game_id, references(:games, type: :binary_id, on_delete: :delete_all), null: false
+      add :tick, :integer, null: false, default: 0
       add :type, :string, null: false
       add :at, :utc_datetime, null: false
       add :payload, :map
