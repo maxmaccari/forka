@@ -24,7 +24,7 @@ defmodule ForkaWeb.Admin.PlayerLive do
     [
       username: %{
         module: Backpex.Fields.Text,
-        label: "Usernae",
+        label: "Username",
         searchable: true
       },
       email: %{

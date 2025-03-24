@@ -407,6 +407,42 @@ defmodule Forka.Games.RepositoryTest do
     end
   end
 
+  describe "backoffice subscriptions" do
+    test "broadcasts game_created event when a game is inserted" do
+      owner = insert(:player)
+
+      # Subscribe to the backoffice topic
+      Phoenix.PubSub.subscribe(Forka.PubSub, "games")
+
+      # Insert a new game
+      {:ok, game} = Repository.insert_game(owner.id, %{name: "Test Game", max_players: 4})
+
+      # Assert we receive the broadcast
+      assert_receive {"game_created", broadcasted_game}
+      assert broadcasted_game.id == game.id
+      assert broadcasted_game.name == "Test Game"
+    end
+
+    test "broadcasts game_updated event when a game state is saved" do
+      owner = insert(:player) |> to_games_player()
+      game = insert(:game, owner: owner, status: :lobby)
+
+      {:ok, game_state} = Repository.get_game_state(game.id)
+
+      # Subscribe to the backoffice topic
+      Phoenix.PubSub.subscribe(Forka.PubSub, "games")
+
+      # Update the game state
+      updated_game_state = %{game_state | name: "Updated Game Name"}
+      {:ok, _saved_state} = Repository.save_game_state(updated_game_state)
+
+      # Assert we receive the broadcast
+      assert_receive {"game_updated", broadcasted_game}
+      assert broadcasted_game.id == game.id
+      assert broadcasted_game.name == "Updated Game Name"
+    end
+  end
+
   defp to_games_player(%Forka.Players.Player{} = player) do
     %Forka.Games.Schemas.Player{
       id: player.id,

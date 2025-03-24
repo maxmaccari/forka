@@ -114,6 +114,7 @@ defmodule ForkaWeb.Router do
       live_resources "/words", WordLive
       live_resources "/players", PlayerLive
       live_resources "/admins", AdminLive
+      live_resources "/games", GameLive
 
       live "/settings", AdminSettingsLive, :edit
       live "/settings/confirm_email/:token", AdminSettingsLive, :confirm_email

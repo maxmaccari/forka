@@ -1,6 +1,7 @@
 defmodule Forka.Games.Repository do
   @moduledoc false
 
+  alias Phoenix.PubSub
   alias Forka.Games.Schemas.WordOptions
   alias Forka.Games.Core.GameState
   alias Forka.Games.Schemas.Game
@@ -9,6 +10,9 @@ defmodule Forka.Games.Repository do
   alias Forka.Repo
 
   import Ecto.Query
+
+  @pubsub Forka.PubSub
+  @topic "games"
 
   @doc """
   Returns a list of random words from the database.
@@ -124,8 +128,13 @@ defmodule Forka.Games.Repository do
     |> Game.insert_changeset(params)
     |> Repo.insert()
     |> case do
-      {:ok, game} -> {:ok, game}
-      {:error, changeset} -> {:error, changeset}
+      {:ok, game} ->
+        broadcast_backoffice!(game, "game_created")
+
+        {:ok, game}
+
+      {:error, changeset} ->
+        {:error, changeset}
     end
   end
 
@@ -170,6 +179,8 @@ defmodule Forka.Games.Repository do
     |> Repo.update()
     |> case do
       {:ok, game} ->
+        broadcast_backoffice!(game, "game_updated")
+
         new_game_state =
           game
           |> Repo.preload(@game_preloads)
@@ -215,5 +226,9 @@ defmodule Forka.Games.Repository do
     game_state
     |> Game.from_game_state()
     |> Game.to_map()
+  end
+
+  defp broadcast_backoffice!(game, tagger) do
+    PubSub.broadcast!(@pubsub, @topic, {tagger, game})
   end
 end

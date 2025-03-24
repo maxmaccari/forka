@@ -1,10 +1,9 @@
 defmodule Forka.Games.GameListNotifier do
-  @moduledoc """
-  Handles notifications for the game list.
+  @moduledoc false
 
-  This module provides a centralized way to manage game list updates
-  without cluttering either the Games context or GameServer modules.
-  """
+  # Handles notifications for the game list.
+  # This module provides a centralized way to manage game list updates
+  # without cluttering either the Games context or GameServer modules.
 
   alias Phoenix.PubSub
 

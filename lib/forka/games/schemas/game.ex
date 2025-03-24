@@ -60,6 +60,8 @@ defmodule Forka.Games.Schemas.Game do
       preload_order: [asc: :position],
       on_replace: :delete
 
+    has_many :players, through: [:game_players, :player]
+
     has_many :events, Event,
       foreign_key: :game_id,
       preload_order: [desc: :tick, desc: :at],
@@ -69,13 +71,13 @@ defmodule Forka.Games.Schemas.Game do
   end
 
   @doc false
-  def insert_changeset(game, attrs) do
+  def insert_changeset(game, attrs, _opts \\ []) do
     game
     |> cast(attrs, [:name, :max_players, :tick])
     |> common_changeset()
   end
 
-  def update_changeset(game, attrs) do
+  def update_changeset(game, attrs, _opts \\ []) do
     game
     |> cast(attrs, [
       :name,
