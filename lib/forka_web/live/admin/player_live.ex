@@ -8,9 +8,8 @@ defmodule ForkaWeb.Admin.PlayerLive do
     ],
     layout: {ForkaWeb.Layouts, :admin},
     pubsub: [
-      name: Forka.PubSub,
-      topic: "players",
-      event_prefix: "player_"
+      server: Forka.PubSub,
+      topic: "players"
     ]
 
   @impl Backpex.LiveResource

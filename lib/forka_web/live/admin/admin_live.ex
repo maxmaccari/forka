@@ -8,9 +8,8 @@ defmodule ForkaWeb.Admin.AdminLive do
     ],
     layout: {ForkaWeb.Layouts, :admin},
     pubsub: [
-      name: Forka.PubSub,
-      topic: "words",
-      event_prefix: "word_"
+      server: Forka.PubSub,
+      topic: "words"
     ]
 
   @impl Backpex.LiveResource
@@ -46,8 +45,8 @@ defmodule ForkaWeb.Admin.AdminLive do
     ~H"""
     <div>
       <div class=" flex flex-col items-stretch space-y-2 px-6 py-4 sm:flex-row sm:space-y-0 sm:py-3">
-        <div class="sm:self-center hyphens-auto break-words pr-2 sm:w-1/4">
-          <p class="text-content block break-words text-sm font-medium">
+        <div class="sm:self-center hyphens-auto wrap-break-word pr-2 sm:w-1/4">
+          <p class="text-content block wrap-break-word text-sm font-medium">
             {@label}
           </p>
         </div>

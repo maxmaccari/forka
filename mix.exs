@@ -33,17 +33,18 @@ defmodule Forka.MixProject do
   defp deps do
     [
       {:bcrypt_elixir, "~> 3.0"},
-      {:phoenix, "~> 1.7.20"},
+      {:phoenix, "~> 1.8"},
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.10"},
       {:postgrex, ">= 0.0.0"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
-      {:phoenix_live_view, "~> 1.0.0"},
+      {:phoenix_live_view, "~> 1.1"},
       {:floki, ">= 0.30.0", only: :test},
+      {:lazy_html, ">= 0.1.0", only: :test},
       {:phoenix_live_dashboard, "~> 0.8.3"},
       {:esbuild, "~> 0.8", runtime: Mix.env() == :dev},
-      {:tailwind, "~> 0.2", runtime: Mix.env() == :dev},
+      {:tailwind, "~> 0.3", runtime: Mix.env() == :dev},
       {:heroicons,
        github: "tailwindlabs/heroicons",
        tag: "v2.1.1",
@@ -61,7 +62,7 @@ defmodule Forka.MixProject do
       {:bandit, "~> 1.5"},
       {:uuid, "~> 1.1"},
       {:ex_machina, "~> 2.8.0", only: :test},
-      {:backpex, "~> 0.11.0"},
+      {:backpex, "~> 0.24.1"},
       {:csv, "~> 3.2"}
     ]
   end

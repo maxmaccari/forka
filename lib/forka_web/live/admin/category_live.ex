@@ -8,9 +8,8 @@ defmodule ForkaWeb.Admin.CategoryLive do
     ],
     layout: {ForkaWeb.Layouts, :admin},
     pubsub: [
-      name: Forka.PubSub,
-      topic: "categories",
-      event_prefix: "category_"
+      server: Forka.PubSub,
+      topic: "categories"
     ]
 
   @impl Backpex.LiveResource

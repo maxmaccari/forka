@@ -8,9 +8,8 @@ defmodule ForkaWeb.Admin.WordLive do
     ],
     layout: {ForkaWeb.Layouts, :admin},
     pubsub: [
-      name: Forka.PubSub,
-      topic: "words",
-      event_prefix: "word_"
+      server: Forka.PubSub,
+      topic: "words"
     ]
 
   @impl Backpex.LiveResource

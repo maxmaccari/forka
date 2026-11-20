@@ -10,7 +10,7 @@ defmodule ForkaWeb.Filters.CategoryLanguageSelect do
   def prompt, do: "Select language ..."
 
   @impl Backpex.Filters.Select
-  def options do
+  def options(_assigns) do
     [
       {"English", "en"},
       {"Portuguese", "pt"}

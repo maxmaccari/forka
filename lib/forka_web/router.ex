@@ -18,7 +18,6 @@ defmodule ForkaWeb.Router do
   end
 
   pipeline :admin do
-    plug Backpex.ThemeSelectorPlug
     plug :fetch_current_admin
   end
 

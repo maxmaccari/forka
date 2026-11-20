@@ -12,7 +12,7 @@ defmodule ForkaWeb.Filters.WordLanguageSelect do
   def prompt, do: "Select category ..."
 
   @impl Backpex.Filters.Select
-  def options do
+  def options(_assigns) do
     query =
       from c in Category,
         select: {fragment("? || ' (' || ? || ')'", c.name, c.language), c.id}
