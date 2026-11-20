@@ -6,11 +6,13 @@ defmodule ForkaWeb.Admin.PlayerLive do
       update_changeset: &Forka.Players.Player.email_changeset/3,
       create_changeset: &Forka.Players.Player.registration_changeset/3
     ],
-    layout: {ForkaWeb.Layouts, :admin},
     pubsub: [
       server: Forka.PubSub,
       topic: "players"
     ]
+
+  @impl Backpex.LiveResource
+  def layout(_assigns), do: {ForkaWeb.Layouts, :admin}
 
   @impl Backpex.LiveResource
   def singular_name, do: "Player"

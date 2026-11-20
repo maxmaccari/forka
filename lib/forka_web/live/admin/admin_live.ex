@@ -6,11 +6,13 @@ defmodule ForkaWeb.Admin.AdminLive do
       update_changeset: &Forka.Backoffice.Admin.email_changeset/3,
       create_changeset: &Forka.Backoffice.Admin.registration_changeset/3
     ],
-    layout: {ForkaWeb.Layouts, :admin},
     pubsub: [
       server: Forka.PubSub,
       topic: "words"
     ]
+
+  @impl Backpex.LiveResource
+  def layout(_assigns), do: {ForkaWeb.Layouts, :admin}
 
   @impl Backpex.LiveResource
   def singular_name, do: "Admin"
@@ -19,7 +21,8 @@ defmodule ForkaWeb.Admin.AdminLive do
   def plural_name, do: "Admins"
 
   @impl Backpex.LiveResource
-  def create_button_label, do: "Register admin"
+  def translate({"New %{resource}", _opts}), do: "Register admin"
+  def translate({msg, opts}), do: Backpex.translate({msg, opts})
 
   @impl Backpex.LiveResource
   def fields do

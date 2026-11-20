@@ -56,6 +56,11 @@ config :tailwind,
     cd: Path.expand("..", __DIR__)
   ]
 
+# Configures Backpex
+config :backpex,
+  translator_function: {ForkaWeb.CoreComponents, :translate_backpex},
+  error_translator_function: {ForkaWeb.CoreComponents, :translate_error}
+
 # Configures Elixir's Logger
 config :logger, :console,
   format: "$time $metadata[$level] $message\n",

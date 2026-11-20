@@ -6,11 +6,13 @@ defmodule ForkaWeb.Admin.CategoryLive do
       update_changeset: &Forka.Words.Category.changeset/3,
       create_changeset: &Forka.Words.Category.changeset/3
     ],
-    layout: {ForkaWeb.Layouts, :admin},
     pubsub: [
       server: Forka.PubSub,
       topic: "categories"
     ]
+
+  @impl Backpex.LiveResource
+  def layout(_assigns), do: {ForkaWeb.Layouts, :admin}
 
   @impl Backpex.LiveResource
   def singular_name, do: "Category"

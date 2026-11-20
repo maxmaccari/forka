@@ -500,7 +500,7 @@ defmodule Forka.Games.Core do
   def update_settings(%GameState{} = _game_state, _settings),
     do: {:error, :game_not_in_lobby}
 
-  defp maybe_update_name(game_state, %{name: name}) when is_binary(name) do
+  defp maybe_update_name(%GameState{} = game_state, %{name: name}) when is_binary(name) do
     sanitized_name = String.trim(name)
 
     if sanitized_name != "" do
@@ -512,14 +512,14 @@ defmodule Forka.Games.Core do
 
   defp maybe_update_name(game_state, _), do: game_state
 
-  defp maybe_update_max_players(game_state, %{max_players: max_players})
+  defp maybe_update_max_players(%GameState{} = game_state, %{max_players: max_players})
        when is_integer(max_players) and max_players >= @min_players_allowed and
               max_players <= @max_players_allowed,
        do: %GameState{game_state | max_players: max_players}
 
   defp maybe_update_max_players(game_state, _), do: game_state
 
-  defp maybe_update_word_options(game_state, %{word_options: word_options})
+  defp maybe_update_word_options(%GameState{} = game_state, %{word_options: word_options})
        when is_map(word_options),
        do: %GameState{game_state | word_options: WordOptions.new(word_options)}
 

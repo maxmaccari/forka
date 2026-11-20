@@ -6,11 +6,13 @@ defmodule ForkaWeb.Admin.GameLive do
       update_changeset: &Forka.Games.Schemas.Game.update_changeset/3,
       create_changeset: &Forka.Games.Schemas.Game.insert_changeset/3
     ],
-    layout: {ForkaWeb.Layouts, :admin},
     pubsub: [
       server: Forka.PubSub,
       topic: "games"
     ]
+
+  @impl Backpex.LiveResource
+  def layout(_assigns), do: {ForkaWeb.Layouts, :admin}
 
   @impl Backpex.LiveResource
   def singular_name, do: "Game"
@@ -74,14 +76,12 @@ defmodule ForkaWeb.Admin.GameLive do
   def can?(_assigns, :delete, %{status: :archived}), do: true
   def can?(_assigns, _action, _item), do: false
 
-  @impl Phoenix.LiveView
   def handle_info({"game_created", item}, socket) do
     item = Forka.Repo.preload(item, [{:game_players, :player}, :owner])
     socket = update(socket, :items, fn items -> [item | items] end)
     {:noreply, socket}
   end
 
-  @impl Phoenix.LiveView
   def handle_info({"game_updated", item}, socket) do
     item = Forka.Repo.preload(item, [{:game_players, :player}, :owner])
 

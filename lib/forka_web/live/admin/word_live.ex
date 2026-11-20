@@ -6,11 +6,13 @@ defmodule ForkaWeb.Admin.WordLive do
       update_changeset: &Forka.Words.Word.changeset/3,
       create_changeset: &Forka.Words.Word.changeset/3
     ],
-    layout: {ForkaWeb.Layouts, :admin},
     pubsub: [
       server: Forka.PubSub,
       topic: "words"
     ]
+
+  @impl Backpex.LiveResource
+  def layout(_assigns), do: {ForkaWeb.Layouts, :admin}
 
   @impl Backpex.LiveResource
   def singular_name, do: "Word"
