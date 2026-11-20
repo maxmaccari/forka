@@ -13,7 +13,6 @@
     "daisyui": "^5.0.4"
   },
   "dependencies": {
-    "@tailwindcss/forms": "^0.5.11",
     "tailwindcss": "^4.3.5"
   }
 }

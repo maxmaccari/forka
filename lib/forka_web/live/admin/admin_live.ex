@@ -41,32 +41,23 @@ defmodule ForkaWeb.Admin.AdminLive do
     ]
   end
 
-  defp password_field(context) do
-    {field, field_data} = context.field
-    assigns = %{label: field_data.label, field: field}
-
+  defp password_field(assigns) do
     ~H"""
     <div>
-      <div class=" flex flex-col items-stretch space-y-2 px-6 py-4 sm:flex-row sm:space-y-0 sm:py-3">
-        <div class="sm:self-center hyphens-auto wrap-break-word pr-2 sm:w-1/4">
-          <p class="text-content block wrap-break-word text-sm font-medium">
-            {@label}
-          </p>
-        </div>
-
-        <div class="w-full sm:w-3/4">
-          <div class="">
-            <div class="form-control">
-              <input
-                type="password"
-                name={"change[#{@field}]"}
-                id={"resource-form_#{@field}"}
-                class="input input-bordered"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
+      <Backpex.HTML.Layout.field_container>
+        <:label align={Backpex.Field.align_label(@field_options, assigns, :center)}>
+          <Backpex.HTML.Layout.input_label for={@form[@name]} text={@field_options[:label]} />
+        </:label>
+        <Backpex.HTML.Form.input
+          type="password"
+          field={@form[@name]}
+          translate_error_fun={Backpex.Field.translate_error_fun(@field_options, assigns)}
+          help_text={Backpex.Field.help_text(@field_options, assigns)}
+          phx-debounce={Backpex.Field.debounce(@field_options, assigns)}
+          phx-throttle={Backpex.Field.throttle(@field_options, assigns)}
+          readonly={@readonly}
+        />
+      </Backpex.HTML.Layout.field_container>
     </div>
     """
   end

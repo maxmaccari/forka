@@ -58,6 +58,7 @@ config :tailwind,
 
 # Configures Backpex
 config :backpex,
+  pubsub_server: Forka.PubSub,
   translator_function: {ForkaWeb.CoreComponents, :translate_backpex},
   error_translator_function: {ForkaWeb.CoreComponents, :translate_error}
 

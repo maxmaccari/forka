@@ -42,11 +42,11 @@ defmodule ForkaWeb.Admin.CategoryLive do
         label: "Words",
         child_fields: [
           text: %{
-            module: Backpex.Field.Text,
+            module: Backpex.Fields.Text,
             label: "Text"
           },
           hint: %{
-            module: Backpex.Field.Text,
+            module: Backpex.Fields.Text,
             label: "Hint"
           }
         ]
