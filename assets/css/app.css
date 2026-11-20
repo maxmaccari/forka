@@ -1,5 +1,8 @@
 @config "../tailwind.config.js";
-@import "tailwindcss";
+@import "tailwindcss" source(none);
+@source "../css";
+@source "../js";
+@source "../../lib/forka_web";
 @source "../../deps/backpex/**/*.*ex";
 @source "../../deps/backpex/assets/js/**/*.*js";
 @plugin "daisyui";
