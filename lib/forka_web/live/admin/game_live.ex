@@ -75,27 +75,4 @@ defmodule ForkaWeb.Admin.GameLive do
   def can?(_assigns, action, _item) when action in [:index], do: true
   def can?(_assigns, :delete, %{status: :archived}), do: true
   def can?(_assigns, _action, _item), do: false
-
-  def handle_info({"game_created", item}, socket) do
-    item = Forka.Repo.preload(item, [{:game_players, :player}, :owner])
-    socket = update(socket, :items, fn items -> [item | items] end)
-    {:noreply, socket}
-  end
-
-  def handle_info({"game_updated", item}, socket) do
-    item = Forka.Repo.preload(item, [{:game_players, :player}, :owner])
-
-    socket =
-      update(socket, :items, fn items ->
-        Enum.map(items, fn existing_item ->
-          if existing_item.id == item.id do
-            item
-          else
-            existing_item
-          end
-        end)
-      end)
-
-    {:noreply, socket}
-  end
 end

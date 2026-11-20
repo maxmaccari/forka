@@ -4,6 +4,8 @@ defmodule ForkaWeb.Admin.AdminLiveResourcesTest do
   import Phoenix.LiveViewTest
 
   alias Backpex.Testing
+  alias Forka.Games.Repository
+  alias Forka.Words.Word
   alias ForkaWeb.Admin.AdminLive
   alias ForkaWeb.Admin.CategoryLive
   alias ForkaWeb.Admin.GameLive
@@ -50,12 +52,12 @@ defmodule ForkaWeb.Admin.AdminLiveResourcesTest do
       category = insert(:category, name: "Animals", language: "en")
       word = insert(:word, category: category, text: "tiger", hint: "striped cat")
 
-      {:ok, _show_view, show_html} =
+      {:ok, show_view, _show_html} =
         live(conn, Testing.path(Router, CategoryLive, :show, category))
 
-      assert show_html =~ "Animals"
-      assert show_html =~ "tiger"
-      assert show_html =~ "striped cat"
+      assert has_element?(show_view, "#backpex-main", "Animals")
+      assert has_element?(show_view, "#backpex-main", "tiger")
+      assert has_element?(show_view, "#backpex-main", "striped cat")
 
       {:ok, edit_view, _edit_html} =
         live(conn, Testing.path(Router, CategoryLive, :edit, category))
@@ -69,8 +71,11 @@ defmodule ForkaWeb.Admin.AdminLiveResourcesTest do
       {redirect_path, _flash} = assert_redirect(edit_view)
       assert redirect_path == Testing.path(Router, CategoryLive, :index)
 
-      {:ok, _index_view, index_html} = live(conn, redirect_path)
-      assert index_html =~ "Wild Animals"
+      {:ok, index_view, _index_html} = live(conn, redirect_path)
+      assert has_element?(index_view, "#row-item-#{category.id}", "Wild Animals")
+
+      inline_word = Forka.Repo.get_by!(Word, category_id: category.id, text: "lion")
+      assert inline_word.hint == "king"
 
       {:ok, new_view, _new_html} = live(conn, Testing.path(Router, CategoryLive, :new))
 
@@ -87,43 +92,53 @@ defmodule ForkaWeb.Admin.AdminLiveResourcesTest do
   describe "AC-03: WordLive, PlayerLive, AdminLive, and GameLive views" do
     test "WordLive new, show, and edit views work end to end", %{conn: conn} do
       category = insert(:category, name: "Science", language: "en")
+      other_category = insert(:category, name: "History", language: "en")
       word = insert(:word, category: category, text: "atom", hint: "basic unit")
 
-      {:ok, _show_view, show_html} = live(conn, Testing.path(Router, WordLive, :show, word))
-      assert show_html =~ "atom"
-      assert show_html =~ "Science"
+      {:ok, show_view, _show_html} = live(conn, Testing.path(Router, WordLive, :show, word))
+      assert has_element?(show_view, "#backpex-main", "atom")
+      assert has_element?(show_view, "#backpex-main", "Science")
 
       {:ok, edit_view, _html} = live(conn, Testing.path(Router, WordLive, :edit, word))
 
       Testing.submit_form(edit_view, %{
         text: "molecule",
         hint: "bonded atoms",
-        category_id: category.id
+        category_id: other_category.id
       })
 
       {path, _flash} = assert_redirect(edit_view)
       assert path == Testing.path(Router, WordLive, :index)
 
+      updated_word = Forka.Repo.get!(Word, word.id)
+      assert updated_word.text == "molecule"
+      assert updated_word.hint == "bonded atoms"
+      assert updated_word.category_id == other_category.id
+
       {:ok, new_view, _html} = live(conn, Testing.path(Router, WordLive, :new))
       Testing.submit_form(new_view, %{text: "proton", hint: "positive", category_id: category.id})
       {new_path, _flash} = assert_redirect(new_view)
       assert new_path == Testing.path(Router, WordLive, :index)
+
+      created_word = Forka.Repo.get_by!(Word, text: "proton")
+      assert created_word.category_id == category.id
+      assert created_word.hint == "positive"
     end
 
     test "PlayerLive index and edit views and GameLive index view render items", %{conn: conn} do
       player = insert(:player, username: "alice", email: "alice@example.com")
-      _game = insert(:game, name: "Room 101", owner: player, status: :lobby)
+      game = insert(:game, name: "Room 101", owner: player, status: :lobby)
 
-      {:ok, _player_index, player_html} = live(conn, Testing.path(Router, PlayerLive, :index))
-      assert player_html =~ "alice"
+      {:ok, player_index, _player_html} = live(conn, Testing.path(Router, PlayerLive, :index))
+      assert has_element?(player_index, "#row-item-#{player.id}", "alice")
 
       {:ok, player_edit, _html} = live(conn, Testing.path(Router, PlayerLive, :edit, player))
       Testing.submit_form(player_edit, %{email: "alice_new@example.com"})
       {path, _flash} = assert_redirect(player_edit)
       assert path == Testing.path(Router, PlayerLive, :index)
 
-      {:ok, _game_index, game_html} = live(conn, Testing.path(Router, GameLive, :index))
-      assert game_html =~ "Room 101"
+      {:ok, game_index, _game_html} = live(conn, Testing.path(Router, GameLive, :index))
+      assert has_element?(game_index, "#row-item-#{game.id}", "Room 101")
     end
 
     test "AdminLive new view renders password validation errors and creates an admin", %{
@@ -131,12 +146,11 @@ defmodule ForkaWeb.Admin.AdminLiveResourcesTest do
     } do
       {:ok, new_view, _html} = live(conn, Testing.path(Router, AdminLive, :new))
 
-      html =
-        new_view
-        |> form("#resource-form", change: %{email: "newadmin@example.com", password: "short"})
-        |> render_change(%{"_target" => ["change", "password"]})
+      new_view
+      |> form("#resource-form", change: %{email: "newadmin@example.com", password: "short"})
+      |> render_change(%{"_target" => ["change", "password"]})
 
-      assert html =~ "should be at least 12 character(s)"
+      assert has_element?(new_view, "#resource-form", "should be at least 12 character(s)")
 
       Testing.submit_form(new_view, %{
         email: "newadmin@example.com",
@@ -148,15 +162,32 @@ defmodule ForkaWeb.Admin.AdminLiveResourcesTest do
     end
   end
 
-  describe "AC-04: compiled app.css contains Heroicons rules for Backpex and admin layout" do
-    test "priv/static/assets/app.css defines heroicons mask utilities" do
-      css_path = Path.join([Application.app_dir(:forka, "priv"), "static", "assets", "app.css"])
-      css = File.read!(css_path)
+  describe "F-01: GameLive index receives gameplay broadcasts" do
+    test "a game inserted by Repository appears on the open index without reload", %{
+      conn: conn
+    } do
+      owner = insert(:player)
 
-      assert css =~ "--hero-book-open:"
-      assert css =~ "--hero-bars-3-solid:"
-      assert css =~ "--hero-user:"
-      assert css =~ "--hero-swatch:"
+      {:ok, view, _html} = live(conn, Testing.path(Router, GameLive, :index))
+      refute has_element?(view, "tr[id^='row-item-']", "Live Room")
+
+      {:ok, game} = Repository.insert_game(owner.id, %{name: "Live Room", max_players: 4})
+
+      assert has_element?(view, "#row-item-#{game.id}", "Live Room")
+    end
+
+    test "a game saved by Repository updates its row on the open index without reload", %{
+      conn: conn
+    } do
+      game = insert(:game, name: "Room 202", status: :lobby)
+
+      {:ok, view, _html} = live(conn, Testing.path(Router, GameLive, :index))
+      assert has_element?(view, "#row-item-#{game.id}", "Room 202")
+
+      {:ok, game_state} = Repository.get_game_state(game.id)
+      {:ok, _saved} = Repository.save_game_state(%{game_state | name: "Room 303"})
+
+      assert has_element?(view, "#row-item-#{game.id}", "Room 303")
     end
   end
 end

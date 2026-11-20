@@ -5,13 +5,17 @@ defmodule Forka.MixProject do
     [
       app: :forka,
       version: "0.1.0",
-      elixir: "~> 1.14",
+      elixir: "~> 1.18",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
       listeners: [Phoenix.CodeReloader]
     ]
+  end
+
+  def cli do
+    [preferred_envs: [precommit: :test]]
   end
 
   # Configuration for the OTP application.
@@ -80,6 +84,7 @@ defmodule Forka.MixProject do
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
+      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["tailwind forka", "esbuild forka"],
       "assets.deploy": [

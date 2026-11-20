@@ -3,4 +3,7 @@
 @source "../../deps/backpex/**/*.*ex";
 @source "../../deps/backpex/assets/js/**/*.*js";
 @plugin "daisyui";
+@plugin "@tailwindcss/forms" {
+  strategy: "class";
+}
 /* This file is for your main application CSS */
