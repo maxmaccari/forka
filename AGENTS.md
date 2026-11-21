@@ -53,6 +53,7 @@ When modifying or extending generated code, follow the exact implementation orde
 
 - Follow [the project workflow](docs/agent_workflow.md) and [shared conventions](.agents/shared/conventions.md).
 - Use the skills available in your environment. Start each plan, implementation, or review by reading this file and the applicable rules in §8.
+- Use [`commit`](.agents/skills/commit/SKILL.md) for commits and [`pull-request`](.agents/skills/pull-request/SKILL.md) for GitHub PRs. Use Conventional Commits for both subjects and titles: `type(scope): summary`, with an optional scope. Reuse the commit subject for a one-commit PR. For several commits, describe the overall change.
 - Keep specs and architecture decisions under `docs/specs/` and `docs/adrs/`. Put temporary plans and reports under `docs/tmp/`.
 
 ## 8. Framework Rules (`.agents/rules/`)
