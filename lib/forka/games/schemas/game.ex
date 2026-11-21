@@ -134,6 +134,7 @@ defmodule Forka.Games.Schemas.Game do
       name: game_state.name,
       status: game_state.status,
       max_players: game_state.max_players,
+      tick: game_state.tick,
       current_game_word_index: game_state.current_game_word_index,
       current_game_player_index: game_state.current_game_player_index,
       word_options: game_state.word_options,
@@ -152,24 +153,31 @@ defmodule Forka.Games.Schemas.Game do
       name: game.name,
       status: game.status,
       max_players: game.max_players,
+      tick: state_tick(game),
       current_game_word_index: game.current_game_word_index,
       current_game_player_index: game.current_game_player_index,
       word_options: game.word_options,
       owner: game.owner,
       game_words: list_to_map(game.game_words),
-      game_players: list_to_map(game.game_players),
+      game_players: list_to_map(game.game_players, &{&1.position, &1.id}),
       events: game.events
     }
   end
 
   # Helper functions for conversion
+  defp state_tick(%__MODULE__{tick: 0, events: events}) when is_list(events) do
+    Enum.reduce(events, 0, fn event, largest_tick -> max(event.tick, largest_tick) end)
+  end
+
+  defp state_tick(%__MODULE__{tick: tick}), do: tick
+
   defp map_to_list_with_position(map) when is_map(map) do
     Enum.map(map, fn {index, item} -> %{item | position: index} end)
   end
 
-  defp list_to_map(list) when is_list(list) do
+  defp list_to_map(list, sort_key \\ & &1.position) when is_list(list) do
     list
-    |> Enum.sort_by(& &1.position)
+    |> Enum.sort_by(sort_key)
     |> Enum.with_index()
     |> Map.new(fn {v, k} -> {k, v} end)
   end

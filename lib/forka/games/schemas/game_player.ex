@@ -38,7 +38,7 @@ defmodule Forka.Games.Schemas.GamePlayer do
 
   def changeset(game_player, attrs) do
     game_player
-    |> cast(attrs, [:player_id, :status, :lives, :score])
+    |> cast(attrs, [:player_id, :status, :lives, :score, :position])
     |> validate_required([:player_id])
     |> foreign_key_constraint(:player_id)
   end
@@ -47,12 +47,13 @@ defmodule Forka.Games.Schemas.GamePlayer do
   def new(%Player{} = player), do: %__MODULE__{player: player, player_id: player.id}
 
   @doc false
-  def decrement_lives(%__MODULE__{status: :alive, lives: lives} = game_player) when lives > 0,
+  def decrement_lives(%__MODULE__{status: :alive, lives: lives} = game_player) when lives > 1,
     do: %{game_player | lives: lives - 1}
 
   @doc false
-  def decrement_lives(%__MODULE__{status: :alive, lives: lives} = game_player) when lives == 0,
-    do: %{game_player | status: :dead}
+  def decrement_lives(%__MODULE__{status: :alive, lives: lives} = game_player)
+      when lives in [0, 1],
+      do: %{game_player | lives: 0, status: :dead}
 
   @doc false
   def decrement_lives(%__MODULE__{} = game_player), do: game_player

@@ -78,9 +78,15 @@ defmodule Forka.MixProject do
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
-      "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
+      "assets.npm": ["cmd --cd assets npm ci --include=dev"],
+      "assets.setup": [
+        "assets.npm",
+        "tailwind.install --if-missing",
+        "esbuild.install --if-missing"
+      ],
       "assets.build": ["tailwind forka", "esbuild forka"],
       "assets.deploy": [
+        "assets.npm",
         "tailwind forka --minify",
         "esbuild forka --minify",
         "phx.digest"

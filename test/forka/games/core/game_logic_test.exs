@@ -9,6 +9,41 @@ defmodule Forka.Games.Core.GameLogicTest do
   import Forka.Games.Core.Helpers
   import Forka.TestHelpers
 
+  @tag audit_f06: true
+  test "F-06 a surrender at the last position passes the turn to a surviving player", %{
+    game_state: game,
+    player1: first,
+    player2: last
+  } do
+    assert {:ok, game} = GameLogic.guess(game, first.id, "z")
+    assert game.current_game_player_index == 1
+    assert {:ok, game} = GameLogic.give_up_game(game, last.id)
+    assert game.status == :playing
+    assert game.current_game_player_index == 0
+    assert GameLogic.get_current_player(game).id == first.id
+    assert %{status: :dead, lives: 0} = game.game_players[1]
+    assert [%{type: :next_player_turn}, %{type: :player_gave_up} | _] = game.events
+  end
+
+  @tag audit_f06: true
+  test "F-06 reading and taking the turn wrap past a stored dead player", %{
+    game_state: game,
+    player1: first,
+    player2: last
+  } do
+    game = %{
+      game
+      | current_game_player_index: 1,
+        game_players: Map.update!(game.game_players, 1, &GamePlayer.give_up/1)
+    }
+
+    assert GameLogic.get_current_player(game) == first
+    assert GameLogic.guess(game, last.id, "a") == {:error, :not_player_turn}
+    assert {:ok, game} = GameLogic.guess(game, first.id, "a")
+    assert game.current_game_player_index == 0
+    assert game.game_players[0].score == 10
+  end
+
   setup do
     # Create owner
     owner = build_games_player("Owner")
@@ -301,101 +336,85 @@ defmodule Forka.Games.Core.GameLogicTest do
       assert player.score > 60
     end
 
-    test "one player wins while another dies", %{
-      game_state: game_state,
-      player1: player1,
-      player2: player2
+    @tag audit_f07: true
+    test "F-07 the sixth miss eliminates a player and the survivor can win", %{
+      game_state: game,
+      player1: survivor,
+      player2: eliminated
     } do
-      # Player 1 makes incorrect guesses and loses turn
-      {:ok, game_after_z} = GameLogic.guess(game_state, player1.id, "z")
+      guesses = [
+        {survivor.id, "z"},
+        {eliminated.id, "x"},
+        {survivor.id, "v"},
+        {eliminated.id, "b"},
+        {survivor.id, "n"},
+        {eliminated.id, "m"},
+        {survivor.id, "q"},
+        {eliminated.id, "w"},
+        {survivor.id, "e"},
+        {eliminated.id, "r"},
+        {survivor.id, "c"},
+        {survivor.id, "a"},
+        {survivor.id, "t"},
+        {survivor.id, "x"}
+      ]
 
-      # Now it's player 2's turn
-      # Player 2 makes 6 incorrect guesses and dies
-      {:ok, game_after_x} = GameLogic.guess(game_after_z, player2.id, "x")
-      {:ok, game_after_v} = GameLogic.guess(game_after_x, player1.id, "v")
-      {:ok, game_after_b} = GameLogic.guess(game_after_v, player2.id, "b")
-      {:ok, game_after_n} = GameLogic.guess(game_after_b, player1.id, "n")
-      {:ok, game_after_m} = GameLogic.guess(game_after_n, player2.id, "m")
-      {:ok, game_after_q} = GameLogic.guess(game_after_m, player1.id, "q")
-      {:ok, game_after_w} = GameLogic.guess(game_after_q, player2.id, "w")
-      {:ok, game_after_e} = GameLogic.guess(game_after_w, player1.id, "e")
-      {:ok, game_after_r} = GameLogic.guess(game_after_e, player2.id, "r")
-      # Player 1 complete to earn more lives, and win player 2
-      {:ok, game_after_c} = GameLogic.guess(game_after_r, player1.id, "c")
-      {:ok, game_after_a} = GameLogic.guess(game_after_c, player1.id, "a")
-      {:ok, game_after_t} = GameLogic.guess(game_after_a, player1.id, "t")
-      # Player 2 loose in another word
-      {:ok, game_after_x} = GameLogic.guess(game_after_t, player1.id, "x")
-      {:ok, game_after_y} = GameLogic.guess(game_after_x, player2.id, "y")
-      {:ok, game_after_z} = GameLogic.guess(game_after_y, player1.id, "z")
-      {:ok, game_after_a} = GameLogic.guess(game_after_z, player2.id, "a")
+      game =
+        Enum.reduce(guesses, game, fn {player_id, letter}, state ->
+          assert {:ok, updated} = GameLogic.guess(state, player_id, letter)
+          updated
+        end)
 
-      # Player 2 should be dead
-      player2_state = get_player_by_id(game_after_a, player2.id)
-      assert player2_state.status == :dead
+      assert %{status: :alive, lives: 1} = game.game_players[1]
+      assert {:ok, game} = GameLogic.guess(game, eliminated.id, "y")
+      assert %{status: :dead, lives: 0} = game.game_players[1]
+      assert game.status == :playing
+      assert game.current_game_player_index == 0
+      assert [%{type: :next_player_turn}, %{type: :player_died} | _] = game.events
 
-      # Check that the player_died event was pushed
-      assert_last_events(game_after_a, [
-        %{type: :player_guessed},
-        %{type: :player_died, payload: %{player_id: player2.id}},
-        %{type: :next_player_turn}
-      ])
-
-      # Player 1 completes the words and wins
-      {:ok, game_after_c} = GameLogic.guess(game_after_m, player1.id, "c")
-      {:ok, game_after_a} = GameLogic.guess(game_after_c, player1.id, "a")
-      {:ok, game_after_t} = GameLogic.guess(game_after_a, player1.id, "t")
-
-      # Complete second word 'dog'
-      {:ok, game_after_d} = GameLogic.guess(game_after_t, player1.id, "d")
-      {:ok, game_after_o} = GameLogic.guess(game_after_d, player1.id, "o")
-      {:ok, game_after_g} = GameLogic.guess(game_after_o, player1.id, "g")
-
-      # Game should be finished with player 1 as winner
-      assert game_after_g.status == :finished
+      assert {:ok, game} = GameLogic.guess(game, survivor.id, "d")
+      assert {:ok, game} = GameLogic.guess(game, survivor.id, "o")
+      assert {:ok, game} = GameLogic.guess(game, survivor.id, "g")
+      assert game.status == :finished
+      assert game.game_players[0].score == 120
+      assert game.game_players[1].score == 0
     end
 
-    test "game over when all players die", %{
-      game_state: game_state,
-      player1: player1,
-      player2: player2
+    @tag audit_f07: true
+    test "F-07 twelve alternating misses eliminate both players and end the match", %{
+      game_state: game,
+      player1: first,
+      player2: second
     } do
-      # Make both players die by making 6 incorrect guesses each
+      guesses = [
+        {first.id, "z"},
+        {second.id, "x"},
+        {first.id, "v"},
+        {second.id, "b"},
+        {first.id, "n"},
+        {second.id, "m"},
+        {first.id, "q"},
+        {second.id, "w"},
+        {first.id, "e"},
+        {second.id, "r"},
+        {first.id, "y"},
+        {second.id, "u"}
+      ]
 
-      # Player 1 makes incorrect guesses
-      {:ok, game_after_z1} = GameLogic.guess(game_state, player1.id, "z")
+      game =
+        Enum.reduce(guesses, game, fn {player_id, letter}, state ->
+          assert {:ok, updated} = GameLogic.guess(state, player_id, letter)
+          updated
+        end)
 
-      # Player 2 makes incorrect guesses
-      {:ok, game_after_x1} = GameLogic.guess(game_after_z1, player2.id, "x")
+      assert game.status == :game_over
+      assert game.current_game_player_index == nil
+      assert game.current_game_word_index == nil
+      assert %{status: :dead, lives: 0} = game.game_players[0]
+      assert %{status: :dead, lives: 0} = game.game_players[1]
 
-      # Continue alternating incorrect guesses
-      {:ok, game_after_v1} = GameLogic.guess(game_after_x1, player1.id, "v")
-      {:ok, game_after_b1} = GameLogic.guess(game_after_v1, player2.id, "b")
-      {:ok, game_after_n1} = GameLogic.guess(game_after_b1, player1.id, "n")
-      {:ok, game_after_m1} = GameLogic.guess(game_after_n1, player2.id, "m")
-      {:ok, game_after_q1} = GameLogic.guess(game_after_m1, player1.id, "q")
-      {:ok, game_after_w1} = GameLogic.guess(game_after_q1, player2.id, "w")
-      {:ok, game_after_e1} = GameLogic.guess(game_after_w1, player1.id, "e")
-      {:ok, game_after_r1} = GameLogic.guess(game_after_e1, player2.id, "r")
-      {:ok, game_after_y1} = GameLogic.guess(game_after_r1, player1.id, "y")
-      {:ok, game_after_u1} = GameLogic.guess(game_after_y1, player2.id, "u")
-      {:ok, game_after_i1} = GameLogic.guess(game_after_u1, player1.id, "i")
-      {:ok, game_after_o1} = GameLogic.guess(game_after_i1, player2.id, "o")
-
-      # Game should be over
-      assert game_after_o1.status == :game_over
-
-      # Both players should be dead
-      player1_state = get_player_by_id(game_after_o1, player1.id)
-      player2_state = get_player_by_id(game_after_o1, player2.id)
-      assert player1_state.status == :dead
-      assert player2_state.status == :dead
-
-      assert_last_events(game_after_o1, [
-        %{type: :player_guessed},
-        %{type: :player_died},
-        %{type: :game_over}
-      ])
+      assert [%{type: :game_over}, %{type: :player_died}, %{type: :player_guessed} | _] =
+               game.events
     end
   end
 

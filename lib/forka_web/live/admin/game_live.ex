@@ -76,27 +76,8 @@ defmodule ForkaWeb.Admin.GameLive do
   def can?(_assigns, _action, _item), do: false
 
   @impl Phoenix.LiveView
-  def handle_info({"game_created", item}, socket) do
-    item = Forka.Repo.preload(item, [{:game_players, :player}, :owner])
-    socket = update(socket, :items, fn items -> [item | items] end)
-    {:noreply, socket}
-  end
-
-  @impl Phoenix.LiveView
-  def handle_info({"game_updated", item}, socket) do
-    item = Forka.Repo.preload(item, [{:game_players, :player}, :owner])
-
-    socket =
-      update(socket, :items, fn items ->
-        Enum.map(items, fn existing_item ->
-          if existing_item.id == item.id do
-            item
-          else
-            existing_item
-          end
-        end)
-      end)
-
-    {:noreply, socket}
+  def handle_info({event, item}, %{assigns: %{live_action: action}} = socket)
+      when event in ["game_created", "game_updated"] and action in [:index, :resource_action] do
+    Backpex.LiveResource.handle_info({"backpex:game_created", item}, socket)
   end
 end

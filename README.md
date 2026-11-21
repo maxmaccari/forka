@@ -1,5 +1,7 @@
 # Forka
 
+Install Node.js with npm on PATH before building assets.
+
 To start your Phoenix server:
 
   * Run `mix setup` to install and setup dependencies

@@ -3,6 +3,7 @@ defmodule Forka.Games.Core.GameLogic do
   alias Forka.Games.Schemas.Guess
   alias Forka.Games.Schemas.GameWord
   alias Forka.Games.Schemas.GamePlayer
+  alias Forka.Games.Schemas.Player
   alias Forka.Games.Core.GameState
 
   import Forka.Games.Core.Helpers
@@ -14,22 +15,15 @@ defmodule Forka.Games.Core.GameLogic do
   @finished_statuses ~w(finished game_over)a
 
   @doc false
-  def get_current_player(%GameState{
-        status: :playing,
-        game_players: players,
-        current_game_player_index: index
-      }) do
-    case Map.get(players, index) do
+  def get_current_player(%GameState{status: :playing} = game) do
+    case Map.get(game.game_players, game.current_game_player_index) do
       %GamePlayer{player: player, status: :alive} ->
         player
 
       %GamePlayer{status: :dead} ->
-        next_alive_player_index =
-          find_next_alive_game_player_index(%GameState{game_players: players}, index - 1)
-
-        case Map.get(players, next_alive_player_index) do
-          %GamePlayer{player: player, status: :alive} -> player
-          _ -> nil
+        case find_next_alive_game_player_index(game, game.current_game_player_index) do
+          nil -> nil
+          index -> game.game_players[index].player
         end
 
       nil ->
@@ -95,52 +89,35 @@ defmodule Forka.Games.Core.GameLogic do
   def guess(%GameState{}, player_id, letter) when is_binary(letter) and is_binary(player_id),
     do: {:error, :game_not_playing}
 
-  defp current_player?(game_state, player_id) do
-    %GameState{game_players: players, current_game_player_index: player_index} = game_state
-    %GamePlayer{player: player, status: status} = Map.get(players, player_index)
-
-    if status == :alive do
-      player.id == player_id
-    else
-      next_alive_player_index = find_next_alive_game_player_index(game_state, player_index)
-      %GamePlayer{player: next_player} = Map.get(players, next_alive_player_index)
-
-      next_player.id == player_id
+  defp current_player?(game, player_id) do
+    case get_current_player(game) do
+      %Player{id: ^player_id} -> true
+      _ -> false
     end
   end
 
-  defp ensure_current_or_next_alive_player(
-         %GameState{game_players: players, current_game_player_index: player_index} = game_state
-       ) do
-    %GamePlayer{status: status} = Map.get(players, player_index)
-
-    cond do
-      status == :alive ->
-        game_state
-
-      next_player_index = find_next_alive_game_player_index(game_state, player_index) ->
-        next_player = game_state.game_players[next_player_index].player
-
-        %{game_state | current_game_player_index: next_player_index}
-        |> push_event(:next_player_turn, next_player)
-
-      # No player alive? It's game over.
-      true ->
-        game_over(game_state)
+  defp ensure_current_or_next_alive_player(game) do
+    case Map.get(game.game_players, game.current_game_player_index) do
+      %GamePlayer{status: :alive} -> game
+      _ -> handle_next_player(game)
     end
   end
 
-  defp find_next_alive_game_player_index(%GameState{game_players: players}, current_index) do
-    result =
-      Enum.find(players, fn {index, game_player} ->
-        game_player.status == :alive && index > current_index
-      end)
+  defp find_next_alive_game_player_index(%GameState{game_players: players}, current_index)
+       when map_size(players) > 0 and is_integer(current_index) do
+    player_count = map_size(players)
 
-    case result do
-      {index, _game_player} -> index
-      nil -> nil
-    end
+    Enum.find_value(1..player_count, fn offset ->
+      index = Integer.mod(current_index + offset, player_count)
+
+      case Map.get(players, index) do
+        %GamePlayer{status: :alive} -> index
+        _ -> nil
+      end
+    end)
   end
+
+  defp find_next_alive_game_player_index(_game, _current_index), do: nil
 
   defp game_over(game_state) do
     %{
@@ -262,37 +239,13 @@ defmodule Forka.Games.Core.GameLogic do
   end
 
   defp handle_next_player(%GameState{} = game_state) do
-    if all_players_died?(game_state) do
-      game_over(game_state)
-    else
-      next_alive_player(game_state)
-    end
-  end
+    case find_next_alive_game_player_index(game_state, game_state.current_game_player_index) do
+      nil ->
+        game_over(game_state)
 
-  defp all_players_died?(%GameState{game_players: game_players}) do
-    game_players
-    |> Map.values()
-    |> Enum.all?(&GamePlayer.died?/1)
-  end
-
-  defp next_alive_player(
-         %GameState{game_players: game_players, current_game_player_index: player_index} =
-           game_state
-       ) do
-    player_count = map_size(game_players)
-    next_index = rem(player_index + 1, player_count)
-    new_game_state = %{game_state | current_game_player_index: next_index}
-
-    case Map.get(game_players, next_index) do
-      %GamePlayer{status: :alive, player: player} ->
-        push_event(new_game_state, :next_player_turn, player)
-
-      %GamePlayer{status: :dead} when next_index < player_count ->
-        next_alive_player(new_game_state)
-
-      _ ->
-        # As a fallback, unless this it can make it stuck in an infinite loop
-        game_over(new_game_state)
+      index ->
+        %{game_state | current_game_player_index: index}
+        |> push_event(:next_player_turn, game_state.game_players[index].player)
     end
   end
 

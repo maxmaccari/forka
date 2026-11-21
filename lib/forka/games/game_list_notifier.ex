@@ -28,19 +28,28 @@ defmodule Forka.Games.GameListNotifier do
   Broadcast an update to the game list with a specific action.
   """
   def broadcast_update(game_state, action \\ :updated) do
-    # Extract only the minimal data needed for the list view
-    game_list_data = %{
+    data = Map.merge(list_fields(game_state), %{updated_at: DateTime.utc_now(), action: action})
+    PubSub.broadcast!(@pubsub, @topic, {:game_list_updated, data})
+  end
+
+  @doc false
+  def broadcast_update_if_changed(
+        %Forka.Games.Core.GameState{} = previous,
+        %Forka.Games.Core.GameState{} = saved
+      ) do
+    if list_fields(previous) != list_fields(saved), do: broadcast_update(saved)
+    :ok
+  end
+
+  defp list_fields(game_state) do
+    %{
       id: game_state.id,
       name: game_state.name,
       status: game_state.status,
       player_count: map_size(game_state.game_players || %{}),
       max_players: game_state.max_players,
-      owner: game_state.owner,
-      updated_at: DateTime.utc_now(),
-      action: action
+      owner: game_state.owner
     }
-
-    PubSub.broadcast!(@pubsub, @topic, {:game_list_updated, game_list_data})
   end
 
   @doc """

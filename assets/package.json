@@ -10,6 +10,6 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
-    "daisyui": "^5.0.4"
+    "daisyui": "4.12.24"
   }
 }
