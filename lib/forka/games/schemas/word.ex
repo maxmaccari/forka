@@ -29,9 +29,18 @@ defmodule Forka.Games.Schemas.Word do
     field :language, :string, default: "en"
   end
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          text: String.t() | nil,
+          hint: String.t() | nil,
+          category: String.t() | nil,
+          language: String.t() | nil
+        }
+
   import Ecto.Changeset
 
   @doc false
+  @spec changeset(t(), map()) :: Ecto.Changeset.t(t())
   def changeset(word, attrs) do
     # Used internally by Ecto when persisting through cast_embedded
     # This function won't be called directly in application code
@@ -42,6 +51,7 @@ defmodule Forka.Games.Schemas.Word do
   end
 
   @doc false
+  @spec to_map(t()) :: map()
   def to_map(%__MODULE__{} = word) do
     %{
       text: word.text,
@@ -66,6 +76,7 @@ defmodule Forka.Games.Schemas.Word do
       iex> Word.new("café", "food", "Hot beverage")
       #Word<café (food)>
   """
+  @spec new(String.t(), String.t(), String.t() | nil, String.t()) :: t()
   def new(text, category, hint \\ nil, language \\ "en") do
     sanitized_text =
       text
@@ -94,6 +105,11 @@ defmodule Forka.Games.Schemas.Word do
       iex> Word.from_map(%{text: "café", category: "food", hint: "Hot beverage", language: "pt"})
       #Word<café (food)>
   """
+  @spec from_map(%{
+          required(:text) => String.t(),
+          required(:category) => String.t(),
+          optional(atom()) => term()
+        }) :: t()
   def from_map(%{text: text, category: category} = map) do
     hint = Map.get(map, :hint)
     language = Map.get(map, :language, "en")
@@ -130,6 +146,7 @@ defmodule Forka.Games.Schemas.Word do
       iex> Word.check_word_letters(word, ["c", "a", "f", "e", "x"])
       [{:found, "c"}, {:found, "a"}, {:found, "f"}, {:found, "é"}]
   """
+  @spec check_word_letters(t(), [String.t()]) :: [{:found, String.t()} | :hidden]
   def check_word_letters(%__MODULE__{text: text}, letters) when is_list(letters) do
     normalized_text = text |> normalized_text() |> String.graphemes()
     displayable_text = String.graphemes(text)
@@ -157,6 +174,7 @@ defmodule Forka.Games.Schemas.Word do
       iex> Word.contain_letter?(word, "x")
       false
   """
+  @spec contain_letter?(t(), String.t()) :: boolean()
   def contain_letter?(%__MODULE__{text: text}, letter) when is_binary(letter),
     do: String.downcase(letter) in unique_letters(text)
 
@@ -174,6 +192,7 @@ defmodule Forka.Games.Schemas.Word do
       iex> Word.finished?(word, ["h"])
       false
   """
+  @spec finished?(t(), [String.t()]) :: boolean()
   def finished?(%__MODULE__{text: text}, guessed_letters) when is_list(guessed_letters) do
     text
     |> remove_spaces_and_hyphens()
@@ -197,6 +216,7 @@ defmodule Forka.Games.Schemas.Word do
       iex> Word.letters_count_in_word(word, "x")
       0
   """
+  @spec letters_count_in_word(t(), String.t()) :: non_neg_integer()
   def letters_count_in_word(%__MODULE__{text: text}, letter) when is_binary(letter) do
     downcase_letter = String.downcase(letter)
 
@@ -218,6 +238,7 @@ defmodule Forka.Games.Schemas.Word do
       iex> Word.letters_count(word)
       5
   """
+  @spec letters_count(t()) :: non_neg_integer()
   def letters_count(%__MODULE__{text: text}),
     do: text |> remove_spaces_and_hyphens() |> String.length()
 
@@ -232,6 +253,7 @@ defmodule Forka.Games.Schemas.Word do
       iex> Word.category(word)
       "greeting"
   """
+  @spec category(t()) :: String.t() | nil
   def category(%__MODULE__{category: category}), do: category
 
   @doc """
@@ -245,6 +267,7 @@ defmodule Forka.Games.Schemas.Word do
       iex> Word.hint(word)
       "A common salutation"
   """
+  @spec hint(t()) :: String.t() | nil
   def hint(%__MODULE__{hint: hint}), do: hint
 
   @doc """
@@ -258,6 +281,7 @@ defmodule Forka.Games.Schemas.Word do
       iex> Word.language(word)
       "en"
   """
+  @spec language(t()) :: String.t() | nil
   def language(%__MODULE__{language: language}), do: language
 
   # Helpers

@@ -2,8 +2,8 @@ defmodule ForkaWeb.Filters.WordLanguageSelect do
   @moduledoc false
   use Backpex.Filters.MultiSelect
 
-  alias Forka.Words.Category
   alias Forka.Repo
+  alias Forka.Words.Category
 
   @impl Backpex.Filter
   def label, do: "Category"

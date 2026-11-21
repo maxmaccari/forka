@@ -5,6 +5,7 @@ defmodule ForkaWeb.Admin.WordLiveTest do
 
   alias Forka.Repo
   alias Forka.Words.Word
+  alias ForkaWeb.Admin.WordLive
 
   setup :register_and_log_in_admin
 
@@ -43,7 +44,7 @@ defmodule ForkaWeb.Admin.WordLiveTest do
 
   @tag audit_f03: true
   test "F-03 the standalone admin changeset requires a selected category" do
-    changeset_fun = ForkaWeb.Admin.WordLive.config(:adapter_config)[:create_changeset]
+    changeset_fun = WordLive.config(:adapter_config)[:create_changeset]
     changeset = changeset_fun.(%Word{}, %{"text" => "Swallow", "category_id" => ""}, [])
 
     refute changeset.valid?

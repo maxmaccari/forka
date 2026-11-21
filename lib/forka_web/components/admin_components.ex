@@ -8,6 +8,8 @@ defmodule ForkaWeb.AdminComponents do
   use Phoenix.Component
   use Gettext, backend: ForkaWeb.Gettext
 
+  alias Phoenix.HTML.Form
+
   import ForkaWeb.CoreComponents, only: [translate_error: 1, icon: 1]
 
   @doc """
@@ -117,7 +119,7 @@ defmodule ForkaWeb.AdminComponents do
   attr :errors, :list, default: []
   attr :checked, :boolean, doc: "the checked flag for checkbox inputs"
   attr :prompt, :string, default: nil, doc: "the prompt for select inputs"
-  attr :options, :list, doc: "the options to pass to Phoenix.HTML.Form.options_for_select/2"
+  attr :options, :list, doc: "the options to pass to Form.options_for_select/2"
   attr :multiple, :boolean, default: false, doc: "the multiple flag for select inputs"
 
   attr :rest, :global,
@@ -138,7 +140,7 @@ defmodule ForkaWeb.AdminComponents do
   def admin_input(%{type: "checkbox"} = assigns) do
     assigns =
       assign_new(assigns, :checked, fn ->
-        Phoenix.HTML.Form.normalize_value("checkbox", assigns[:value])
+        Form.normalize_value("checkbox", assigns[:value])
       end)
 
     ~H"""
@@ -173,7 +175,7 @@ defmodule ForkaWeb.AdminComponents do
         {@rest}
       >
         <option :if={@prompt} value="">{@prompt}</option>
-        {Phoenix.HTML.Form.options_for_select(@options, @value)}
+        {Form.options_for_select(@options, @value)}
       </select>
       <.admin_error :for={msg <- @errors}>{msg}</.admin_error>
     </div>
@@ -193,7 +195,7 @@ defmodule ForkaWeb.AdminComponents do
           @errors != [] && "border-rose-400 focus:border-rose-400"
         ]}
         {@rest}
-      >{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
+      >{Form.normalize_value("textarea", @value)}</textarea>
       <.admin_error :for={msg <- @errors}>{msg}</.admin_error>
     </div>
     """
@@ -208,7 +210,7 @@ defmodule ForkaWeb.AdminComponents do
         type={@type}
         name={@name}
         id={@id}
-        value={Phoenix.HTML.Form.normalize_value(@type, @value)}
+        value={Form.normalize_value(@type, @value)}
         class={[
           "input input-bordered mt-2 block w-full sm:input-sm sm:text-sm sm:leading-6",
           @errors == [] && "",

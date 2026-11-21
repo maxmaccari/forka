@@ -1,10 +1,12 @@
 defmodule ForkaWeb.Admin.PlayerLive do
+  alias Forka.Players.Player
+
   use Backpex.LiveResource,
     adapter_config: [
-      schema: Forka.Players.Player,
+      schema: Player,
       repo: Forka.Repo,
-      update_changeset: &Forka.Players.Player.email_changeset/3,
-      create_changeset: &Forka.Players.Player.registration_changeset/3
+      update_changeset: &Player.email_changeset/3,
+      create_changeset: &Player.registration_changeset/3
     ],
     pubsub: [
       server: Forka.PubSub,

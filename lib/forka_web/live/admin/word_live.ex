@@ -1,10 +1,12 @@
 defmodule ForkaWeb.Admin.WordLive do
+  alias Forka.Words.Word
+
   use Backpex.LiveResource,
     adapter_config: [
-      schema: Forka.Words.Word,
+      schema: Word,
       repo: Forka.Repo,
-      update_changeset: &Forka.Words.Word.admin_changeset/3,
-      create_changeset: &Forka.Words.Word.admin_changeset/3
+      update_changeset: &Word.admin_changeset/3,
+      create_changeset: &Word.admin_changeset/3
     ],
     pubsub: [
       server: Forka.PubSub,

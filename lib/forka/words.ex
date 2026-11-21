@@ -30,6 +30,7 @@ defmodule Forka.Words do
       {:ok, [%Word{}]}
 
   """
+  @spec import_words([map()]) :: {:ok, [Word.t()]}
   def import_words(words_data) when is_list(words_data) do
     # Group words by category
     words_by_category =
@@ -117,6 +118,7 @@ defmodule Forka.Words do
       [%Category{language: "en"}, ...]
   """
 
+  @spec list_categories(keyword()) :: [Category.t()]
   def list_categories(opts \\ []) do
     language = Keyword.get(opts, :language)
 

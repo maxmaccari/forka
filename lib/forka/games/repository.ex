@@ -1,13 +1,13 @@
 defmodule Forka.Games.Repository do
-  @moduledoc false
+  @moduledoc "Loads and persists game state, players, and dictionary words for the Games context."
 
-  alias Phoenix.PubSub
-  alias Forka.Games.Schemas.WordOptions
   alias Forka.Games.Core.GameState
   alias Forka.Games.Schemas.Game
-  alias Forka.Games.Schemas.Word
   alias Forka.Games.Schemas.Player
+  alias Forka.Games.Schemas.Word
+  alias Forka.Games.Schemas.WordOptions
   alias Forka.Repo
+  alias Phoenix.PubSub
 
   import Ecto.Query
 
@@ -40,6 +40,7 @@ defmodule Forka.Games.Repository do
   A list of Word structs with text, hint, category, and language fields.
   Returns fewer words than requested if not enough words match the filters.
   """
+  @spec get_random_words(non_neg_integer(), WordOptions.t()) :: [Word.t()]
   def get_random_words(count \\ 5, word_options \\ %WordOptions{}) do
     %WordOptions{language: language, category_ids: category_ids} = word_options
 
@@ -97,6 +98,7 @@ defmodule Forka.Games.Repository do
 
   The Player struct if found, nil otherwise.
   """
+  @spec get_player(Ecto.UUID.t()) :: Player.t() | nil
   def get_player(id) do
     Repo.get(Player, id)
   end
@@ -123,6 +125,8 @@ defmodule Forka.Games.Repository do
   - `{:ok, game}` with the inserted game if successful
   - `{:error, changeset}` with the changeset containing errors if unsuccessful
   """
+  @spec insert_game(Ecto.UUID.t(), map()) ::
+          {:ok, Game.t()} | {:error, Ecto.Changeset.t(Game.t())}
   def insert_game(owner_id, params) when is_binary(owner_id) and is_map(params) do
     %Game{owner_id: owner_id}
     |> Game.insert_changeset(params)
@@ -163,6 +167,7 @@ defmodule Forka.Games.Repository do
   - `{:error, :not_found}` if the game does not exist
   """
   @game_preloads [{:game_players, :player}, :game_words, :owner, :events]
+  @spec get_game_state(Ecto.UUID.t()) :: {:ok, GameState.t()} | {:error, :not_found}
   def get_game_state(id) when is_binary(id) do
     Repo.get(Game, id)
     |> Repo.preload(@game_preloads)
@@ -172,6 +177,9 @@ defmodule Forka.Games.Repository do
     end
   end
 
+  @doc "Persists the game state and broadcasts the saved game to the back office."
+  @spec save_game_state(GameState.t()) ::
+          {:ok, GameState.t()} | {:error, Ecto.Changeset.t(Game.t())}
   def save_game_state(%GameState{id: id} = game_state) do
     Repo.get(Game, id)
     |> Repo.preload(@game_preloads)
@@ -212,6 +220,7 @@ defmodule Forka.Games.Repository do
 
   The updated GameState if successful, otherwise raises an exception.
   """
+  @spec save_game_state!(GameState.t()) :: GameState.t()
   def save_game_state!(%GameState{} = game_state) do
     case save_game_state(game_state) do
       {:ok, new_game_state} ->

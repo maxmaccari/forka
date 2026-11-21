@@ -1,6 +1,9 @@
 defmodule Forka.Backoffice.AdminNotifier do
+  @moduledoc "Delivers account confirmation, email change, and password reset emails to admins."
+
   import Swoosh.Email
 
+  alias Forka.Backoffice.Admin
   alias Forka.Mailer
 
   # Delivers the email using the application mailer.
@@ -20,6 +23,8 @@ defmodule Forka.Backoffice.AdminNotifier do
   @doc """
   Deliver instructions to confirm account.
   """
+  @spec deliver_confirmation_instructions(Admin.t(), String.t()) ::
+          {:ok, Swoosh.Email.t()} | {:error, term()}
   def deliver_confirmation_instructions(admin, url) do
     deliver(admin.email, "Confirmation instructions", """
 
@@ -40,6 +45,8 @@ defmodule Forka.Backoffice.AdminNotifier do
   @doc """
   Deliver instructions to reset a admin password.
   """
+  @spec deliver_reset_password_instructions(Admin.t(), String.t()) ::
+          {:ok, Swoosh.Email.t()} | {:error, term()}
   def deliver_reset_password_instructions(admin, url) do
     deliver(admin.email, "Reset password instructions", """
 
@@ -60,6 +67,8 @@ defmodule Forka.Backoffice.AdminNotifier do
   @doc """
   Deliver instructions to update a admin email.
   """
+  @spec deliver_update_email_instructions(Admin.t(), String.t()) ::
+          {:ok, Swoosh.Email.t()} | {:error, term()}
   def deliver_update_email_instructions(admin, url) do
     deliver(admin.email, "Update email instructions", """
 

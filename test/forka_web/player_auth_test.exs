@@ -1,9 +1,9 @@
 defmodule ForkaWeb.PlayerAuthTest do
   use ForkaWeb.ConnCase, async: true
 
-  alias Phoenix.LiveView
   alias Forka.Players
   alias ForkaWeb.PlayerAuth
+  alias Phoenix.LiveView
 
   @remember_me_cookie "_forka_web_player_remember_me"
 

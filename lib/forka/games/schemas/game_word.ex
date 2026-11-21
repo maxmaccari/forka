@@ -11,16 +11,12 @@ defmodule Forka.Games.Schemas.GameWord do
   and managing the game state for a single word.
   """
 
-  alias Forka.Games.Schemas.Game
-  alias Forka.Games.Schemas.GameWord
-  alias Forka.Games.Schemas.Word
-  alias Forka.Games.Schemas.Guess
-
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Forka.Games.Schemas.Word
+  alias Forka.Games.Schemas.Game
   alias Forka.Games.Schemas.Guess
+  alias Forka.Games.Schemas.Word
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -36,7 +32,21 @@ defmodule Forka.Games.Schemas.GameWord do
     timestamps()
   end
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          game_id: Ecto.UUID.t() | nil,
+          game: Game.t() | Ecto.Association.NotLoaded.t(),
+          word: Word.t() | nil,
+          guesses: [Guess.t()],
+          finished_by_id: Ecto.UUID.t() | nil,
+          base_word_id: Ecto.UUID.t() | nil,
+          position: non_neg_integer() | nil,
+          inserted_at: NaiveDateTime.t() | nil,
+          updated_at: NaiveDateTime.t() | nil
+        }
+
   @doc false
+  @spec changeset(t(), map()) :: Ecto.Changeset.t(t())
   def changeset(game_word, attrs) do
     game_word
     |> cast(attrs, [:finished_by_id, :base_word_id, :position])
@@ -45,6 +55,8 @@ defmodule Forka.Games.Schemas.GameWord do
     |> foreign_key_constraint(:base_word_id)
   end
 
+  @doc "Converts the game word and its embedded word to a map."
+  @spec to_map(t()) :: map()
   def to_map(%__MODULE__{} = game_word) do
     %{
       id: game_word.id,
@@ -64,6 +76,7 @@ defmodule Forka.Games.Schemas.GameWord do
       iex> GameWord.new(word)
       #GameWord<word: #Word<hello (greeting)>, guesses: [], display: "_____", finished?: false>
   """
+  @spec new(Word.t()) :: t()
   def new(%Word{} = word), do: %__MODULE__{word: word, base_word_id: word.id}
 
   @doc """
@@ -84,6 +97,8 @@ defmodule Forka.Games.Schemas.GameWord do
       iex> Map.put(guess, :guessed_at, nil)
       %Forka.Games.Schemas.Guess{letter: \"h\", guessed_by_player_id: \"player1\", correct?: true}
   """
+  @spec guess(t(), String.t(), Ecto.UUID.t()) ::
+          {:ok, t(), Guess.t()} | {:error, :letter_already_guessed}
   def guess(%__MODULE__{guesses: guesses, word: word} = game_word, letter, guessed_by_player_id) do
     if can_guess_letter?(guesses, letter) do
       correct? = Word.contain_letter?(word, letter)
@@ -111,6 +126,7 @@ defmodule Forka.Games.Schemas.GameWord do
       iex> GameWord.display_word_letters(game_word)
       [{:found, "h"}, :hidden, :hidden, :hidden, :hidden]
   """
+  @spec display_word_letters(t()) :: [{:found, String.t()} | :hidden]
   def display_word_letters(%__MODULE__{word: word, guesses: guesses}),
     do: Word.check_word_letters(word, guessed_letters(guesses))
 
@@ -123,6 +139,7 @@ defmodule Forka.Games.Schemas.GameWord do
   ## Returns
   Boolean indicating if all letters have been guessed
   """
+  @spec finished?(t()) :: boolean()
   def finished?(%__MODULE__{word: word, guesses: guesses}),
     do: Word.finished?(word, guessed_letters(guesses))
 
@@ -136,6 +153,7 @@ defmodule Forka.Games.Schemas.GameWord do
   ## Returns
   List of Guess structs made by the player
   """
+  @spec guesses_from_player(t(), Ecto.UUID.t()) :: [Guess.t()]
   def guesses_from_player(%__MODULE__{guesses: guesses}, player_id),
     do: Enum.filter(guesses, &(&1.guessed_by_player_id == player_id))
 
@@ -167,11 +185,10 @@ defimpl Inspect, for: Forka.Games.Schemas.GameWord do
 
     word_display =
       word_letters
-      |> Enum.map(fn
+      |> Enum.map_join("", fn
         {:found, letter} -> letter
         :hidden -> "_"
       end)
-      |> Enum.join("")
 
     concat([
       "#GameWord<",

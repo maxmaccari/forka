@@ -20,7 +20,15 @@ defmodule Forka.Games.Schemas.Player do
     timestamps(type: :utc_datetime)
   end
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          username: String.t() | nil,
+          inserted_at: DateTime.t() | nil,
+          updated_at: DateTime.t() | nil
+        }
+
   @doc false
+  @spec to_map(t()) :: %{id: Ecto.UUID.t() | nil, username: String.t() | nil}
   def to_map(player) do
     %{
       id: player.id,

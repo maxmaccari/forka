@@ -1,4 +1,6 @@
 defmodule Forka.Factory do
+  @moduledoc "ExMachina factories for Forka test records."
+
   alias Forka.Games.Schemas.WordOptions
   use ExMachina.Ecto, repo: Forka.Repo
 
@@ -61,7 +63,7 @@ defmodule Forka.Factory do
     |> Map.take([:email, :username, :password])
   end
 
-  defp unique_player_username() do
+  defp unique_player_username do
     sequence(:player_username, &"player#{&1}") |> String.slice(0, 20)
   end
 
@@ -72,8 +74,7 @@ defmodule Forka.Factory do
 
     random_part =
       1..10
-      |> Enum.map(fn _ -> String.at(letters, :rand.uniform(26) - 1) end)
-      |> Enum.join("")
+      |> Enum.map_join("", fn _ -> String.at(letters, :rand.uniform(26) - 1) end)
 
     base <> random_part
   end

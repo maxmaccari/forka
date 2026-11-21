@@ -1,8 +1,8 @@
 defmodule Forka.Words.WordTest do
   use Forka.DataCase, async: true
 
-  alias Forka.Words.Word
   alias Forka.Words.Category
+  alias Forka.Words.Word
 
   test "the admin changeset attaches a missing category error to the select field" do
     assert {:error, changeset} =

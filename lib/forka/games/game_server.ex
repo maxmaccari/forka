@@ -14,12 +14,12 @@ defmodule Forka.Games.GameServer do
 
   use GenServer, restart: :transient
 
-  alias Forka.Games.Repository
-  alias Forka.Games.GameListNotifier
-  alias Phoenix.PubSub
-  alias Forka.Games.Schemas.Player
   alias Forka.Games.Core
   alias Forka.Games.Core.GameState
+  alias Forka.Games.GameListNotifier
+  alias Forka.Games.Repository
+  alias Forka.Games.Schemas.Player
+  alias Phoenix.PubSub
 
   @pubsub_topic_prefix "game"
   @message_tagger :game_updated

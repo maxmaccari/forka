@@ -6,7 +6,16 @@ defmodule Forka.Backoffice do
   import Ecto.Query, warn: false
   alias Forka.Repo
 
-  alias Forka.Backoffice.{Admin, AdminToken, AdminNotifier}
+  alias Forka.Backoffice.{Admin, AdminNotifier, AdminToken}
+
+  # Ecto.Multi.new/0 embeds an empty MapSet that Dialyzer sees as a literal on OTP 29.
+  @dialyzer {:no_opaque,
+             [
+               admin_email_multi: 3,
+               confirm_admin_multi: 1,
+               update_admin_password: 3,
+               reset_admin_password: 2
+             ]}
 
   ## Database getters
 
@@ -22,6 +31,7 @@ defmodule Forka.Backoffice do
       nil
 
   """
+  @spec get_admin_by_email(String.t()) :: Admin.t() | nil
   def get_admin_by_email(email) when is_binary(email) do
     Repo.get_by(Admin, email: email)
   end
@@ -38,6 +48,7 @@ defmodule Forka.Backoffice do
       nil
 
   """
+  @spec get_admin_by_email_and_password(String.t(), String.t()) :: Admin.t() | nil
   def get_admin_by_email_and_password(email, password)
       when is_binary(email) and is_binary(password) do
     admin = Repo.get_by(Admin, email: email)
@@ -58,6 +69,7 @@ defmodule Forka.Backoffice do
       ** (Ecto.NoResultsError)
 
   """
+  @spec get_admin!(Ecto.UUID.t()) :: Admin.t()
   def get_admin!(id), do: Repo.get!(Admin, id)
 
   ## Admin registration
@@ -74,6 +86,7 @@ defmodule Forka.Backoffice do
       {:error, %Ecto.Changeset{}}
 
   """
+  @spec register_admin(map()) :: {:ok, Admin.t()} | {:error, Ecto.Changeset.t(Admin.t())}
   def register_admin(attrs) do
     %Admin{}
     |> Admin.registration_changeset(attrs)
@@ -89,6 +102,7 @@ defmodule Forka.Backoffice do
       %Ecto.Changeset{data: %Admin{}}
 
   """
+  @spec change_admin_registration(Admin.t(), map()) :: Ecto.Changeset.t(Admin.t())
   def change_admin_registration(%Admin{} = admin, attrs \\ %{}) do
     Admin.registration_changeset(admin, attrs, hash_password: false, validate_email: false)
   end
@@ -104,6 +118,7 @@ defmodule Forka.Backoffice do
       %Ecto.Changeset{data: %Admin{}}
 
   """
+  @spec change_admin_email(Admin.t(), map()) :: Ecto.Changeset.t(Admin.t())
   def change_admin_email(admin, attrs \\ %{}) do
     Admin.email_changeset(admin, attrs, validate_email: false)
   end
@@ -121,6 +136,8 @@ defmodule Forka.Backoffice do
       {:error, %Ecto.Changeset{}}
 
   """
+  @spec apply_admin_email(Admin.t(), String.t(), map()) ::
+          {:ok, Admin.t()} | {:error, Ecto.Changeset.t(Admin.t())}
   def apply_admin_email(admin, password, attrs) do
     admin
     |> Admin.email_changeset(attrs)
@@ -134,6 +151,7 @@ defmodule Forka.Backoffice do
   If the token matches, the admin email is updated and the token is deleted.
   The confirmed_at date is also updated to the current time.
   """
+  @spec update_admin_email(Admin.t(), String.t()) :: :ok | :error
   def update_admin_email(admin, token) do
     context = "change:#{admin.email}"
 
@@ -166,6 +184,8 @@ defmodule Forka.Backoffice do
       {:ok, %{to: ..., body: ...}}
 
   """
+  @spec deliver_admin_update_email_instructions(Admin.t(), String.t(), (String.t() -> String.t())) ::
+          {:ok, Swoosh.Email.t()} | {:error, term()}
   def deliver_admin_update_email_instructions(
         %Admin{} = admin,
         current_email,
@@ -187,6 +207,7 @@ defmodule Forka.Backoffice do
       %Ecto.Changeset{data: %Admin{}}
 
   """
+  @spec change_admin_password(Admin.t(), map()) :: Ecto.Changeset.t(Admin.t())
   def change_admin_password(admin, attrs \\ %{}) do
     Admin.password_changeset(admin, attrs, hash_password: false)
   end
@@ -203,6 +224,8 @@ defmodule Forka.Backoffice do
       {:error, %Ecto.Changeset{}}
 
   """
+  @spec update_admin_password(Admin.t(), String.t(), map()) ::
+          {:ok, Admin.t()} | {:error, Ecto.Changeset.t(Admin.t())}
   def update_admin_password(admin, password, attrs) do
     changeset =
       admin
@@ -224,6 +247,7 @@ defmodule Forka.Backoffice do
   @doc """
   Generates a session token.
   """
+  @spec generate_admin_session_token(Admin.t()) :: binary()
   def generate_admin_session_token(admin) do
     {token, admin_token} = AdminToken.build_session_token(admin)
     Repo.insert!(admin_token)
@@ -233,6 +257,7 @@ defmodule Forka.Backoffice do
   @doc """
   Gets the admin with the given signed token.
   """
+  @spec get_admin_by_session_token(binary()) :: Admin.t() | nil
   def get_admin_by_session_token(token) do
     {:ok, query} = AdminToken.verify_session_token_query(token)
     Repo.one(query)
@@ -241,6 +266,7 @@ defmodule Forka.Backoffice do
   @doc """
   Deletes the signed token with the given context.
   """
+  @spec delete_admin_session_token(binary()) :: :ok
   def delete_admin_session_token(token) do
     Repo.delete_all(AdminToken.by_token_and_context_query(token, "session"))
     :ok
@@ -260,6 +286,8 @@ defmodule Forka.Backoffice do
       {:error, :already_confirmed}
 
   """
+  @spec deliver_admin_confirmation_instructions(Admin.t(), (String.t() -> String.t())) ::
+          {:ok, Swoosh.Email.t()} | {:error, term()}
   def deliver_admin_confirmation_instructions(%Admin{} = admin, confirmation_url_fun)
       when is_function(confirmation_url_fun, 1) do
     if admin.confirmed_at do
@@ -277,6 +305,7 @@ defmodule Forka.Backoffice do
   If the token matches, the admin account is marked as confirmed
   and the token is deleted.
   """
+  @spec confirm_admin(String.t()) :: {:ok, Admin.t()} | :error
   def confirm_admin(token) do
     with {:ok, query} <- AdminToken.verify_email_token_query(token, "confirm"),
          %Admin{} = admin <- Repo.one(query),
@@ -304,6 +333,8 @@ defmodule Forka.Backoffice do
       {:ok, %{to: ..., body: ...}}
 
   """
+  @spec deliver_admin_reset_password_instructions(Admin.t(), (String.t() -> String.t())) ::
+          {:ok, Swoosh.Email.t()} | {:error, term()}
   def deliver_admin_reset_password_instructions(%Admin{} = admin, reset_password_url_fun)
       when is_function(reset_password_url_fun, 1) do
     {encoded_token, admin_token} = AdminToken.build_email_token(admin, "reset_password")
@@ -327,6 +358,7 @@ defmodule Forka.Backoffice do
       nil
 
   """
+  @spec get_admin_by_reset_password_token(String.t()) :: Admin.t() | nil
   def get_admin_by_reset_password_token(token) do
     with {:ok, query} <- AdminToken.verify_email_token_query(token, "reset_password"),
          %Admin{} = admin <- Repo.one(query) do
@@ -348,6 +380,8 @@ defmodule Forka.Backoffice do
       {:error, %Ecto.Changeset{}}
 
   """
+  @spec reset_admin_password(Admin.t(), map()) ::
+          {:ok, Admin.t()} | {:error, Ecto.Changeset.t(Admin.t())}
   def reset_admin_password(admin, attrs) do
     Ecto.Multi.new()
     |> Ecto.Multi.update(:admin, Admin.password_changeset(admin, attrs))

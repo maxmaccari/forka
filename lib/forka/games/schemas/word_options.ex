@@ -16,7 +16,13 @@ defmodule Forka.Games.Schemas.WordOptions do
     field :category_ids, {:array, :binary_id}, default: []
   end
 
+  @type t :: %__MODULE__{
+          language: String.t() | nil,
+          category_ids: [Ecto.UUID.t()] | nil
+        }
+
   @doc false
+  @spec changeset(t(), map()) :: Ecto.Changeset.t(t())
   def changeset(word_options, attrs) do
     word_options
     |> cast(attrs, [:language, :category_ids])
@@ -24,7 +30,8 @@ defmodule Forka.Games.Schemas.WordOptions do
   end
 
   @doc false
-  def new(attrs \\ []) do
+  @spec new(map()) :: t()
+  def new(attrs \\ %{}) do
     %__MODULE__{}
     |> changeset(attrs)
     |> apply_changes()

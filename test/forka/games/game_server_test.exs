@@ -1,6 +1,7 @@
 defmodule Forka.Games.GameServerTest do
   use Forka.DataCase, async: true
 
+  alias Ecto.Adapters.SQL.Sandbox
   alias Forka.Games.Core
   alias Forka.Games.Core
   alias Forka.Games.GameServer
@@ -24,7 +25,7 @@ defmodule Forka.Games.GameServerTest do
     {:ok, pid} = GameServer.start_link(game.id)
 
     # Allow server to colaborate with same connection
-    Ecto.Adapters.SQL.Sandbox.allow(Repo, self(), pid)
+    Sandbox.allow(Repo, self(), pid)
 
     # Subscribe to receive game updates
     GameServer.subscribe(game.id)
@@ -679,7 +680,7 @@ defmodule Forka.Games.GameServerTest do
 
       # Start the server again
       {:ok, pid} = GameServer.start_link(game_state.id)
-      Ecto.Adapters.SQL.Sandbox.allow(Repo, self(), pid)
+      Sandbox.allow(Repo, self(), pid)
 
       # Make a change to the game
       player = insert(:player)
@@ -821,7 +822,7 @@ defmodule Forka.Games.GameServerTest do
       {:ok, new_pid} = GameServer.start_link(game_state.id)
 
       # Allow server to collaborate with same connection
-      Ecto.Adapters.SQL.Sandbox.allow(Repo, self(), new_pid)
+      Sandbox.allow(Repo, self(), new_pid)
 
       # Verify the loaded state matches what was persisted
       loaded_summary = GameServer.get_game(game_state.id)

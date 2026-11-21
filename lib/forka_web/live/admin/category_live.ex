@@ -1,10 +1,12 @@
 defmodule ForkaWeb.Admin.CategoryLive do
+  alias Forka.Words.Category
+
   use Backpex.LiveResource,
     adapter_config: [
-      schema: Forka.Words.Category,
+      schema: Category,
       repo: Forka.Repo,
-      update_changeset: &Forka.Words.Category.changeset/3,
-      create_changeset: &Forka.Words.Category.changeset/3
+      update_changeset: &Category.changeset/3,
+      create_changeset: &Category.changeset/3
     ],
     pubsub: [
       server: Forka.PubSub,

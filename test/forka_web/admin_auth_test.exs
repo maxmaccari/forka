@@ -1,9 +1,9 @@
 defmodule ForkaWeb.AdminAuthTest do
   use ForkaWeb.ConnCase, async: true
 
-  alias Phoenix.LiveView
   alias Forka.Backoffice
   alias ForkaWeb.AdminAuth
+  alias Phoenix.LiveView
 
   @remember_me_cookie "_forka_web_admin_remember_me"
 

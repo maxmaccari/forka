@@ -1,4 +1,6 @@
 defmodule Forka.Words.Category do
+  @moduledoc "Groups dictionary words by name and language."
+
   use Ecto.Schema
   import Ecto.Changeset
 
@@ -17,7 +19,19 @@ defmodule Forka.Words.Category do
     timestamps(type: :utc_datetime)
   end
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          name: String.t() | nil,
+          language: String.t() | nil,
+          words_order: [String.t()] | nil,
+          words_delete: [String.t()] | nil,
+          words: [Word.t()] | Ecto.Association.NotLoaded.t(),
+          inserted_at: DateTime.t() | nil,
+          updated_at: DateTime.t() | nil
+        }
+
   @doc false
+  @spec changeset(t(), map(), keyword()) :: Ecto.Changeset.t(t())
   def changeset(category, attrs, _metadata \\ []) do
     category
     |> cast(attrs, [:name, :language])

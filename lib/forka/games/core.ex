@@ -1,11 +1,12 @@
 defmodule Forka.Games.Core do
+  @moduledoc "Applies the rules of a game to its in-memory state."
+
   alias Forka.Games.Core.GameLogic
   alias Forka.Games.Core.GameState
   alias Forka.Games.GameSummary
   alias Forka.Games.Schemas.GamePlayer
   alias Forka.Games.Schemas.GameWord
-  alias Forka.Games.Schemas.Player
-  alias Forka.Games.Schemas.WordOptions
+  alias Forka.Games.Schemas.{Player, Word, WordOptions}
 
   import Forka.Games.Core.Helpers, only: [increment_tick: 1, push_event: 2, push_event: 3]
 
@@ -60,6 +61,7 @@ defmodule Forka.Games.Core do
         word_options: [language: "pt", category_ids: ["uuid1", "uuid2"]]
       }
   """
+  @spec new(Player.t(), String.t(), integer(), keyword()) :: GameState.t()
   def new(%Player{} = owner, name, max_players, opts \\ [])
       when is_binary(name) and is_integer(max_players) do
     word_options = Keyword.get(opts, :word_options, language: "en")
@@ -88,6 +90,9 @@ defmodule Forka.Games.Core do
 
   The player is converted to a GamePlayer and added to the game state's game_players map.
   """
+  @spec join_game(GameState.t(), Player.t()) ::
+          {:ok, GameState.t()}
+          | {:error, :maximum_players | :game_archived | :game_already_started}
   def join_game(
         %GameState{game_players: game_players, status: :lobby} = game_state,
         %Player{} = player
@@ -131,6 +136,8 @@ defmodule Forka.Games.Core do
   Players are reindexed after removal to maintain sequential ordering.
   If the player is not found in the game, returns the unchanged game state.
   """
+  @spec leave_game(GameState.t(), Ecto.UUID.t()) ::
+          {:ok, GameState.t()} | {:error, :game_archived | :game_already_started}
   def leave_game(%GameState{status: :lobby, game_players: game_players} = game_state, player_id)
       when is_binary(player_id) do
     left_player =
@@ -173,6 +180,7 @@ defmodule Forka.Games.Core do
     - A GameState struct with game_words set if the game is in lobby state
     - The unchanged game_state if the game is not in lobby state
   """
+  @spec set_words(GameState.t(), [Word.t()]) :: GameState.t()
   def set_words(%GameState{status: :lobby} = game_state, words) when is_list(words) do
     new_game_words =
       words
@@ -205,6 +213,7 @@ defmodule Forka.Games.Core do
       iex> Map.values(shuffled.game_players) |> Enum.sort() == Map.values(game_state.game_players) |> Enum.sort()
       true
   """
+  @spec shuffle_players(GameState.t()) :: GameState.t()
   def shuffle_players(%GameState{game_players: game_players, status: :lobby} = game_state) do
     shuffled_game_players =
       game_players
@@ -238,6 +247,9 @@ defmodule Forka.Games.Core do
       iex> updated_game.status
       :playing
   """
+  @spec start_game(GameState.t()) ::
+          {:ok, GameState.t()}
+          | {:error, :game_not_ready | :game_archived | :game_already_initialized}
   def start_game(%GameState{status: :lobby} = game_state) do
     if can_start?(game_state) do
       new_game_state =
@@ -290,6 +302,10 @@ defmodule Forka.Games.Core do
       - `:letter_already_guessed`: The letter has already been guessed for this word
       - `:game_archived`: The game is archived and cannot be modified
   """
+  @spec guess(GameState.t(), Ecto.UUID.t(), String.t()) ::
+          {:ok, GameState.t()}
+          | {:error,
+             :not_player_turn | :game_archived | :game_not_playing | :letter_already_guessed}
   defdelegate guess(game_state, player_id, letter), to: GameLogic
 
   @doc """
@@ -305,6 +321,8 @@ defmodule Forka.Games.Core do
     - `{:error, :game_not_playing}` if the game is not in playing state
     - `{:error, :game_archived}` if the game is archived and cannot be modified
   """
+  @spec give_up_game(GameState.t(), Ecto.UUID.t()) ::
+          {:ok, GameState.t()} | {:error, :player_not_found | :game_archived | :game_not_playing}
   defdelegate give_up_game(game_state, player_id), to: GameLogic
 
   @doc """
@@ -316,6 +334,7 @@ defmodule Forka.Games.Core do
   ## Returns
   - current_player: The current player in the game.
   """
+  @spec get_current_player(GameState.t()) :: Player.t() | Ecto.Association.NotLoaded.t() | nil
   defdelegate get_current_player(game_state), to: GameLogic
 
   @doc """
@@ -332,6 +351,7 @@ defmodule Forka.Games.Core do
   ## Returns
     - A GameSummary struct containing shareable game information
   """
+  @spec to_game_summary(GameState.t(), keyword()) :: GameSummary.t()
   def to_game_summary(%GameState{} = game_state, opts \\ []),
     do: GameSummary.from_game_state(game_state, opts)
 
@@ -351,6 +371,7 @@ defmodule Forka.Games.Core do
     - {:ok, updated_game_state} if the game was successfully archived
     - {:error, :game_in_progress} if the game is still in playing status
   """
+  @spec archive_game(GameState.t()) :: {:ok, GameState.t()} | {:error, :game_in_progress}
   def archive_game(%GameState{status: :playing} = _game_state) do
     {:error, :game_in_progress}
   end
@@ -379,6 +400,8 @@ defmodule Forka.Games.Core do
     - {:error, :game_in_progress} if the game is still in playing status
     - {:error, :game_archived} if the game is archived
   """
+  @spec restart_game(GameState.t()) ::
+          {:ok, GameState.t()} | {:error, :game_in_progress | :game_archived}
   def restart_game(%GameState{status: :playing} = _game_state) do
     {:error, :game_in_progress}
   end
@@ -428,6 +451,8 @@ defmodule Forka.Games.Core do
     - {:error, :already_owner} if the specified player is already the owner
     - {:error, :game_archived} if the game is in archived status
   """
+  @spec transfer_ownership_to_player(GameState.t(), Ecto.UUID.t()) ::
+          {:ok, GameState.t()} | {:error, :game_archived | :already_owner | :player_not_found}
   def transfer_ownership_to_player(%GameState{status: :archived} = _game_state, player_id)
       when is_binary(player_id) do
     {:error, :game_archived}
@@ -485,6 +510,8 @@ defmodule Forka.Games.Core do
     - {:ok, updated_game_state} if the settings were successfully updated
     - {:error, :game_not_in_lobby} if the game is not in lobby status
   """
+  @spec update_settings(GameState.t(), map()) ::
+          {:ok, GameState.t()} | {:error, :game_not_in_lobby}
   def update_settings(%GameState{status: :lobby} = game_state, settings) when is_map(settings) do
     updated_game_state =
       game_state
@@ -526,8 +553,10 @@ defmodule Forka.Games.Core do
   defp maybe_update_word_options(game_state, _), do: game_state
 
   @doc false
+  @spec min_players_allowed() :: 2
   def min_players_allowed, do: @min_players_allowed
 
   @doc false
+  @spec max_players_allowed() :: 6
   def max_players_allowed, do: @max_players_allowed
 end

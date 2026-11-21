@@ -19,7 +19,16 @@ defmodule Forka.Games.Schemas.Guess do
     field :correct?, :boolean, default: false
   end
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          letter: String.t() | nil,
+          guessed_by_player_id: Ecto.UUID.t() | nil,
+          guessed_at: DateTime.t() | nil,
+          correct?: boolean() | nil
+        }
+
   @doc false
+  @spec changeset(t(), map()) :: Ecto.Changeset.t(t())
   def changeset(guess, attrs) do
     # Used internally by Ecto when persisting through cast_embedded
     # This function won't be called directly in application code
@@ -29,6 +38,7 @@ defmodule Forka.Games.Schemas.Guess do
   end
 
   @doc false
+  @spec new(String.t(), Ecto.UUID.t(), boolean()) :: t()
   def new(letter, guessed_by_player_id, correct?) do
     %__MODULE__{
       letter: String.downcase(letter),
@@ -39,6 +49,7 @@ defmodule Forka.Games.Schemas.Guess do
   end
 
   @doc false
+  @spec to_map(t()) :: map()
   def to_map(%__MODULE__{} = guess) do
     %{
       letter: guess.letter,
