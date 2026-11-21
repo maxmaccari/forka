@@ -16,10 +16,9 @@ config :forka, Forka.Repo,
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2
 
-# We don't run a server during test. If one is required,
-# you can enable the server option below.
+# When HTTP tests enable the server, the OS assigns an available port.
 config :forka, ForkaWeb.Endpoint,
-  http: [ip: {127, 0, 0, 1}, port: 4002],
+  http: [ip: {127, 0, 0, 1}, port: 0],
   secret_key_base: "yiZ72KnT5vsdy8R7Nab+r9zSWJrBwT68s7+LakoThEukt7BT3xMiIbChfWF0W/33",
   server: false
 

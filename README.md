@@ -18,11 +18,15 @@ Keep shared defaults in the tracked files and personal values in the ignored
 
 ### Git worktrees
 
-In development, the main checkout uses port 4000. Each linked worktree gets a
-stable port from 4100 to 4999 based on its path and shows its name and port in
-the lower-left corner. Set `PORT` to override it, for example
+In development, the main checkout defaults to port 4000. A linked worktree
+gets a default between 4100 and 4999 based on its path and shows its name and
+port in the lower-left corner. Worktrees can pick the same default. If the
+port is busy, set `PORT` to an available port, for example
 `PORT=4555 iex -S mix phx.server`. In IEx, `o` opens the app and `m` opens the
 development mailbox using the active port.
+
+When HTTP tests enable the endpoint, the OS assigns an available port. Read
+that port with `ForkaWeb.Endpoint.server_info(:http)`.
 
 ### Code checks
 
@@ -38,9 +42,9 @@ named **Precommit and assets**.
 
 Ready to run in production? Please [check our deployment guides](https://hexdocs.pm/phoenix/deployment.html).
 
-The production endpoint enforces HTTPS and HSTS. If a trusted reverse proxy
-terminates TLS, configure `force_ssl` in `config/prod.exs` to use the scheme
-forwarded by that proxy.
+The production endpoint uses `X-Forwarded-Proto` for HTTPS redirects and HSTS.
+Run it behind a trusted TLS-terminating proxy that sets this header from the
+original connection. Restrict access to the Phoenix listener to that proxy.
 
 ## Learn more
 

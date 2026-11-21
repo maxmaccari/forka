@@ -108,7 +108,7 @@ if env == :prod do
   #         port: 443,
   #         cipher_suite: :strong,
   #         keyfile: env!("SOME_APP_SSL_KEY_PATH", :string!),
-  #         certfile: System.get_env("SOME_APP_SSL_CERT_PATH")
+  #         certfile: env!("SOME_APP_SSL_CERT_PATH", :string!)
   #       ]
   #
   # The `cipher_suite` is set to `:strong` to support only the
@@ -121,13 +121,8 @@ if env == :prod do
   # "priv/ssl/server.key". For all supported SSL configuration
   # options, see https://hexdocs.pm/plug/Plug.SSL.html#configure/1
   #
-  # We also recommend setting `force_ssl` in your config/prod.exs,
-  # ensuring no data is ever sent via http, always redirecting to https:
-  #
-  #     config :forka, ForkaWeb.Endpoint,
-  #       force_ssl: [hsts: true]
-  #
-  # Check `Plug.SSL` for all available options in `force_ssl`.
+  # `force_ssl` is configured in config/prod.exs. See README.md for the
+  # production proxy requirements and `Plug.SSL` for the available options.
 
   # ## Configuring the mailer
   #
