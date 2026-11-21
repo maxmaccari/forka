@@ -2,8 +2,94 @@ defmodule Forka.GamesTest do
   use Forka.DataCase
 
   alias Forka.Games
+  alias Forka.Games.GameServer
 
   import Forka.TestHelpers
+
+  test "concurrent calls reopen one idle playing game" do
+    {game, _owner, _other} = start_list_audit_game()
+    game_pid = GameServer.whereis(game.id)
+    game_ref = Process.monitor(game_pid)
+    send(game_pid, :timeout)
+    assert_receive {:DOWN, ^game_ref, :process, ^game_pid, :normal}
+
+    game_supervisor = Process.whereis(Forka.GamesSupervisor)
+    task_supervisor = start_supervised!(Task.Supervisor)
+    :ok = :sys.suspend(game_supervisor)
+
+    callers =
+      try do
+        for _ <- 1..2 do
+          task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              receive do
+                :reopen -> Games.get_game_summary(game.id)
+              end
+            end)
+
+          :erlang.trace(task.pid, true, [:send])
+          send(task.pid, :reopen)
+          caller = task.pid
+
+          assert_receive {:trace, ^caller, :send, {:"$gen_call", _, {:start_child, _}}, _},
+                         1_000
+
+          :erlang.trace(task.pid, false, [:send])
+          task
+        end
+      after
+        :sys.resume(game_supervisor)
+      end
+
+    for caller <- callers do
+      assert %{game_status: :playing} = Task.await(caller)
+    end
+  end
+
+  test "legacy summaries omit old events until a new command is saved" do
+    owner = insert(:player)
+    game = insert(:game, owner: owner)
+
+    for {type, tick, at} <- [
+          {:game_started, 3, ~U[2025-03-18 12:00:00Z]},
+          {:player_guessed, 1, ~U[2025-03-18 12:01:00Z]}
+        ] do
+      Repo.insert!(%Forka.Games.Schemas.Event{game_id: game.id, type: type, tick: tick, at: at})
+    end
+
+    on_exit(fn ->
+      if pid = GameServer.whereis(game.id) do
+        DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
+      end
+    end)
+
+    assert %{last_events: []} = Games.get_game_summary(game.id)
+
+    assert %{last_events: [%{type: :game_started}, %{type: :player_guessed}]} =
+             Games.get_game_summary(game.id, load_all_events: true)
+
+    assert :ok = Games.join_game(game.id, owner.id)
+    assert %{last_events: [%{type: :player_joined, tick: 4}]} = Games.get_game_summary(game.id)
+  end
+
+  test "retrying a lobby leave does not republish the previous event" do
+    owner = insert(:player)
+    guest = insert(:player)
+    {:ok, game} = Games.create_game(owner.id, %{name: "Retry a leave", max_players: 2})
+
+    on_exit(fn ->
+      if pid = GameServer.whereis(game.id) do
+        DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
+      end
+    end)
+
+    assert :ok = Games.join_game(game.id, guest.id)
+    assert :ok = Games.subscribe_to_game(game.id)
+    assert :ok = Games.leave_game(game.id, guest.id)
+    assert_receive {:game_updated, %{last_events: [%{type: :player_left, tick: 2}]}}
+    assert :ok = Games.leave_game(game.id, guest.id)
+    refute_received {:game_updated, _}
+  end
 
   @tag audit_f04: true
   test "F-04 exposes the saved event for each consecutive public command" do

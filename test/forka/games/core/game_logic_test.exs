@@ -44,6 +44,19 @@ defmodule Forka.Games.Core.GameLogicTest do
     assert game.game_players[0].score == 10
   end
 
+  test "turn recovery and its accepted guess share a tick", %{game_state: game, player1: first} do
+    game = %{
+      game
+      | current_game_player_index: 1,
+        game_players: Map.update!(game.game_players, 1, &GamePlayer.give_up/1)
+    }
+
+    assert {:ok, recovered} = GameLogic.guess(game, first.id, "a")
+
+    assert Enum.map(Core.to_game_summary(recovered).last_events, & &1.type) ==
+             [:player_scored, :player_guessed, :next_player_turn]
+  end
+
   setup do
     # Create owner
     owner = build_games_player("Owner")

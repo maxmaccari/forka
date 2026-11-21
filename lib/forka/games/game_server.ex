@@ -146,6 +146,9 @@ defmodule Forka.Games.GameServer do
   @impl true
   def handle_call({:leave_game, player_id}, _from, game) do
     case Core.leave_game(game, player_id) do
+      {:ok, ^game} ->
+        {:reply, :ok, game, @timeout_ms}
+
       {:ok, new_game} ->
         saved_game = save_and_publish!(game, new_game)
 

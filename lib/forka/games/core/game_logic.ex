@@ -12,8 +12,6 @@ defmodule Forka.Games.Core.GameLogic do
 
   # This module handles the logic after the game is initialized
 
-  @finished_statuses ~w(finished game_over)a
-
   @doc false
   def get_current_player(%GameState{status: :playing} = game) do
     case Map.get(game.game_players, game.current_game_player_index) do
@@ -73,9 +71,7 @@ defmodule Forka.Games.Core.GameLogic do
   def guess(%GameState{status: :playing} = game_state, player_id, letter)
       when is_binary(letter) and is_binary(player_id) do
     if current_player?(game_state, player_id) do
-      game_state
-      |> ensure_current_or_next_alive_player()
-      |> process_guess(player_id, letter)
+      process_guess(game_state, player_id, letter)
     else
       {:error, :not_player_turn}
     end
@@ -129,10 +125,6 @@ defmodule Forka.Games.Core.GameLogic do
     |> push_event(:game_over)
   end
 
-  defp process_guess(%GameState{status: status} = game_state, _player_id, _letter)
-       when status in @finished_statuses,
-       do: {:ok, game_state}
-
   defp process_guess(game_state, player_id, letter) do
     game_word = current_word(game_state)
 
@@ -141,6 +133,7 @@ defmodule Forka.Games.Core.GameLogic do
         updated_game_state =
           game_state
           |> increment_tick()
+          |> ensure_current_or_next_alive_player()
           |> push_event(:player_guessed, guess)
           |> handle_guess_result(new_game_word, guess)
 

@@ -38,7 +38,7 @@ defmodule Forka.Games.Schemas.GamePlayer do
 
   def changeset(game_player, attrs) do
     game_player
-    |> cast(attrs, [:player_id, :status, :lives, :score, :position])
+    |> cast(attrs, [:player_id, :status, :lives, :score])
     |> validate_required([:player_id])
     |> foreign_key_constraint(:player_id)
   end

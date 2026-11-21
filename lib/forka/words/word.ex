@@ -18,17 +18,23 @@ defmodule Forka.Words.Word do
   @doc false
   def changeset(word, attrs, _metadata \\ []) do
     word
-    |> cast(attrs, [:text, :hint, :category_id])
-    |> validate_required([:text])
-    |> unique_constraint([:text, :category_id])
+    |> word_changeset(attrs)
     |> assoc_constraint(:category)
-    |> update_change(:text, &String.downcase/1)
   end
 
   @doc false
-  def admin_changeset(word, attrs, metadata) do
+  def admin_changeset(word, attrs, _metadata) do
     word
-    |> changeset(attrs, metadata)
+    |> word_changeset(attrs)
     |> validate_required([:category_id])
+    |> foreign_key_constraint(:category_id)
+  end
+
+  defp word_changeset(word, attrs) do
+    word
+    |> cast(attrs, [:text, :hint, :category_id])
+    |> validate_required([:text])
+    |> unique_constraint([:text, :category_id])
+    |> update_change(:text, &String.downcase/1)
   end
 end
