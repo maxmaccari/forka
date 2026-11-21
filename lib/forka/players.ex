@@ -6,7 +6,16 @@ defmodule Forka.Players do
   import Ecto.Query, warn: false
   alias Forka.Repo
 
-  alias Forka.Players.{Player, PlayerToken, PlayerNotifier}
+  alias Forka.Players.{Player, PlayerNotifier, PlayerToken}
+
+  # Ecto.Multi.new/0 embeds an empty MapSet that Dialyzer sees as a literal on OTP 29.
+  @dialyzer {:no_opaque,
+             [
+               player_email_multi: 3,
+               confirm_player_multi: 1,
+               update_player_password: 3,
+               reset_player_password: 2
+             ]}
 
   ## Database getters
 
@@ -22,6 +31,7 @@ defmodule Forka.Players do
       nil
 
   """
+  @spec get_player_by_email(String.t()) :: Player.t() | nil
   def get_player_by_email(email) when is_binary(email) do
     Repo.get_by(Player, email: email)
   end
@@ -38,6 +48,7 @@ defmodule Forka.Players do
       nil
 
   """
+  @spec get_player_by_email_and_password(String.t(), String.t()) :: Player.t() | nil
   def get_player_by_email_and_password(email, password)
       when is_binary(email) and is_binary(password) do
     player = Repo.get_by(Player, email: email)
@@ -59,6 +70,7 @@ defmodule Forka.Players do
       nil
 
   """
+  @spec get_player_by_credentials(String.t(), String.t()) :: Player.t() | nil
   def get_player_by_credentials(email_or_username, password)
       when is_binary(email_or_username) and is_binary(password) do
     query =
@@ -82,6 +94,7 @@ defmodule Forka.Players do
       ** (Ecto.NoResultsError)
 
   """
+  @spec get_player!(Ecto.UUID.t()) :: Player.t()
   def get_player!(id), do: Repo.get!(Player, id)
 
   ## Player registration
@@ -98,6 +111,7 @@ defmodule Forka.Players do
       {:error, %Ecto.Changeset{}}
 
   """
+  @spec register_player(map()) :: {:ok, Player.t()} | {:error, Ecto.Changeset.t(Player.t())}
   def register_player(attrs) do
     %Player{}
     |> Player.registration_changeset(attrs)
@@ -113,6 +127,7 @@ defmodule Forka.Players do
       %Ecto.Changeset{data: %Player{}}
 
   """
+  @spec change_player_registration(Player.t(), map()) :: Ecto.Changeset.t(Player.t())
   def change_player_registration(%Player{} = player, attrs \\ %{}) do
     Player.registration_changeset(player, attrs, hash_password: false, validate_email: false)
   end
@@ -128,6 +143,7 @@ defmodule Forka.Players do
       %Ecto.Changeset{data: %Player{}}
 
   """
+  @spec change_player_email(Player.t(), map()) :: Ecto.Changeset.t(Player.t())
   def change_player_email(player, attrs \\ %{}) do
     Player.email_changeset(player, attrs, validate_email: false)
   end
@@ -145,6 +161,8 @@ defmodule Forka.Players do
       {:error, %Ecto.Changeset{}}
 
   """
+  @spec apply_player_email(Player.t(), String.t(), map()) ::
+          {:ok, Player.t()} | {:error, Ecto.Changeset.t(Player.t())}
   def apply_player_email(player, password, attrs) do
     player
     |> Player.email_changeset(attrs)
@@ -158,6 +176,7 @@ defmodule Forka.Players do
   If the token matches, the player email is updated and the token is deleted.
   The confirmed_at date is also updated to the current time.
   """
+  @spec update_player_email(Player.t(), String.t()) :: :ok | :error
   def update_player_email(player, token) do
     context = "change:#{player.email}"
 
@@ -190,6 +209,9 @@ defmodule Forka.Players do
       {:ok, %{to: ..., body: ...}}
 
   """
+  @spec deliver_player_update_email_instructions(Player.t(), String.t(), (String.t() ->
+                                                                            String.t())) ::
+          {:ok, Swoosh.Email.t()} | {:error, term()}
   def deliver_player_update_email_instructions(
         %Player{} = player,
         current_email,
@@ -212,6 +234,7 @@ defmodule Forka.Players do
       %Ecto.Changeset{data: %Player{}}
 
   """
+  @spec change_player_password(Player.t(), map()) :: Ecto.Changeset.t(Player.t())
   def change_player_password(player, attrs \\ %{}) do
     Player.password_changeset(player, attrs, hash_password: false)
   end
@@ -228,6 +251,8 @@ defmodule Forka.Players do
       {:error, %Ecto.Changeset{}}
 
   """
+  @spec update_player_password(Player.t(), String.t(), map()) ::
+          {:ok, Player.t()} | {:error, Ecto.Changeset.t(Player.t())}
   def update_player_password(player, password, attrs) do
     changeset =
       player
@@ -249,6 +274,7 @@ defmodule Forka.Players do
   @doc """
   Generates a session token.
   """
+  @spec generate_player_session_token(Player.t()) :: binary()
   def generate_player_session_token(player) do
     {token, player_token} = PlayerToken.build_session_token(player)
     Repo.insert!(player_token)
@@ -258,6 +284,7 @@ defmodule Forka.Players do
   @doc """
   Gets the player with the given signed token.
   """
+  @spec get_player_by_session_token(binary()) :: Player.t() | nil
   def get_player_by_session_token(token) do
     {:ok, query} = PlayerToken.verify_session_token_query(token)
     Repo.one(query)
@@ -266,6 +293,7 @@ defmodule Forka.Players do
   @doc """
   Deletes the signed token with the given context.
   """
+  @spec delete_player_session_token(binary()) :: :ok
   def delete_player_session_token(token) do
     Repo.delete_all(PlayerToken.by_token_and_context_query(token, "session"))
     :ok
@@ -285,6 +313,8 @@ defmodule Forka.Players do
       {:error, :already_confirmed}
 
   """
+  @spec deliver_player_confirmation_instructions(Player.t(), (String.t() -> String.t())) ::
+          {:ok, Swoosh.Email.t()} | {:error, term()}
   def deliver_player_confirmation_instructions(%Player{} = player, confirmation_url_fun)
       when is_function(confirmation_url_fun, 1) do
     if player.confirmed_at do
@@ -306,6 +336,7 @@ defmodule Forka.Players do
   If the token matches, the player account is marked as confirmed
   and the token is deleted.
   """
+  @spec confirm_player(String.t()) :: {:ok, Player.t()} | :error
   def confirm_player(token) do
     with {:ok, query} <- PlayerToken.verify_email_token_query(token, "confirm"),
          %Player{} = player <- Repo.one(query),
@@ -336,6 +367,8 @@ defmodule Forka.Players do
       {:ok, %{to: ..., body: ...}}
 
   """
+  @spec deliver_player_reset_password_instructions(Player.t(), (String.t() -> String.t())) ::
+          {:ok, Swoosh.Email.t()} | {:error, term()}
   def deliver_player_reset_password_instructions(%Player{} = player, reset_password_url_fun)
       when is_function(reset_password_url_fun, 1) do
     {encoded_token, player_token} = PlayerToken.build_email_token(player, "reset_password")
@@ -359,6 +392,7 @@ defmodule Forka.Players do
       nil
 
   """
+  @spec get_player_by_reset_password_token(String.t()) :: Player.t() | nil
   def get_player_by_reset_password_token(token) do
     with {:ok, query} <- PlayerToken.verify_email_token_query(token, "reset_password"),
          %Player{} = player <- Repo.one(query) do
@@ -380,6 +414,8 @@ defmodule Forka.Players do
       {:error, %Ecto.Changeset{}}
 
   """
+  @spec reset_player_password(Player.t(), map()) ::
+          {:ok, Player.t()} | {:error, Ecto.Changeset.t(Player.t())}
   def reset_player_password(player, attrs) do
     Ecto.Multi.new()
     |> Ecto.Multi.update(:player, Player.password_changeset(player, attrs))

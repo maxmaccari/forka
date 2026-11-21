@@ -1,4 +1,6 @@
 defmodule Forka.Players.Player do
+  @moduledoc "A player account and its authentication fields."
+
   use Ecto.Schema
   import Ecto.Changeset
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -13,6 +15,18 @@ defmodule Forka.Players.Player do
 
     timestamps(type: :utc_datetime)
   end
+
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          email: String.t() | nil,
+          username: String.t() | nil,
+          password: String.t() | nil,
+          hashed_password: String.t() | nil,
+          current_password: String.t() | nil,
+          confirmed_at: DateTime.t() | nil,
+          inserted_at: DateTime.t() | nil,
+          updated_at: DateTime.t() | nil
+        }
 
   @doc """
   A player changeset for registration.
@@ -37,6 +51,7 @@ defmodule Forka.Players.Player do
       submitting the form), this option can be set to `false`.
       Defaults to `true`.
   """
+  @spec registration_changeset(t(), map(), keyword()) :: Ecto.Changeset.t(t())
   def registration_changeset(player, attrs, opts \\ []) do
     player
     |> cast(attrs, [:email, :username, :password])
@@ -116,6 +131,7 @@ defmodule Forka.Players.Player do
 
   It requires the email to change otherwise an error is added.
   """
+  @spec email_changeset(t(), map(), keyword()) :: Ecto.Changeset.t(t())
   def email_changeset(player, attrs, opts \\ []) do
     player
     |> cast(attrs, [:email])
@@ -138,6 +154,7 @@ defmodule Forka.Players.Player do
       validations on a LiveView form), this option can be set to `false`.
       Defaults to `true`.
   """
+  @spec password_changeset(t(), map(), keyword()) :: Ecto.Changeset.t(t())
   def password_changeset(player, attrs, opts \\ []) do
     player
     |> cast(attrs, [:password])
@@ -148,6 +165,7 @@ defmodule Forka.Players.Player do
   @doc """
   Confirms the account by setting `confirmed_at`.
   """
+  @spec confirm_changeset(t() | Ecto.Changeset.t(t())) :: Ecto.Changeset.t(t())
   def confirm_changeset(player) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
     change(player, confirmed_at: now)
@@ -159,6 +177,7 @@ defmodule Forka.Players.Player do
   If there is no player or the player doesn't have a password, we call
   `Bcrypt.no_user_verify/0` to avoid timing attacks.
   """
+  @spec valid_password?(t() | nil, String.t() | nil) :: boolean()
   def valid_password?(%Forka.Players.Player{hashed_password: hashed_password}, password)
       when is_binary(hashed_password) and byte_size(password) > 0 do
     Bcrypt.verify_pass(password, hashed_password)
@@ -172,6 +191,7 @@ defmodule Forka.Players.Player do
   @doc """
   Validates the current password otherwise adds an error to the changeset.
   """
+  @spec validate_current_password(Ecto.Changeset.t(t()), String.t()) :: Ecto.Changeset.t(t())
   def validate_current_password(changeset, password) do
     changeset = cast(changeset, %{current_password: password}, [:current_password])
 

@@ -1,10 +1,12 @@
 defmodule ForkaWeb.Admin.AdminLive do
+  alias Forka.Backoffice.Admin
+
   use Backpex.LiveResource,
     adapter_config: [
-      schema: Forka.Backoffice.Admin,
+      schema: Admin,
       repo: Forka.Repo,
-      update_changeset: &Forka.Backoffice.Admin.email_changeset/3,
-      create_changeset: &Forka.Backoffice.Admin.registration_changeset/3
+      update_changeset: &Admin.email_changeset/3,
+      create_changeset: &Admin.registration_changeset/3
     ],
     pubsub: [
       server: Forka.PubSub,

@@ -15,8 +15,8 @@ defmodule Forka.Games.Schemas.GamePlayer do
 
   use Ecto.Schema
 
-  alias Forka.Games.Schemas.Player
   alias Forka.Games.Schemas.Game
+  alias Forka.Games.Schemas.Player
 
   import Ecto.Changeset
 
@@ -36,6 +36,22 @@ defmodule Forka.Games.Schemas.GamePlayer do
     timestamps(type: :utc_datetime)
   end
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          game_id: Ecto.UUID.t() | nil,
+          game: Game.t() | Ecto.Association.NotLoaded.t(),
+          player_id: Ecto.UUID.t() | nil,
+          player: Player.t() | Ecto.Association.NotLoaded.t(),
+          status: :alive | :dead | nil,
+          lives: integer() | nil,
+          score: integer() | nil,
+          position: non_neg_integer() | nil,
+          inserted_at: DateTime.t() | nil,
+          updated_at: DateTime.t() | nil
+        }
+
+  @doc "Casts attributes for a player participating in a game."
+  @spec changeset(t(), map()) :: Ecto.Changeset.t(t())
   def changeset(game_player, attrs) do
     game_player
     |> cast(attrs, [:player_id, :status, :lives, :score])
@@ -44,9 +60,11 @@ defmodule Forka.Games.Schemas.GamePlayer do
   end
 
   @doc false
+  @spec new(Player.t()) :: t()
   def new(%Player{} = player), do: %__MODULE__{player: player, player_id: player.id}
 
   @doc false
+  @spec decrement_lives(t()) :: t()
   def decrement_lives(%__MODULE__{status: :alive, lives: lives} = game_player) when lives > 1,
     do: %{game_player | lives: lives - 1}
 
@@ -59,14 +77,17 @@ defmodule Forka.Games.Schemas.GamePlayer do
   def decrement_lives(%__MODULE__{} = game_player), do: game_player
 
   @doc false
+  @spec reset_lives(t()) :: t()
   def reset_lives(%__MODULE__{} = game_player),
     do: %{game_player | lives: @initial_lives, status: :alive}
 
   @doc false
+  @spec give_up(t()) :: t()
   def give_up(%__MODULE__{} = game_player),
     do: %{game_player | status: :dead, lives: 0}
 
   @doc false
+  @spec add_score(t(), integer()) :: t()
   def add_score(%__MODULE__{status: :alive, score: score} = game_player, points)
       when is_integer(points) do
     %{game_player | score: score + points}
@@ -75,10 +96,12 @@ defmodule Forka.Games.Schemas.GamePlayer do
   def add_score(%__MODULE__{} = game_player, points) when is_integer(points), do: game_player
 
   @doc false
+  @spec died?(t()) :: boolean()
   def died?(%__MODULE__{status: :dead}), do: true
   def died?(%__MODULE__{}), do: false
 
   @doc false
+  @spec alive?(t()) :: boolean()
   def alive?(%__MODULE__{status: :alive}), do: true
   def alive?(%__MODULE__{}), do: false
 end

@@ -1,8 +1,8 @@
 defmodule Forka.Games.Schemas.GameWordTest do
   use ExUnit.Case, async: true
   alias Forka.Games.Schemas.GameWord
-  alias Forka.Games.Schemas.Word
   alias Forka.Games.Schemas.Guess
+  alias Forka.Games.Schemas.Word
 
   doctest Forka.Games.Schemas.GameWord
 

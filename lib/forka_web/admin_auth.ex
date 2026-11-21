@@ -1,4 +1,6 @@
 defmodule ForkaWeb.AdminAuth do
+  @moduledoc "Handles admin sessions and authentication for web requests and LiveViews."
+
   use ForkaWeb, :verified_routes
 
   import Plug.Conn

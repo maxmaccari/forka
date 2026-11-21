@@ -17,9 +17,24 @@ defmodule Forka.Games.GameSummary do
   """
 
   alias Forka.Games.Core
-  alias Forka.Games.Core.{GameState, GameWord}
-  alias Forka.Games.Schemas.GameWord
+  alias Forka.Games.Core.GameState
   alias Forka.Games.GameSummary.WordSummary
+  alias Forka.Games.Schemas.{Event, GamePlayer, GameWord, Guess, Player, WordOptions}
+
+  @type t :: %__MODULE__{
+          players: %{non_neg_integer() => GamePlayer.t()},
+          current_player_id: Ecto.UUID.t() | nil,
+          owner: Player.t() | Ecto.Association.NotLoaded.t() | nil,
+          guesses: [Guess.t()],
+          remaining_words: non_neg_integer() | nil,
+          current_word_summary: WordSummary.t() | nil,
+          current_word_letters: [{:found, String.t()} | :hidden] | nil,
+          game_status: GameState.status() | nil,
+          last_events: [Event.t()] | Ecto.Association.NotLoaded.t(),
+          word_options: WordOptions.t() | keyword() | nil,
+          max_players: integer() | nil,
+          name: String.t() | nil
+        }
 
   defstruct players: %{},
             current_player_id: nil,
@@ -45,6 +60,7 @@ defmodule Forka.Games.GameSummary do
   When in :lobby status, only includes basic game information.
   When in :playing status, includes additional game progress information.
   """
+  @spec from_game_state(GameState.t(), keyword()) :: t()
   def from_game_state(game_state, opts \\ [])
 
   def from_game_state(

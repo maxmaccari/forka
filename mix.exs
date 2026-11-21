@@ -10,12 +10,26 @@ defmodule Forka.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
-      listeners: [Phoenix.CodeReloader]
+      listeners: [Phoenix.CodeReloader],
+      test_coverage: [tool: ExCoveralls],
+      dialyzer: [
+        plt_local_path: "priv/plts",
+        plt_core_path: "priv/plts",
+        plt_add_apps: [:mix, :ex_unit],
+        flags: [:missing_return, :extra_return, :error_handling]
+      ]
     ]
   end
 
   def cli do
-    [preferred_envs: [precommit: :test]]
+    [
+      preferred_envs: [
+        precommit: :test,
+        coveralls: :test,
+        "coveralls.detail": :test,
+        "coveralls.html": :test
+      ]
+    ]
   end
 
   # Configuration for the OTP application.
@@ -42,6 +56,7 @@ defmodule Forka.MixProject do
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.10"},
       {:postgrex, ">= 0.0.0"},
+      {:dotenvy, "~> 1.2"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:phoenix_live_view, "~> 1.1"},
@@ -66,7 +81,14 @@ defmodule Forka.MixProject do
       {:dns_cluster, "~> 0.1.1"},
       {:bandit, "~> 1.5"},
       {:uuid, "~> 1.1"},
-      {:ex_machina, "~> 2.8.0", only: :test},
+      {:ex_machina, "~> 2.8.2", only: :test},
+      {:stream_data, "~> 1.4", only: [:dev, :test]},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:doctor, "~> 0.23.0", only: [:dev, :test], runtime: false},
+      {:sobelow, "~> 0.19.0", only: [:dev, :test], runtime: false},
+      {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
+      {:excoveralls, "~> 0.18.5", only: :test},
       {:backpex, "~> 0.24.1"},
       {:csv, "~> 3.2"}
     ]
@@ -84,7 +106,17 @@ defmodule Forka.MixProject do
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
-      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"],
+      precommit: [
+        "compile --warnings-as-errors",
+        "deps.unlock --unused",
+        "format",
+        "credo --strict",
+        "sobelow --config",
+        "deps.audit",
+        "doctor",
+        "dialyzer",
+        "coveralls"
+      ],
       "assets.npm": ["cmd --cd assets npm ci --include=dev"],
       "assets.setup": [
         "assets.npm",

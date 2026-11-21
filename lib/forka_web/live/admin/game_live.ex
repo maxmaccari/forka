@@ -1,10 +1,12 @@
 defmodule ForkaWeb.Admin.GameLive do
+  alias Forka.Games.Schemas.Game
+
   use Backpex.LiveResource,
     adapter_config: [
-      schema: Forka.Games.Schemas.Game,
+      schema: Game,
       repo: Forka.Repo,
-      update_changeset: &Forka.Games.Schemas.Game.update_changeset/3,
-      create_changeset: &Forka.Games.Schemas.Game.insert_changeset/3
+      update_changeset: &Game.update_changeset/3,
+      create_changeset: &Game.insert_changeset/3
     ],
     pubsub: [
       server: Forka.PubSub,

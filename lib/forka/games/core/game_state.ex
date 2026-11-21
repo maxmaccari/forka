@@ -20,6 +20,24 @@ defmodule Forka.Games.Core.GameState do
   it transitions to :finished status. Games can also be archived.
   """
 
+  alias Forka.Games.Schemas.{Event, GamePlayer, GameWord, Player, WordOptions}
+
+  @type status :: :lobby | :playing | :finished | :archived | :game_over
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          name: String.t() | nil,
+          game_words: %{non_neg_integer() => GameWord.t()},
+          game_players: %{non_neg_integer() => GamePlayer.t()},
+          owner: Player.t() | Ecto.Association.NotLoaded.t() | nil,
+          current_game_word_index: non_neg_integer() | nil,
+          current_game_player_index: non_neg_integer() | nil,
+          status: status(),
+          max_players: integer() | nil,
+          word_options: WordOptions.t() | keyword() | nil,
+          tick: non_neg_integer(),
+          events: [Event.t()] | Ecto.Association.NotLoaded.t()
+        }
+
   defstruct id: nil,
             name: nil,
             game_words: %{},

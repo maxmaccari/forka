@@ -3,6 +3,8 @@ defmodule Forka.GamesTest do
 
   alias Forka.Games
   alias Forka.Games.GameServer
+  alias Forka.Games.Repository
+  alias Forka.Games.Schemas.Event
 
   import Forka.TestHelpers
 
@@ -54,7 +56,7 @@ defmodule Forka.GamesTest do
           {:game_started, 3, ~U[2025-03-18 12:00:00Z]},
           {:player_guessed, 1, ~U[2025-03-18 12:01:00Z]}
         ] do
-      Repo.insert!(%Forka.Games.Schemas.Event{game_id: game.id, type: type, tick: tick, at: at})
+      Repo.insert!(%Event{game_id: game.id, type: type, tick: tick, at: at})
     end
 
     on_exit(fn ->
@@ -97,7 +99,7 @@ defmodule Forka.GamesTest do
     {:ok, game} = Games.create_game(owner.id, %{name: "Event counter", max_players: 2})
 
     on_exit(fn ->
-      if pid = Forka.Games.GameServer.whereis(game.id) do
+      if pid = GameServer.whereis(game.id) do
         DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
       end
     end)
@@ -107,7 +109,7 @@ defmodule Forka.GamesTest do
     assert :ok = Games.update_settings(game.id, %{name: "Updated counter"})
     assert [%{tick: 2, type: :settings_updated}] = Games.get_game_summary(game.id).last_events
 
-    assert {:ok, %{tick: 2, events: events}} = Forka.Games.Repository.get_game_state(game.id)
+    assert {:ok, %{tick: 2, events: events}} = Repository.get_game_state(game.id)
     assert Enum.map(events, &{&1.tick, &1.type}) == [{2, :settings_updated}, {1, :player_joined}]
   end
 
@@ -116,7 +118,7 @@ defmodule Forka.GamesTest do
     owner = insert(:player)
     game = insert(:game, owner: owner)
 
-    Forka.Repo.insert!(%Forka.Games.Schemas.Event{
+    Forka.Repo.insert!(%Event{
       game_id: game.id,
       type: :settings_updated,
       tick: 4,
@@ -124,14 +126,14 @@ defmodule Forka.GamesTest do
     })
 
     on_exit(fn ->
-      if pid = Forka.Games.GameServer.whereis(game.id) do
+      if pid = GameServer.whereis(game.id) do
         DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
       end
     end)
 
     assert :ok = Games.join_game(game.id, owner.id)
     assert [%{tick: 5, type: :player_joined}] = Games.get_game_summary(game.id).last_events
-    assert {:ok, %{tick: 5, events: events}} = Forka.Games.Repository.get_game_state(game.id)
+    assert {:ok, %{tick: 5, events: events}} = Repository.get_game_state(game.id)
     assert Enum.map(events, &{&1.tick, &1.type}) == [{5, :player_joined}, {4, :settings_updated}]
   end
 
@@ -196,7 +198,7 @@ defmodule Forka.GamesTest do
     {:ok, game} = Games.create_game(owner.id, %{name: "List audit", max_players: 2})
 
     on_exit(fn ->
-      if pid = Forka.Games.GameServer.whereis(game.id) do
+      if pid = GameServer.whereis(game.id) do
         DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
       end
     end)

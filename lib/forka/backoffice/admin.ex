@@ -1,4 +1,6 @@
 defmodule Forka.Backoffice.Admin do
+  @moduledoc "A back-office administrator account."
+
   use Ecto.Schema
   import Ecto.Changeset
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -12,6 +14,17 @@ defmodule Forka.Backoffice.Admin do
 
     timestamps(type: :utc_datetime)
   end
+
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          email: String.t() | nil,
+          password: String.t() | nil,
+          hashed_password: String.t() | nil,
+          current_password: String.t() | nil,
+          confirmed_at: DateTime.t() | nil,
+          inserted_at: DateTime.t() | nil,
+          updated_at: DateTime.t() | nil
+        }
 
   @doc """
   A admin changeset for registration.
@@ -36,6 +49,7 @@ defmodule Forka.Backoffice.Admin do
       submitting the form), this option can be set to `false`.
       Defaults to `true`.
   """
+  @spec registration_changeset(t(), map(), keyword()) :: Ecto.Changeset.t(t())
   def registration_changeset(admin, attrs, opts \\ []) do
     admin
     |> cast(attrs, [:email, :password])
@@ -94,6 +108,7 @@ defmodule Forka.Backoffice.Admin do
 
   It requires the email to change otherwise an error is added.
   """
+  @spec email_changeset(t(), map(), keyword()) :: Ecto.Changeset.t(t())
   def email_changeset(admin, attrs, opts \\ []) do
     admin
     |> cast(attrs, [:email])
@@ -116,6 +131,7 @@ defmodule Forka.Backoffice.Admin do
       validations on a LiveView form), this option can be set to `false`.
       Defaults to `true`.
   """
+  @spec password_changeset(t(), map(), keyword()) :: Ecto.Changeset.t(t())
   def password_changeset(admin, attrs, opts \\ []) do
     admin
     |> cast(attrs, [:password])
@@ -126,6 +142,7 @@ defmodule Forka.Backoffice.Admin do
   @doc """
   Confirms the account by setting `confirmed_at`.
   """
+  @spec confirm_changeset(t() | Ecto.Changeset.t(t())) :: Ecto.Changeset.t(t())
   def confirm_changeset(admin) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
     change(admin, confirmed_at: now)
@@ -137,6 +154,7 @@ defmodule Forka.Backoffice.Admin do
   If there is no admin or the admin doesn't have a password, we call
   `Bcrypt.no_user_verify/0` to avoid timing attacks.
   """
+  @spec valid_password?(t() | nil, String.t() | nil) :: boolean()
   def valid_password?(%Forka.Backoffice.Admin{hashed_password: hashed_password}, password)
       when is_binary(hashed_password) and byte_size(password) > 0 do
     Bcrypt.verify_pass(password, hashed_password)
@@ -150,6 +168,7 @@ defmodule Forka.Backoffice.Admin do
   @doc """
   Validates the current password otherwise adds an error to the changeset.
   """
+  @spec validate_current_password(Ecto.Changeset.t(t()), String.t()) :: Ecto.Changeset.t(t())
   def validate_current_password(changeset, password) do
     changeset = cast(changeset, %{current_password: password}, [:current_password])
 

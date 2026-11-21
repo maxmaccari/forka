@@ -70,18 +70,41 @@ defmodule Forka.Games.Schemas.Game do
     timestamps(type: :utc_datetime)
   end
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          name: String.t() | nil,
+          max_players: integer() | nil,
+          word_options: WordOptions.t() | keyword() | nil,
+          owner_id: Ecto.UUID.t() | nil,
+          owner: Player.t() | Ecto.Association.NotLoaded.t() | nil,
+          status: GameState.status() | nil,
+          current_game_word_index: non_neg_integer() | nil,
+          current_game_player_index: non_neg_integer() | nil,
+          tick: non_neg_integer(),
+          game_words: [GameWord.t()] | Ecto.Association.NotLoaded.t(),
+          game_players: [GamePlayer.t()] | Ecto.Association.NotLoaded.t(),
+          players: [Player.t()] | Ecto.Association.NotLoaded.t(),
+          events: [Event.t()] | Ecto.Association.NotLoaded.t(),
+          inserted_at: DateTime.t() | nil,
+          updated_at: DateTime.t() | nil
+        }
+
   @doc false
+  @spec insert_changeset(t(), map(), keyword()) :: Ecto.Changeset.t(t())
   def insert_changeset(game, attrs, _opts \\ []) do
     game
     |> cast(attrs, [:name, :max_players, :tick])
     |> common_changeset()
   end
 
+  @doc "Builds the changeset for game updates from the back office."
+  @spec update_changeset(t(), map(), keyword()) :: Ecto.Changeset.t(t())
   def update_changeset(game, attrs, _opts \\ []) do
     update_game_changeset(game, attrs, &GamePlayer.changeset/2)
   end
 
   @doc false
+  @spec state_changeset(t(), GameState.t()) :: Ecto.Changeset.t(t())
   def state_changeset(game, %GameState{} = state) do
     attrs = state |> from_game_state() |> to_map()
 
@@ -142,6 +165,7 @@ defmodule Forka.Games.Schemas.Game do
 
   # Conversion functions
   @doc false
+  @spec from_game_state(GameState.t()) :: t()
   def from_game_state(%GameState{} = game_state) do
     # Convert GameState to Game schema
     %__MODULE__{
@@ -161,6 +185,7 @@ defmodule Forka.Games.Schemas.Game do
   end
 
   @doc false
+  @spec to_game_state(t()) :: GameState.t()
   def to_game_state(%__MODULE__{} = game) do
     # Convert Game schema to GameState
     %GameState{
@@ -206,6 +231,7 @@ defmodule Forka.Games.Schemas.Game do
 
   A map representation of the Game with all Ecto metadata and associations properly processed.
   """
+  @spec to_map(t()) :: map()
   def to_map(%__MODULE__{} = game) do
     # Then convert the Game schema to a map, removing the __struct__ and other Ecto metadata
     game_params = Map.from_struct(game)
@@ -213,17 +239,7 @@ defmodule Forka.Games.Schemas.Game do
     # Clean up any virtual fields or associations that might cause issues
     game_params
     |> Map.drop([:__meta__, :owner, :inserted_at, :updated_at])
-    |> Map.update(:game_words, [], fn game_words ->
-      Enum.map(game_words, fn game_word ->
-        game_word
-        |> Map.from_struct()
-        |> Map.update(:word, nil, &(&1 |> Map.from_struct() |> Map.drop([:__meta__])))
-        |> Map.drop([:__meta__, :game, :game_id, :inserted_at, :updated_at])
-        |> Map.update(:guesses, [], fn guesses ->
-          Enum.map(guesses, &Map.from_struct/1)
-        end)
-      end)
-    end)
+    |> Map.update(:game_words, [], fn words -> Enum.map(words, &game_word_params/1) end)
     |> Map.update(:game_players, [], fn game_players ->
       Enum.map(game_players, fn game_player ->
         game_player
@@ -243,5 +259,13 @@ defmodule Forka.Games.Schemas.Game do
     |> Map.update(:events, [], fn events ->
       Enum.map(events, &Event.to_map/1)
     end)
+  end
+
+  defp game_word_params(game_word) do
+    game_word
+    |> Map.from_struct()
+    |> Map.update(:word, nil, &(&1 |> Map.from_struct() |> Map.drop([:__meta__])))
+    |> Map.drop([:__meta__, :game, :game_id, :inserted_at, :updated_at])
+    |> Map.update(:guesses, [], fn guesses -> Enum.map(guesses, &Map.from_struct/1) end)
   end
 end

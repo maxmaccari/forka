@@ -6,6 +6,7 @@ defmodule Forka.Games.RepositoryTest do
   alias Forka.Games.Repository
   alias Forka.Games.Schemas.GamePlayer
   alias Forka.Games.Schemas.Player
+  alias Forka.Games.Schemas.Word
   alias Forka.Games.Schemas.WordOptions
 
   test "the game player changeset takes turn position from the game state" do
@@ -30,7 +31,7 @@ defmodule Forka.Games.RepositoryTest do
 
     state =
       %{state | game_players: %{0 => player_two_state, 1 => player_one_state}}
-      |> Core.set_words([Forka.Games.Schemas.Word.new("cat", "Animals")])
+      |> Core.set_words([Word.new("cat", "Animals")])
 
     {:ok, state} = Core.start_game(state)
     assert {:ok, _state} = Repository.save_game_state(state)
@@ -260,19 +261,19 @@ defmodule Forka.Games.RepositoryTest do
 
       # Add words to the game
       words = [
-        %Forka.Games.Schemas.Word{
+        %Word{
           text: "apple",
           hint: "A fruit",
           category: "Food",
           language: "en"
         },
-        %Forka.Games.Schemas.Word{
+        %Word{
           text: "banana",
           hint: "Yellow fruit",
           category: "Food",
           language: "en"
         },
-        %Forka.Games.Schemas.Word{
+        %Word{
           text: "orange",
           hint: "Citrus fruit",
           category: "Food",
@@ -387,8 +388,8 @@ defmodule Forka.Games.RepositoryTest do
       # Test ownership transfer in playing state
       playing_game_state =
         Core.set_words(saved_game_state, [
-          Forka.Games.Schemas.Word.new("apple", "fruits"),
-          Forka.Games.Schemas.Word.new("banana", "fruits")
+          Word.new("apple", "fruits"),
+          Word.new("banana", "fruits")
         ])
 
       {:ok, playing_game_state} = Core.start_game(playing_game_state)

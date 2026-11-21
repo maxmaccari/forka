@@ -22,6 +22,7 @@ defmodule Forka.Games do
 
   alias Forka.Games.GameListNotifier
   alias Forka.Games.GameServer
+  alias Forka.Games.GameSummary
   alias Forka.Games.Repository
   alias Forka.Games.Schemas.Game
   alias Forka.Repo
@@ -50,6 +51,7 @@ defmodule Forka.Games do
   - `games` - A list of games for the requested page
   - `games_count` - The total count of games matching the filter criteria
   """
+  @spec list_games(keyword()) :: %{games: [Game.t()], games_count: non_neg_integer()}
   def list_games(opts \\ []) do
     page = Keyword.get(opts, :page, 1)
     per_page = Keyword.get(opts, :per_page, 10)
@@ -101,6 +103,8 @@ defmodule Forka.Games do
     - `{:ok, game}` if the game was created successfully
     - `{:error, reason}` if creation failed
   """
+  @spec create_game(Ecto.UUID.t(), map()) ::
+          {:ok, Game.t()} | {:error, term()} | :ignore | {:ok, pid(), term()}
   def create_game(owner_id, params \\ %{}) do
     with {:ok, game} <- Repository.insert_game(owner_id, params),
          {:ok, _pid} <- start_supervised_game(game.id) do
@@ -136,6 +140,7 @@ defmodule Forka.Games do
 
   Note: Settings can only be updated when the game is in the lobby state.
   """
+  @spec update_settings(Ecto.UUID.t(), map()) :: :ok | {:error, term()}
   def update_settings(game_id, settings) when is_map(settings) do
     ensure_game_server_available(game_id, fn -> GameServer.update_settings(game_id, settings) end)
   end
@@ -151,6 +156,7 @@ defmodule Forka.Games do
     - `:ok` if the player successfully joined the game
     - `{:error, reason}` if the player could not join
   """
+  @spec join_game(Ecto.UUID.t(), Ecto.UUID.t()) :: :ok | {:error, term()}
   def join_game(game_id, player_id) do
     ensure_game_server_available(game_id, fn -> GameServer.join_game(game_id, player_id) end)
   end
@@ -166,6 +172,7 @@ defmodule Forka.Games do
     - `:ok` if the player successfully left the game
     - `{:error, reason}` if the player could not leave
   """
+  @spec leave_game(Ecto.UUID.t(), Ecto.UUID.t()) :: :ok | {:error, term()}
   def leave_game(game_id, player_id) do
     ensure_game_server_available(game_id, fn -> GameServer.leave_game(game_id, player_id) end)
   end
@@ -179,6 +186,7 @@ defmodule Forka.Games do
   ## Returns
     See `Forka.Games.GameServer.start_game/1` for return values.
   """
+  @spec start_game(Ecto.UUID.t()) :: :ok | {:error, term()}
   def start_game(game_id) do
     ensure_game_server_available(game_id, fn -> GameServer.start_game(game_id) end)
   end
@@ -193,6 +201,7 @@ defmodule Forka.Games do
   ## Returns
     See `Forka.Games.GameServer.give_up_game/2` for return values.
   """
+  @spec give_up_game(Ecto.UUID.t(), Ecto.UUID.t()) :: :ok | {:error, term()}
   def give_up_game(game_id, player_id) do
     ensure_game_server_available(game_id, fn -> GameServer.give_up_game(game_id, player_id) end)
   end
@@ -208,6 +217,7 @@ defmodule Forka.Games do
   ## Returns
     See `Forka.Games.GameServer.guess/3` for return values.
   """
+  @spec guess(Ecto.UUID.t(), Ecto.UUID.t(), String.t()) :: :ok | {:error, term()}
   def guess(game_id, player_id, letter) do
     ensure_game_server_available(game_id, fn -> GameServer.guess(game_id, player_id, letter) end)
   end
@@ -222,6 +232,7 @@ defmodule Forka.Games do
   ## Returns
     See `Forka.Games.GameServer.transfer_ownership/2` for return values.
   """
+  @spec transfer_ownership(Ecto.UUID.t(), Ecto.UUID.t()) :: :ok | {:error, term()}
   def transfer_ownership(game_id, player_id) do
     ensure_game_server_available(game_id, fn ->
       GameServer.transfer_ownership(game_id, player_id)
@@ -237,6 +248,7 @@ defmodule Forka.Games do
   ## Returns
     See `Forka.Games.GameServer.restart_game/1` for return values.
   """
+  @spec restart_game(Ecto.UUID.t()) :: :ok | {:error, term()}
   def restart_game(game_id) do
     ensure_game_server_available(game_id, fn -> GameServer.restart_game(game_id) end)
   end
@@ -250,6 +262,7 @@ defmodule Forka.Games do
   ## Returns
     See `Forka.Games.GameServer.archive_game/1` for return values.
   """
+  @spec archive_game(Ecto.UUID.t()) :: :ok | {:error, term()}
   def archive_game(game_id) do
     ensure_game_server_available(game_id, fn -> GameServer.archive_game(game_id) end)
   end
@@ -266,6 +279,7 @@ defmodule Forka.Games do
     - A GameSummary struct containing the current game state if found
     - `nil` if the game does not exist
   """
+  @spec get_game_summary(Ecto.UUID.t(), keyword()) :: GameSummary.t() | nil
   def get_game_summary(game_id, opts \\ []) do
     ensure_game_server_available_with_nil(game_id, fn -> GameServer.get_game(game_id, opts) end)
   end
@@ -276,8 +290,9 @@ defmodule Forka.Games do
   ## Returns
     - `:ok` if the subscription is successful
   """
+  @spec subscribe_to_game_list() :: :ok | {:error, term()}
   def subscribe_to_game_list do
-    Forka.Games.GameListNotifier.subscribe()
+    GameListNotifier.subscribe()
   end
 
   @doc """
@@ -286,8 +301,9 @@ defmodule Forka.Games do
   ## Returns
     - `:ok` if the unsubscription is successful
   """
+  @spec unsubscribe_from_game_list() :: :ok
   def unsubscribe_from_game_list do
-    Forka.Games.GameListNotifier.unsubscribe()
+    GameListNotifier.unsubscribe()
   end
 
   @doc """
@@ -300,6 +316,7 @@ defmodule Forka.Games do
     - `:ok` if the subscription is successful
     - `{:error, reason}` if the subscription fails
   """
+  @spec subscribe_to_game(Ecto.UUID.t()) :: :ok | {:error, term()}
   def subscribe_to_game(game_id) do
     ensure_game_server_available(game_id, fn -> GameServer.subscribe(game_id) end)
   end
@@ -314,26 +331,19 @@ defmodule Forka.Games do
     - `:ok` if the unsubscription is successful
     - `{:error, reason}` if the unsubscription fails
   """
+  @spec unsubscribe_from_game(Ecto.UUID.t()) :: :ok | {:error, term()}
   def unsubscribe_from_game(game_id) do
     ensure_game_server_available(game_id, fn -> GameServer.unsubscribe(game_id) end)
   end
 
   defp ensure_game_server_available(game_id, action) do
-    cond do
-      GameServer.exists?(game_id) ->
+    if GameServer.exists?(game_id) do
+      action.()
+    else
+      with {:ok, _game_state} <- Repository.get_game_state(game_id),
+           {:ok, _pid} <- start_supervised_game(game_id) do
         action.()
-
-      true ->
-        case Repository.get_game_state(game_id) do
-          {:ok, _game_state} ->
-            case start_supervised_game(game_id) do
-              {:ok, _pid} -> action.()
-              {:error, reason} -> {:error, reason}
-            end
-
-          {:error, :not_found} ->
-            {:error, :not_found}
-        end
+      end
     end
   end
 

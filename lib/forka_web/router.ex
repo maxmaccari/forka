@@ -7,6 +7,8 @@ defmodule ForkaWeb.Router do
 
   import Backpex.Router
 
+  # The per-request CSP header is set by the ContentSecurityPolicy plug.
+  # sobelow_skip ["Config.CSP"]
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -15,6 +17,7 @@ defmodule ForkaWeb.Router do
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug :fetch_current_player
+    plug ForkaWeb.Plugs.ContentSecurityPolicy
   end
 
   pipeline :admin do
@@ -131,8 +134,12 @@ defmodule ForkaWeb.Router do
     scope "/dev" do
       pipe_through :browser
 
-      live_dashboard "/dashboard", metrics: ForkaWeb.Telemetry
-      forward "/mailbox", Plug.Swoosh.MailboxPreview
+      live_dashboard "/dashboard",
+        metrics: ForkaWeb.Telemetry,
+        csp_nonce_assign_key: :csp_nonce
+
+      forward "/mailbox", Plug.Swoosh.MailboxPreview,
+        csp_nonce_assign_key: %{script: :csp_nonce, style: :csp_nonce}
     end
   end
 end

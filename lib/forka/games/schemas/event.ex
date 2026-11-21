@@ -1,11 +1,13 @@
 defmodule Forka.Games.Schemas.Event do
+  @moduledoc "Records a gameplay event and its payload at a specific game tick."
+
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias Forka.Games.Schemas.Game
   alias Forka.Games.Schemas.GameWord
   alias Forka.Games.Schemas.Guess
   alias Forka.Games.Schemas.Player
-  alias Forka.Games.Schemas.Game
 
   @event_types [
     :player_joined,
@@ -42,7 +44,20 @@ defmodule Forka.Games.Schemas.Event do
     timestamps()
   end
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          type: atom() | nil,
+          payload: map() | nil,
+          tick: non_neg_integer() | nil,
+          at: DateTime.t() | nil,
+          game_id: Ecto.UUID.t() | nil,
+          game: Game.t() | Ecto.Association.NotLoaded.t(),
+          inserted_at: NaiveDateTime.t() | nil,
+          updated_at: NaiveDateTime.t() | nil
+        }
+
   @doc false
+  @spec changeset(t(), map()) :: Ecto.Changeset.t(t())
   def changeset(event, attrs) do
     event
     |> cast(attrs, [:type, :payload, :tick, :at])
@@ -51,6 +66,7 @@ defmodule Forka.Games.Schemas.Event do
   end
 
   @doc false
+  @spec new(atom(), non_neg_integer(), map() | nil) :: t()
   def new(type, tick, data \\ nil) do
     %__MODULE__{
       type: type,
@@ -72,6 +88,7 @@ defmodule Forka.Games.Schemas.Event do
   defp to_payload(map) when is_map(map), do: map
 
   @doc false
+  @spec to_map(t()) :: map()
   def to_map(%__MODULE__{} = event) do
     %{
       id: event.id,

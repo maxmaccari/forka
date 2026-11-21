@@ -1,4 +1,13 @@
 import Config
+import Dotenvy
+
+env = config_env()
+
+dotenv_files =
+  [".env", ".env.#{env}"] ++
+    if(env == :test, do: [], else: [".env.local"]) ++ [".env.#{env}.local"]
+
+source!(dotenv_files ++ [System.get_env()])
 
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the
@@ -16,24 +25,51 @@ import Config
 #
 # Alternatively, you can use `mix phx.gen.release` to generate a `bin/server`
 # script that automatically sets the env var above.
-if System.get_env("PHX_SERVER") do
+if env!("PHX_SERVER", :boolean, false) do
   config :forka, ForkaWeb.Endpoint, server: true
 end
 
-if config_env() == :prod do
-  database_url =
-    System.get_env("DATABASE_URL") ||
-      raise """
-      environment variable DATABASE_URL is missing.
-      For example: ecto://USER:PASS@HOST/DATABASE
-      """
+if env == :dev do
+  worktree =
+    try do
+      case System.cmd(
+             "git",
+             ~w(rev-parse --path-format=absolute --git-dir --git-common-dir --show-toplevel),
+             stderr_to_stdout: true
+           ) do
+        {output, 0} ->
+          case String.split(output, "\n", trim: true) do
+            [git_dir, common_dir, root] when git_dir != common_dir -> root
+            _ -> nil
+          end
 
-  maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
+        _ ->
+          nil
+      end
+    rescue
+      ErlangError -> nil
+    end
+
+  default_port = if worktree, do: 4100 + :erlang.phash2(worktree, 900), else: 4000
+  port = env!("PORT", :integer, default_port)
+
+  config :forka, ForkaWeb.Endpoint, http: [port: port], url: [port: port]
+
+  if worktree do
+    config :forka, :worktree, %{name: Path.basename(worktree), port: port}
+  end
+end
+
+if env == :prod do
+  # Example: ecto://USER:PASS@HOST/DATABASE
+  database_url = env!("DATABASE_URL", :string!)
+
+  maybe_ipv6 = if env!("ECTO_IPV6", :string, "false") in ~w(true 1), do: [:inet6], else: []
 
   config :forka, Forka.Repo,
     # ssl: true,
     url: database_url,
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
+    pool_size: env!("POOL_SIZE", :integer, 10),
     socket_options: maybe_ipv6
 
   # The secret key base is used to sign/encrypt cookies and other secrets.
@@ -41,17 +77,13 @@ if config_env() == :prod do
   # want to use a different value for prod and you most likely don't want
   # to check this value into version control, so we use an environment
   # variable instead.
-  secret_key_base =
-    System.get_env("SECRET_KEY_BASE") ||
-      raise """
-      environment variable SECRET_KEY_BASE is missing.
-      You can generate one by calling: mix phx.gen.secret
-      """
+  # Generate a value with mix phx.gen.secret.
+  secret_key_base = env!("SECRET_KEY_BASE", :string!)
 
-  host = System.get_env("PHX_HOST") || "example.com"
-  port = String.to_integer(System.get_env("PORT") || "4000")
+  host = env!("PHX_HOST", :string, "example.com")
+  port = env!("PORT", :integer, 4000)
 
-  config :forka, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
+  config :forka, :dns_cluster_query, env!("DNS_CLUSTER_QUERY", :string?, nil)
 
   config :forka, ForkaWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
@@ -75,8 +107,8 @@ if config_env() == :prod do
   #         ...,
   #         port: 443,
   #         cipher_suite: :strong,
-  #         keyfile: System.get_env("SOME_APP_SSL_KEY_PATH"),
-  #         certfile: System.get_env("SOME_APP_SSL_CERT_PATH")
+  #         keyfile: env!("SOME_APP_SSL_KEY_PATH", :string!),
+  #         certfile: env!("SOME_APP_SSL_CERT_PATH", :string!)
   #       ]
   #
   # The `cipher_suite` is set to `:strong` to support only the
@@ -89,13 +121,8 @@ if config_env() == :prod do
   # "priv/ssl/server.key". For all supported SSL configuration
   # options, see https://hexdocs.pm/plug/Plug.SSL.html#configure/1
   #
-  # We also recommend setting `force_ssl` in your config/prod.exs,
-  # ensuring no data is ever sent via http, always redirecting to https:
-  #
-  #     config :forka, ForkaWeb.Endpoint,
-  #       force_ssl: [hsts: true]
-  #
-  # Check `Plug.SSL` for all available options in `force_ssl`.
+  # `force_ssl` is configured in config/prod.exs. See README.md for the
+  # production proxy requirements and `Plug.SSL` for the available options.
 
   # ## Configuring the mailer
   #
@@ -105,8 +132,8 @@ if config_env() == :prod do
   #
   #     config :forka, Forka.Mailer,
   #       adapter: Swoosh.Adapters.Mailgun,
-  #       api_key: System.get_env("MAILGUN_API_KEY"),
-  #       domain: System.get_env("MAILGUN_DOMAIN")
+  #       api_key: env!("MAILGUN_API_KEY", :string!),
+  #       domain: env!("MAILGUN_DOMAIN", :string!)
   #
   # For this example you need include a HTTP client required by Swoosh API client.
   # Swoosh supports Hackney and Finch out of the box:

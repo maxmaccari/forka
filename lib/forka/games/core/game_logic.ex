@@ -1,18 +1,19 @@
 defmodule Forka.Games.Core.GameLogic do
-  alias Forka.Games.Schemas.Word
-  alias Forka.Games.Schemas.Guess
-  alias Forka.Games.Schemas.GameWord
-  alias Forka.Games.Schemas.GamePlayer
-  alias Forka.Games.Schemas.Player
   alias Forka.Games.Core.GameState
+  alias Forka.Games.Schemas.GamePlayer
+  alias Forka.Games.Schemas.GameWord
+  alias Forka.Games.Schemas.Guess
+  alias Forka.Games.Schemas.Player
+  alias Forka.Games.Schemas.Word
 
   import Forka.Games.Core.Helpers
 
-  @moduledoc false
+  @moduledoc "Handles turn order, guesses, and concessions once a game starts."
 
   # This module handles the logic after the game is initialized
 
   @doc false
+  @spec get_current_player(GameState.t()) :: Player.t() | Ecto.Association.NotLoaded.t() | nil
   def get_current_player(%GameState{status: :playing} = game) do
     case Map.get(game.game_players, game.current_game_player_index) do
       %GamePlayer{player: player, status: :alive} ->
@@ -38,6 +39,8 @@ defmodule Forka.Games.Core.GameLogic do
   end
 
   @doc false
+  @spec give_up_game(GameState.t(), Ecto.UUID.t()) ::
+          {:ok, GameState.t()} | {:error, :player_not_found | :game_archived | :game_not_playing}
   def give_up_game(%GameState{status: :playing} = game_state, player_id)
       when is_binary(player_id) do
     case find_game_player_by_id(game_state, player_id) do
@@ -68,6 +71,10 @@ defmodule Forka.Games.Core.GameLogic do
     do: {:error, :game_not_playing}
 
   @doc false
+  @spec guess(GameState.t(), Ecto.UUID.t(), String.t()) ::
+          {:ok, GameState.t()}
+          | {:error,
+             :not_player_turn | :game_archived | :game_not_playing | :letter_already_guessed}
   def guess(%GameState{status: :playing} = game_state, player_id, letter)
       when is_binary(letter) and is_binary(player_id) do
     if current_player?(game_state, player_id) do

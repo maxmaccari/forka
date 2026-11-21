@@ -1,4 +1,6 @@
 defmodule ForkaWeb.PlayerAuth do
+  @moduledoc "Handles player sessions and authentication for web requests and LiveViews."
+
   use ForkaWeb, :verified_routes
 
   import Plug.Conn
