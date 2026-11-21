@@ -10,7 +10,7 @@ description: >-
 
 # `commit` — Commit by Layer
 
-You turn the pending changes into a short series of commits that tell how the change was built: what came first, what built on it, and what finished it. Anyone reading `git log` later, human or agent, should follow the story without opening the diffs. It is a supporting skill, usually run after `implement` (Phase 3) or `local-review --fix` (Phase 5).
+You turn the pending changes into a short series of commits that show how the change was built. Anyone reading `git log` later should be able to follow the order without opening the diffs.
 
 Shared rules (asking questions, safety, writing): `.agents/shared/conventions.md`.
 
@@ -94,7 +94,7 @@ Brief and summarized; no prose. Follow the repo's style; with none, use Conventi
 
 - **Subject:** `type(scope): summary` — imperative, lowercase, no period, at most 72 characters (aim for 50). Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`. Scope: the Context or area (`catalog`, `web`, `deps`).
 - **Body:** optional. At most three short bullets, only for what the subject can't carry: a non-obvious decision or a side effect. No paragraphs, no file lists, no "This commit...".
-- **References:** if the spec's roadmap item has an issue (` · issue #NN` in `docs/roadmap.md`), add `Refs #NN` to the last commit.
+- **References:** If `docs/roadmap.md` exists and links the spec's roadmap item to issue #NN, add `Refs #NN` to the last commit.
 - Keep any trailer your tool requires (e.g. `Co-Authored-By`).
 
 ```text
@@ -107,8 +107,4 @@ feat(catalog): list and create products
 
 ## Step 5: Hand Off
 
-Show the new commits, and the worktree's path if Step 1 created one (conventions §13). Then ask how to continue, or whether the user wants anything else:
-
-- **Open a pull request** — run `pull-request`.
-- **`roadmap sync`** — when the commits finish a roadmap item.
-- **Done for now.**
+Show the new commits and the worktree's path if Step 1 created one (conventions §13). When the user asks for a PR, use the [`pull-request` skill](../pull-request/SKILL.md).

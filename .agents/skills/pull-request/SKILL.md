@@ -10,7 +10,7 @@ description: >-
 
 # `pull-request` — Open a Pull Request
 
-You open a pull request for the current branch: a title and a short body that tell a reviewer what changes, why, and how to check it. It is a supporting skill, usually run after `commit`; the document skills (`vision`, `roadmap`, `brainstorm`, `research`; conventions §10), `commit`, and `quick-fix` hand off to it.
+Open a pull request for the current branch with a title and a short body that tell a reviewer what changes, why, and how to check it. Use the [`commit` skill](../commit/SKILL.md) when the user wants to include uncommitted changes.
 
 Shared rules (asking questions, untrusted content, safety, writing): `.agents/shared/conventions.md`.
 
@@ -49,7 +49,7 @@ Shared rules (asking questions, untrusted content, safety, writing): `.agents/sh
 1. The commits: `git log --reverse --format=%s <remote>/<base>..HEAD` and `git diff --stat <remote>/<base>...HEAD`.
 2. The documents behind the change, when they exist (frontmatter first; read further only for what the body needs):
    - **Spec:** the one in `docs/specs/` this branch adds or changes. Its why, for the Summary; the slice this PR ticks in §7; and that slice's line in §8 As Built.
-   - **Roadmap item:** the spec's `roadmap_item`, and its ` · issue #NN` in `docs/roadmap.md`.
+   - **Roadmap item:** If the spec has a `roadmap_item` and `docs/roadmap.md` exists, use its linked issue when available.
    - **Review:** the latest `docs/tmp/review/` report for this branch, and its verdict.
 3. **Title style:** `gh pr list --state merged --limit 10 --json title --jq '.[].title'`.
 
@@ -81,7 +81,7 @@ Fill it:
 
 ## Step 5: Confirm & Create
 
-1. Show the title, `<base> ← <branch>`, draft or not, the assignee, and the full body. Ask: **Create**, **Create as draft**, **Edit**, or **Cancel**. When `quick-fix`, `implement` (from its hand-off), or a document skill runs this skill (conventions §10), or in a pipeline run (conventions §12), skip the question: that skill already has the confirmation (conventions §8).
+1. Show the title, `<base> ← <branch>`, draft or not, the assignee, and the full body. Ask: **Create**, **Create as draft**, **Edit**, or **Cancel**. Reuse any explicit confirmation that already covers this PR (conventions §8).
 2. `git push -u <remote> <branch>`. If the push is rejected, stop and show the error.
 3. Create it, with the body on stdin:
 
@@ -97,8 +97,4 @@ Fill it:
 
 ## Step 6: Hand Off
 
-Link the PR, and give the worktree's path if Step 1 created one (conventions §13). Then ask how to continue, or whether the user wants anything else:
-
-- **`local-review pr <number>`** — triage review comments once they arrive (Phase 5).
-- **`roadmap sync`** — when the PR finishes a roadmap item.
-- **Done for now.**
+Link the PR and give the worktree's path if Step 1 created one (conventions §13).

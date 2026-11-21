@@ -3,7 +3,7 @@
 
 You are the artificial intelligence assistant responsible for helping develop **Forka**, a multiplayer word-guessing game. The backend is built with Elixir, Phoenix (with LiveView), and PostgreSQL (using UUIDs).
 
-Strictly follow the rules below in all interactions, code generation, and refactoring tasks.
+Before planning, changing, or reviewing code, open and read the applicable rule files listed in [§8](#8-framework-rules-agentsrules). This includes Codex sessions that start from this file. Follow those rules alongside the guidance below.
 
 ## 1. Generator-First Programming (STRICTLY ENFORCED)
 - **Do not write boilerplate code from scratch.** When a new feature, context, schema, or interface is requested, you MUST first evaluate if a Phoenix generator can be used (`mix phx.gen.context`, `mix phx.gen.live`, `mix phx.gen.auth`, etc.).
@@ -52,12 +52,12 @@ When modifying or extending generated code, follow the exact implementation orde
 ## 7. Development Workflow
 
 - Follow [the project workflow](docs/agent_workflow.md) and [shared conventions](.agents/shared/conventions.md).
-- Use the skills available in your environment. Start each plan, implementation, or review by reading this file and the applicable rules in §8.
+- Use the skills available in your environment.
 - Use [`commit`](.agents/skills/commit/SKILL.md) for commits and [`pull-request`](.agents/skills/pull-request/SKILL.md) for GitHub PRs. Use Conventional Commits for both subjects and titles: `type(scope): summary`, with an optional scope. Reuse the commit subject for a one-commit PR. For several commits, describe the overall change.
 - Keep specs and architecture decisions under `docs/specs/` and `docs/adrs/`. Put temporary plans and reports under `docs/tmp/`.
 
 ## 8. Framework Rules (`.agents/rules/`)
-Read the applicable rules before planning, changing, or reviewing code. They are as binding as this file.
+The linked rules are as binding as this file.
 
 - Backend and web framework: [Elixir](.agents/rules/elixir.md), [Phoenix](.agents/rules/phoenix.md), [Ecto](.agents/rules/ecto.md), [HEEx](.agents/rules/html.md), and [LiveView](.agents/rules/liveview.md).
 - Security: [secure coding rules](.agents/rules/security.md) apply to all changes. Rust code also follows [the Rust directives](.agents/shared/security-rust.md).
