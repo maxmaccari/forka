@@ -40,3 +40,6 @@ forka-*.tar
 npm-debug.log
 /assets/node_modules/
 
+
+# Temporary plans and reports from development workflows.
+/docs/tmp/
