@@ -21,7 +21,7 @@ defmodule Forka.Words.Word do
     |> cast(attrs, [:text, :hint, :category_id])
     |> validate_required([:text])
     |> unique_constraint([:text, :category_id])
-    |> foreign_key_constraint(:category_id)
+    |> assoc_constraint(:category)
     |> update_change(:text, &String.downcase/1)
   end
 

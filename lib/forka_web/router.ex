@@ -18,7 +18,6 @@ defmodule ForkaWeb.Router do
   end
 
   pipeline :admin do
-    plug Backpex.ThemeSelectorPlug
     plug :fetch_current_admin
   end
 
@@ -108,8 +107,7 @@ defmodule ForkaWeb.Router do
     backpex_routes()
 
     live_session :default,
-      on_mount: [Backpex.InitAssigns, {ForkaWeb.AdminAuth, :ensure_authenticated}],
-      layout: {ForkaWeb.Layouts, :admin} do
+      on_mount: [{ForkaWeb.AdminAuth, :ensure_authenticated}, Backpex.InitAssigns] do
       live_resources "/categories", CategoryLive
       live_resources "/words", WordLive
       live_resources "/players", PlayerLive

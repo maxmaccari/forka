@@ -436,7 +436,7 @@ defmodule Forka.Games.RepositoryTest do
   end
 
   describe "backoffice subscriptions" do
-    test "broadcasts game_created event when a game is inserted" do
+    test "broadcasts backpex:created event when a game is inserted" do
       owner = insert(:player)
 
       # Subscribe to the backoffice topic
@@ -446,12 +446,12 @@ defmodule Forka.Games.RepositoryTest do
       {:ok, game} = Repository.insert_game(owner.id, %{name: "Test Game", max_players: 4})
 
       # Assert we receive the broadcast
-      assert_receive {"game_created", broadcasted_game}
+      assert_receive {"backpex:created", broadcasted_game}
       assert broadcasted_game.id == game.id
       assert broadcasted_game.name == "Test Game"
     end
 
-    test "broadcasts game_updated event when a game state is saved" do
+    test "broadcasts an admin list refresh when a game state is saved" do
       owner = insert(:player) |> to_games_player()
       game = insert(:game, owner: owner, status: :lobby)
 
@@ -465,7 +465,7 @@ defmodule Forka.Games.RepositoryTest do
       {:ok, _saved_state} = Repository.save_game_state(updated_game_state)
 
       # Assert we receive the broadcast
-      assert_receive {"game_updated", broadcasted_game}
+      assert_receive {"backpex:created", broadcasted_game}
       assert broadcasted_game.id == game.id
       assert broadcasted_game.name == "Updated Game Name"
     end

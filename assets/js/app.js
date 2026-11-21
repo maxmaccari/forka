@@ -21,16 +21,14 @@ import "phoenix_html"
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
-import { Hooks as BackpexHooks } from 'backpex';
-
-BackpexHooks.BackpexThemeSelector.setStoredTheme()
+import { Hooks as BackpexHooks, backpexParams } from 'backpex';
 
 const Hooks = {}
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 let liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
-  params: {_csrf_token: csrfToken},
+  params: backpexParams({_csrf_token: csrfToken}),
   hooks: {...Hooks, ...BackpexHooks}
 })
 

@@ -47,15 +47,20 @@ config :esbuild,
 
 # Configure tailwind (the version is required)
 config :tailwind,
-  version: "3.4.3",
+  version: "4.3.5",
   forka: [
     args: ~w(
-      --config=tailwind.config.js
-      --input=css/app.css
-      --output=../priv/static/assets/app.css
+      --input=assets/css/app.css
+      --output=priv/static/assets/app.css
     ),
-    cd: Path.expand("../assets", __DIR__)
+    cd: Path.expand("..", __DIR__)
   ]
+
+# Configures Backpex
+config :backpex,
+  pubsub_server: Forka.PubSub,
+  translator_function: {ForkaWeb.CoreComponents, :translate_backpex},
+  error_translator_function: {ForkaWeb.CoreComponents, :translate_error}
 
 # Configures Elixir's Logger
 config :logger, :console,

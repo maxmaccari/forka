@@ -1,8 +1,13 @@
-<Backpex.HTML.Layout.app_shell fluid={@fluid?}>
+<Backpex.HTML.Layout.app_shell
+  socket={@socket}
+  fluid={@fluid?}
+  live_resource={assigns[:live_resource]}
+  sidebar_open={assigns[:sidebar_open] != false}
+  preferences_manifest={assigns[:preferences_manifest]}
+>
   <:topbar>
-    <Backpex.HTML.Layout.topbar_branding />
     <Backpex.HTML.Layout.theme_selector
-      socket={@socket}
+      current_theme={assigns[:current_theme]}
       themes={[
         {"Light", "light"},
         {"Dark", "dark"}
@@ -53,5 +58,9 @@
     </Backpex.HTML.Layout.sidebar_item>
   </:sidebar>
   <Backpex.HTML.Layout.flash_messages flash={@flash} />
-  {@inner_content}
+  <%= if assigns[:inner_block] do %>
+    {render_slot(@inner_block)}
+  <% else %>
+    {@inner_content}
+  <% end %>
 </Backpex.HTML.Layout.app_shell>

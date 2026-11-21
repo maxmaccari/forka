@@ -6,12 +6,13 @@ defmodule ForkaWeb.Admin.AdminLive do
       update_changeset: &Forka.Backoffice.Admin.email_changeset/3,
       create_changeset: &Forka.Backoffice.Admin.registration_changeset/3
     ],
-    layout: {ForkaWeb.Layouts, :admin},
     pubsub: [
-      name: Forka.PubSub,
-      topic: "words",
-      event_prefix: "word_"
+      server: Forka.PubSub,
+      topic: "words"
     ]
+
+  @impl Backpex.LiveResource
+  def layout(_assigns), do: {ForkaWeb.Layouts, :admin}
 
   @impl Backpex.LiveResource
   def singular_name, do: "Admin"
@@ -20,7 +21,8 @@ defmodule ForkaWeb.Admin.AdminLive do
   def plural_name, do: "Admins"
 
   @impl Backpex.LiveResource
-  def create_button_label, do: "Register admin"
+  def translate({"New %{resource}", _opts}), do: "Register admin"
+  def translate({msg, opts}), do: Backpex.translate({msg, opts})
 
   @impl Backpex.LiveResource
   def fields do
@@ -39,32 +41,23 @@ defmodule ForkaWeb.Admin.AdminLive do
     ]
   end
 
-  defp password_field(context) do
-    {field, field_data} = context.field
-    assigns = %{label: field_data.label, field: field}
-
+  defp password_field(assigns) do
     ~H"""
     <div>
-      <div class=" flex flex-col items-stretch space-y-2 px-6 py-4 sm:flex-row sm:space-y-0 sm:py-3">
-        <div class="sm:self-center hyphens-auto break-words pr-2 sm:w-1/4">
-          <p class="text-content block break-words text-sm font-medium">
-            {@label}
-          </p>
-        </div>
-
-        <div class="w-full sm:w-3/4">
-          <div class="">
-            <div class="form-control">
-              <input
-                type="password"
-                name={"change[#{@field}]"}
-                id={"resource-form_#{@field}"}
-                class="input input-bordered"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
+      <Backpex.HTML.Layout.field_container>
+        <:label align={Backpex.Field.align_label(@field_options, assigns, :center)}>
+          <Backpex.HTML.Layout.input_label for={@form[@name]} text={@field_options[:label]} />
+        </:label>
+        <Backpex.HTML.Form.input
+          type="password"
+          field={@form[@name]}
+          translate_error_fun={Backpex.Field.translate_error_fun(@field_options, assigns)}
+          help_text={Backpex.Field.help_text(@field_options, assigns)}
+          phx-debounce={Backpex.Field.debounce(@field_options, assigns)}
+          phx-throttle={Backpex.Field.throttle(@field_options, assigns)}
+          readonly={@readonly}
+        />
+      </Backpex.HTML.Layout.field_container>
     </div>
     """
   end

@@ -6,12 +6,13 @@ defmodule ForkaWeb.Admin.GameLive do
       update_changeset: &Forka.Games.Schemas.Game.update_changeset/3,
       create_changeset: &Forka.Games.Schemas.Game.insert_changeset/3
     ],
-    layout: {ForkaWeb.Layouts, :admin},
     pubsub: [
-      name: Forka.PubSub,
-      topic: "games",
-      event_prefix: "game_"
+      server: Forka.PubSub,
+      topic: "games"
     ]
+
+  @impl Backpex.LiveResource
+  def layout(_assigns), do: {ForkaWeb.Layouts, :admin}
 
   @impl Backpex.LiveResource
   def singular_name, do: "Game"
@@ -74,10 +75,4 @@ defmodule ForkaWeb.Admin.GameLive do
   def can?(_assigns, action, _item) when action in [:index], do: true
   def can?(_assigns, :delete, %{status: :archived}), do: true
   def can?(_assigns, _action, _item), do: false
-
-  @impl Phoenix.LiveView
-  def handle_info({event, item}, %{assigns: %{live_action: action}} = socket)
-      when event in ["game_created", "game_updated"] and action in [:index, :resource_action] do
-    Backpex.LiveResource.handle_info({"backpex:game_created", item}, socket)
-  end
 end

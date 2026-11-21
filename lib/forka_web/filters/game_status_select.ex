@@ -10,7 +10,7 @@ defmodule ForkaWeb.Filters.GameStatusSelect do
   def prompt, do: "Select a status ..."
 
   @impl Backpex.Filters.Select
-  def options do
+  def options(_assigns) do
     [
       {"Lobby", :lobby},
       {"Playing", :playing},

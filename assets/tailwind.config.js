@@ -21,8 +21,6 @@ module.exports = {
     },
   },
   plugins: [
-    require('daisyui'),
-    require("@tailwindcss/forms")({strategy: 'class'}),
     // Allows prefixing tailwind classes with LiveView classes to add rules
     // only when LiveView classes are applied, for example:
     //

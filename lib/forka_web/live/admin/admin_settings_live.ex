@@ -98,7 +98,7 @@ defmodule ForkaWeb.Admin.AdminSettingsLive do
           put_flash(socket, :error, "Email change link is invalid or it has expired.")
       end
 
-    {:ok, push_navigate(socket, to: ~p"/admin/settings")}
+    {:ok, push_navigate(socket, to: ~p"/admin/settings"), layout: {ForkaWeb.Layouts, :admin}}
   end
 
   def mount(_params, _session, socket) do
@@ -116,7 +116,7 @@ defmodule ForkaWeb.Admin.AdminSettingsLive do
       |> assign(:trigger_submit, false)
       |> assign(:fluid?, false)
 
-    {:ok, socket}
+    {:ok, socket, layout: {ForkaWeb.Layouts, :admin}}
   end
 
   def handle_event("validate_email", params, socket) do

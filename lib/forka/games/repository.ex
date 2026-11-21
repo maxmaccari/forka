@@ -129,7 +129,7 @@ defmodule Forka.Games.Repository do
     |> Repo.insert()
     |> case do
       {:ok, game} ->
-        broadcast_backoffice!(game, "game_created")
+        broadcast_backoffice!(game, "backpex:created")
 
         {:ok, game}
 
@@ -179,7 +179,8 @@ defmodule Forka.Games.Repository do
     |> Repo.update()
     |> case do
       {:ok, game} ->
-        broadcast_backoffice!(game, "game_updated")
+        # Refresh the admin index so an update can move a game into or out of the active filters.
+        broadcast_backoffice!(game, "backpex:created")
 
         new_game_state =
           game

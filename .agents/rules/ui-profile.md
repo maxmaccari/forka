@@ -9,7 +9,7 @@ Applies the UI directives (`ui.md` and the files it lists). Anything not listed 
 Design canvas: https://claude.ai/artifact/3uu2uFcEyufwSknxD3scgj (status: draft, 2026-10-31, waiting on Maxsuel's answers).
 
 ## 0. Stack note
-Forka is on Phoenix 1.7, LiveView 1.0 and Tailwind v3 (with daisyUI because Backpex needs it). The directives target Phoenix 1.8, LiveView 1.1 and Tailwind v4. Upgrade first (own task), then build the player UI on the `app.css` template (§3.3) with the scales below.
+Forka is on Phoenix 1.8, LiveView 1.2 and Tailwind v4 (with daisyUI because Backpex needs it). `app.css` still loads the legacy `tailwind.config.js` through `@config`; moving it to the `app.css` template (§3.3) is its own task. Build the player UI with the scales below.
 
 ## 1. Palette
 - **Palette 19** (Appendix A): Indigo + Orange (Vivid), Cool Grey; supporting Yellow (Vivid), Red (Vivid), Green (Vivid). Borrowed: Cyan (Vivid) 400 and Magenta (Vivid) 400 as player colours only.
