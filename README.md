@@ -32,7 +32,9 @@ then runs the tests with ExCoveralls. The first Dialyzer run builds a local PLT.
 
 GitHub Actions runs on pull requests and pushes to `main`. It verifies formatting
 and the Mix lockfile, runs `mix precommit` against PostgreSQL, audits the npm
-lockfile with `npm --prefix assets audit --audit-level=low`, and builds the assets.
+lockfile with `npm --prefix assets audit --audit-level=low`, and builds and digests
+the production assets with `MIX_ENV=prod mix assets.deploy`. The GitHub check is
+named **Precommit and assets**.
 
 Ready to run in production? Please [check our deployment guides](https://hexdocs.pm/phoenix/deployment.html).
 

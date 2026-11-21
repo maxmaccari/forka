@@ -61,5 +61,6 @@ jobs:
       - run: mix deps.unlock --check-unused
       - run: mix precommit
       - run: npm --prefix assets audit --audit-level=low
-      - run: mix assets.setup
-      - run: mix assets.build
+      - run: mix assets.deploy
+        env:
+          MIX_ENV: prod
