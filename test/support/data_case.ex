@@ -20,8 +20,6 @@ defmodule Forka.DataCase do
 
   using do
     quote do
-      use Oban.Testing, repo: Forka.Repo
-
       alias Forka.Repo
 
       import Ecto

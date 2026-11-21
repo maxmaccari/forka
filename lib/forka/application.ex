@@ -10,7 +10,6 @@ defmodule Forka.Application do
     children = [
       ForkaWeb.Telemetry,
       Forka.Repo,
-      {Oban, Application.fetch_env!(:forka, Oban)},
       {DNSCluster, query: Application.get_env(:forka, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Forka.PubSub},
       # Start the Finch HTTP client for sending emails
