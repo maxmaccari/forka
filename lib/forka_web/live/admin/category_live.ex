@@ -6,12 +6,13 @@ defmodule ForkaWeb.Admin.CategoryLive do
       update_changeset: &Forka.Words.Category.changeset/3,
       create_changeset: &Forka.Words.Category.changeset/3
     ],
-    layout: {ForkaWeb.Layouts, :admin},
     pubsub: [
-      name: Forka.PubSub,
-      topic: "categories",
-      event_prefix: "category_"
+      server: Forka.PubSub,
+      topic: "categories"
     ]
+
+  @impl Backpex.LiveResource
+  def layout(_assigns), do: {ForkaWeb.Layouts, :admin}
 
   @impl Backpex.LiveResource
   def singular_name, do: "Category"
@@ -41,11 +42,11 @@ defmodule ForkaWeb.Admin.CategoryLive do
         label: "Words",
         child_fields: [
           text: %{
-            module: Backpex.Field.Text,
+            module: Backpex.Fields.Text,
             label: "Text"
           },
           hint: %{
-            module: Backpex.Field.Text,
+            module: Backpex.Fields.Text,
             label: "Hint"
           }
         ]

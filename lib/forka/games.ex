@@ -329,9 +329,6 @@ defmodule Forka.Games do
 
           {:error, :not_found} ->
             {:error, :not_found}
-
-          {:error, reason} ->
-            {:error, reason}
         end
     end
   end

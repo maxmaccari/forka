@@ -143,7 +143,7 @@ defmodule ForkaWeb.AdminComponents do
 
     ~H"""
     <div>
-      <label class="flex items-center gap-4 leading-6 text-content break-words text-sm font-medium">
+      <label class="flex items-center gap-4 leading-6 text-content wrap-break-word text-sm font-medium">
         <input type="hidden" name={@name} value="false" disabled={@rest[:disabled]} />
         <input
           type="checkbox"
@@ -188,7 +188,7 @@ defmodule ForkaWeb.AdminComponents do
         id={@id}
         name={@name}
         class={[
-          "mt-2 block w-full rounded-lg text-zinc-900 focus:ring-0 sm:text-sm sm:leading-6 min-h-[6rem]",
+          "mt-2 block w-full rounded-lg text-zinc-900 focus:ring-0 sm:text-sm sm:leading-6 min-h-24",
           @errors == [] && "border-zinc-300 focus:border-zinc-400",
           @errors != [] && "border-rose-400 focus:border-rose-400"
         ]}
@@ -229,7 +229,7 @@ defmodule ForkaWeb.AdminComponents do
 
   def admin_label(assigns) do
     ~H"""
-    <label for={@for} class="text-content block break-words text-sm font-medium">
+    <label for={@for} class="text-content block wrap-break-word text-sm font-medium">
       {render_slot(@inner_block)}
     </label>
     """

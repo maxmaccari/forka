@@ -37,5 +37,14 @@ defmodule Forka.Words.WordTest do
       changeset = Word.changeset(%Word{category_id: other_category.id}, %{text: "unique word"})
       assert changeset.valid?
     end
+
+    test "F-09: returns an error instead of raising when the category does not exist" do
+      {:error, changeset} =
+        %Word{}
+        |> Word.changeset(%{text: "orphan", category_id: Ecto.UUID.generate()})
+        |> Repo.insert()
+
+      assert %{category: ["does not exist"]} = errors_on(changeset)
+    end
   end
 end

@@ -18,9 +18,10 @@ defmodule Forka.Words.Word do
   @doc false
   def changeset(word, attrs, _metadata \\ []) do
     word
-    |> cast(attrs, [:text, :hint])
+    |> cast(attrs, [:text, :hint, :category_id])
     |> validate_required([:text])
     |> unique_constraint([:text, :category_id])
+    |> assoc_constraint(:category)
     |> update_change(:text, &String.downcase/1)
   end
 end
