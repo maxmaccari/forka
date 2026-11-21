@@ -1,0 +1,9 @@
+{
+  "kit": "setup-phoenix-app",
+  "repo": "maxmaccari/maxmaccari-dev-tools",
+  "commit": "9aeb9fa61d1a30bfdbaf5f2ded8d5fd9a6fa4397",
+  "installed_at": "2026-11-21T11:03:25Z",
+  "app_name": "forka",
+  "app_module": "Forka",
+  "description": "a multiplayer word-guessing game"
+}
