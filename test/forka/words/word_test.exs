@@ -4,6 +4,15 @@ defmodule Forka.Words.WordTest do
   alias Forka.Words.Word
   alias Forka.Words.Category
 
+  test "the admin changeset attaches a missing category error to the select field" do
+    assert {:error, changeset} =
+             %Word{}
+             |> Word.admin_changeset(%{text: "orphan", category_id: Ecto.UUID.generate()}, [])
+             |> Repo.insert()
+
+    assert %{category_id: ["does not exist"]} = errors_on(changeset)
+  end
+
   describe "changeset/2" do
     setup do
       {:ok, category} = Repo.insert(%Category{name: "Test Category", language: "en"})

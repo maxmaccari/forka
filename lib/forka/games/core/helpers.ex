@@ -12,6 +12,12 @@ defmodule Forka.Games.Core.Helpers do
   end
 
   @doc false
+  def increment_tick(%GameState{tick: 0, events: events} = game) do
+    # Legacy games reused ticks. Advance above their history on the first new event.
+    largest_tick = Enum.reduce(events, 0, fn event, largest -> max(event.tick, largest) end)
+    %{game | tick: largest_tick + 1}
+  end
+
   def increment_tick(%GameState{tick: tick} = game), do: %{game | tick: tick + 1}
 
   @doc false

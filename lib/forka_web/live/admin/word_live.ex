@@ -3,8 +3,8 @@ defmodule ForkaWeb.Admin.WordLive do
     adapter_config: [
       schema: Forka.Words.Word,
       repo: Forka.Repo,
-      update_changeset: &Forka.Words.Word.changeset/3,
-      create_changeset: &Forka.Words.Word.changeset/3
+      update_changeset: &Forka.Words.Word.admin_changeset/3,
+      create_changeset: &Forka.Words.Word.admin_changeset/3
     ],
     pubsub: [
       server: Forka.PubSub,
@@ -32,6 +32,7 @@ defmodule ForkaWeb.Admin.WordLive do
         module: Backpex.Fields.BelongsTo,
         label: "Category",
         display_field: :name,
+        prompt: "Select a category",
         live_resource: ForkaWeb.Admin.CategoryLive
       },
       hint: %{

@@ -78,6 +78,21 @@ defmodule Forka.Games.Schemas.Game do
   end
 
   def update_changeset(game, attrs, _opts \\ []) do
+    update_game_changeset(game, attrs, &GamePlayer.changeset/2)
+  end
+
+  @doc false
+  def state_changeset(game, %GameState{} = state) do
+    attrs = state |> from_game_state() |> to_map()
+
+    update_game_changeset(game, attrs, fn player, %{position: position} = player_attrs ->
+      player
+      |> GamePlayer.changeset(player_attrs)
+      |> put_change(:position, position)
+    end)
+  end
+
+  defp update_game_changeset(game, attrs, player_changeset) do
     game
     |> cast(attrs, [
       :name,
@@ -89,18 +104,18 @@ defmodule Forka.Games.Schemas.Game do
       :tick
     ])
     |> validate_required([:status])
-    |> common_changeset()
+    |> common_changeset(player_changeset)
     |> validate_status_update(game.status)
   end
 
-  defp common_changeset(changeset) do
+  defp common_changeset(changeset, player_changeset \\ &GamePlayer.changeset/2) do
     changeset
     |> validate_required([:owner_id])
     |> validate_settings()
     |> foreign_key_constraint(:owner_id)
     |> cast_assoc(:events)
     |> cast_assoc(:game_words)
-    |> cast_assoc(:game_players)
+    |> cast_assoc(:game_players, with: player_changeset)
     |> cast_embed(:word_options)
     |> validate_number(:tick, greater_than_or_equal_to: 0)
   end
@@ -134,6 +149,7 @@ defmodule Forka.Games.Schemas.Game do
       name: game_state.name,
       status: game_state.status,
       max_players: game_state.max_players,
+      tick: game_state.tick,
       current_game_word_index: game_state.current_game_word_index,
       current_game_player_index: game_state.current_game_player_index,
       word_options: game_state.word_options,
@@ -152,12 +168,13 @@ defmodule Forka.Games.Schemas.Game do
       name: game.name,
       status: game.status,
       max_players: game.max_players,
+      tick: game.tick,
       current_game_word_index: game.current_game_word_index,
       current_game_player_index: game.current_game_player_index,
       word_options: game.word_options,
       owner: game.owner,
       game_words: list_to_map(game.game_words),
-      game_players: list_to_map(game.game_players),
+      game_players: list_to_map(game.game_players, &{&1.position, &1.id}),
       events: game.events
     }
   end
@@ -167,9 +184,9 @@ defmodule Forka.Games.Schemas.Game do
     Enum.map(map, fn {index, item} -> %{item | position: index} end)
   end
 
-  defp list_to_map(list) when is_list(list) do
+  defp list_to_map(list, sort_key \\ & &1.position) when is_list(list) do
     list
-    |> Enum.sort_by(& &1.position)
+    |> Enum.sort_by(sort_key)
     |> Enum.with_index()
     |> Map.new(fn {v, k} -> {k, v} end)
   end

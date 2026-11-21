@@ -343,6 +343,22 @@ defmodule Forka.Games.CoreTest do
       assert_last_events(restarted_game, [%{type: :game_restarted}])
     end
 
+    @tag audit_f08: true
+    test "F-08 restarting a finished round resets all player scores", %{game_finished: game} do
+      game = %{
+        game
+        | game_players:
+            game.game_players
+            |> Map.update!(0, &%{&1 | score: 70})
+            |> Map.update!(1, &%{&1 | score: 30})
+      }
+
+      assert {:ok, restarted} = Core.restart_game(game)
+      assert restarted.status == :lobby
+      assert %{score: 0, lives: 6, status: :alive} = restarted.game_players[0]
+      assert %{score: 0, lives: 6, status: :alive} = restarted.game_players[1]
+    end
+
     test "restarts game successfully when in lobby status", %{game_lobby: game} do
       assert {:ok, restarted_game} = Core.restart_game(game)
       assert restarted_game.status == :lobby

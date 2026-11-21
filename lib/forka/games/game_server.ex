@@ -12,7 +12,7 @@ defmodule Forka.Games.GameServer do
   # Each game has its own dedicated server process identified by a unique ID.
   # The server handles all game operations and maintains the state between player interactions.
 
-  use GenServer
+  use GenServer, restart: :transient
 
   alias Forka.Games.Repository
   alias Forka.Games.GameListNotifier
@@ -131,9 +131,7 @@ defmodule Forka.Games.GameServer do
   def handle_call({:join_game, player_id}, _from, game) do
     with %Player{} = player <- Repository.get_player(player_id),
          {:ok, new_game} <- Core.join_game(game, player) do
-      saved_game = Repository.save_game_state!(new_game)
-      broadcast!(saved_game)
-      GameListNotifier.broadcast_update(saved_game)
+      saved_game = save_and_publish!(game, new_game)
 
       {:reply, :ok, saved_game, @timeout_ms}
     else
@@ -148,10 +146,11 @@ defmodule Forka.Games.GameServer do
   @impl true
   def handle_call({:leave_game, player_id}, _from, game) do
     case Core.leave_game(game, player_id) do
+      {:ok, ^game} ->
+        {:reply, :ok, game, @timeout_ms}
+
       {:ok, new_game} ->
-        saved_game = Repository.save_game_state!(new_game)
-        broadcast!(saved_game)
-        GameListNotifier.broadcast_update(saved_game)
+        saved_game = save_and_publish!(game, new_game)
 
         {:reply, :ok, saved_game, @timeout_ms}
 
@@ -164,9 +163,7 @@ defmodule Forka.Games.GameServer do
   def handle_call({:update_settings, settings}, _from, game) do
     case Core.update_settings(game, settings) do
       {:ok, new_game} ->
-        saved_game = Repository.save_game_state!(new_game)
-        broadcast!(saved_game)
-        GameListNotifier.broadcast_update(saved_game)
+        saved_game = save_and_publish!(game, new_game)
 
         {:reply, :ok, saved_game, @timeout_ms}
 
@@ -183,9 +180,7 @@ defmodule Forka.Games.GameServer do
 
     case game_with_words |> Core.shuffle_players() |> Core.start_game() do
       {:ok, new_game} ->
-        saved_game = Repository.save_game_state!(new_game)
-        broadcast!(saved_game)
-        GameListNotifier.broadcast_update(saved_game)
+        saved_game = save_and_publish!(game, new_game)
 
         {:reply, :ok, saved_game, @timeout_ms}
 
@@ -198,8 +193,7 @@ defmodule Forka.Games.GameServer do
   def handle_call({:give_up, player_id}, _from, game) do
     case Core.give_up_game(game, player_id) do
       {:ok, new_game} ->
-        saved_game = Repository.save_game_state!(new_game)
-        broadcast!(saved_game)
+        saved_game = save_and_publish!(game, new_game)
 
         {:reply, :ok, saved_game, @timeout_ms}
 
@@ -212,8 +206,7 @@ defmodule Forka.Games.GameServer do
   def handle_call({:guess, letter, player_id}, _from, game) do
     case Core.guess(game, player_id, letter) do
       {:ok, new_game} ->
-        saved_game = Repository.save_game_state!(new_game)
-        broadcast!(saved_game)
+        saved_game = save_and_publish!(game, new_game)
 
         {:reply, :ok, saved_game, @timeout_ms}
 
@@ -226,8 +219,7 @@ defmodule Forka.Games.GameServer do
   def handle_call({:transfer_ownership, player_id}, _from, game) do
     case Core.transfer_ownership_to_player(game, player_id) do
       {:ok, new_game} ->
-        saved_game = Repository.save_game_state!(new_game)
-        broadcast!(saved_game)
+        saved_game = save_and_publish!(game, new_game)
 
         {:reply, :ok, saved_game, @timeout_ms}
 
@@ -240,8 +232,7 @@ defmodule Forka.Games.GameServer do
   def handle_call(:restart_game, _from, game) do
     case Core.restart_game(game) do
       {:ok, new_game} ->
-        saved_game = Repository.save_game_state!(new_game)
-        broadcast!(saved_game)
+        saved_game = save_and_publish!(game, new_game)
 
         {:reply, :ok, saved_game, @timeout_ms}
 
@@ -254,9 +245,7 @@ defmodule Forka.Games.GameServer do
   def handle_call(:archive_game, _from, game) do
     case Core.archive_game(game) do
       {:ok, new_game} ->
-        saved_game = Repository.save_game_state!(new_game)
-        broadcast!(saved_game)
-        GameListNotifier.broadcast_update(saved_game)
+        saved_game = save_and_publish!(game, new_game)
         # Return the response and stop the GenServer with normal reason
         {:stop, :normal, :ok, saved_game}
 
@@ -270,9 +259,7 @@ defmodule Forka.Games.GameServer do
     # Server has been inactive for the timeout period, archive the game and terminate
     case Core.archive_game(game) do
       {:ok, new_game} ->
-        saved_game = Repository.save_game_state!(new_game)
-        broadcast!(saved_game)
-        GameListNotifier.broadcast_update(saved_game)
+        saved_game = save_and_publish!(game, new_game)
 
         {:stop, :normal, saved_game}
 
@@ -289,5 +276,12 @@ defmodule Forka.Games.GameServer do
   defp broadcast!(%GameState{id: game_id} = game_state) do
     game_summary = Core.to_game_summary(game_state)
     PubSub.broadcast!(Forka.PubSub, topic(game_id), {@message_tagger, game_summary})
+  end
+
+  defp save_and_publish!(previous, updated) do
+    saved = Repository.save_game_state!(updated)
+    broadcast!(saved)
+    :ok = GameListNotifier.broadcast_update_if_changed(previous, saved)
+    saved
   end
 end

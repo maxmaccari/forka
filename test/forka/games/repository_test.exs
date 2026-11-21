@@ -4,8 +4,44 @@ defmodule Forka.Games.RepositoryTest do
   alias Forka.Games.Core
   alias Forka.Games.Core.GameState
   alias Forka.Games.Repository
+  alias Forka.Games.Schemas.GamePlayer
   alias Forka.Games.Schemas.Player
   alias Forka.Games.Schemas.WordOptions
+
+  test "the game player changeset takes turn position from the game state" do
+    player = %GamePlayer{player_id: Ecto.UUID.generate(), position: 1}
+    changeset = GamePlayer.changeset(player, %{position: 5})
+
+    assert get_field(changeset, :position) == 1
+  end
+
+  @tag audit_f05: true
+  test "F-05 reloading a saved game restores the exact turn order" do
+    game = insert(:game)
+    player_one = to_games_player(insert(:player))
+    player_two = to_games_player(insert(:player))
+    {:ok, state} = Repository.get_game_state(game.id)
+    {:ok, state} = Core.join_game(state, player_one)
+    {:ok, state} = Core.join_game(state, player_two)
+    {:ok, state} = Repository.save_game_state(state)
+
+    player_one_state = Enum.find(Map.values(state.game_players), &(&1.player_id == player_one.id))
+    player_two_state = Enum.find(Map.values(state.game_players), &(&1.player_id == player_two.id))
+
+    state =
+      %{state | game_players: %{0 => player_two_state, 1 => player_one_state}}
+      |> Core.set_words([Forka.Games.Schemas.Word.new("cat", "Animals")])
+
+    {:ok, state} = Core.start_game(state)
+    assert {:ok, _state} = Repository.save_game_state(state)
+    {:ok, reloaded} = Repository.get_game_state(game.id)
+
+    assert reloaded.game_players[0].position == 0
+    assert reloaded.game_players[1].position == 1
+    assert reloaded.game_players[0].player_id == player_two.id
+    assert reloaded.game_players[1].player_id == player_one.id
+    assert Core.get_current_player(reloaded).id == player_two.id
+  end
 
   describe "get_random_words/2" do
     test "returns the specified number of random words" do
@@ -423,7 +459,7 @@ defmodule Forka.Games.RepositoryTest do
       assert broadcasted_game.name == "Test Game"
     end
 
-    test "broadcasts backpex:updated event when a game state is saved" do
+    test "broadcasts backpex:updated when a game state is saved" do
       owner = insert(:player) |> to_games_player()
       game = insert(:game, owner: owner, status: :lobby)
 

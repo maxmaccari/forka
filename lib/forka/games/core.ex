@@ -392,7 +392,7 @@ defmodule Forka.Games.Core do
     updated_players =
       game_state.game_players
       |> Enum.map(fn {idx, game_player} ->
-        {idx, GamePlayer.reset_lives(game_player)}
+        {idx, %{GamePlayer.reset_lives(game_player) | score: 0}}
       end)
       |> Map.new()
 

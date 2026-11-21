@@ -109,10 +109,10 @@ defmodule Forka.Games.GameSummary do
   end
 
   defp get_last_events(events, tick, opts) do
-    if Keyword.get(opts, :load_all_events, false) do
-      events
-    else
-      Enum.filter(events, fn event -> event.tick == tick end)
+    cond do
+      Keyword.get(opts, :load_all_events, false) -> events
+      tick == 0 -> []
+      true -> Enum.filter(events, fn event -> event.tick == tick end)
     end
   end
 end

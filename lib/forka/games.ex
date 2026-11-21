@@ -113,8 +113,12 @@ defmodule Forka.Games do
     end
   end
 
-  defp start_supervised_game(game_id),
-    do: DynamicSupervisor.start_child(Forka.GamesSupervisor, {GameServer, game_id})
+  defp start_supervised_game(game_id) do
+    case DynamicSupervisor.start_child(Forka.GamesSupervisor, {GameServer, game_id}) do
+      {:error, {:already_started, pid}} -> {:ok, pid}
+      result -> result
+    end
+  end
 
   @doc """
   Updates the settings of a game.

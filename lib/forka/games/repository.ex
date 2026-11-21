@@ -175,7 +175,7 @@ defmodule Forka.Games.Repository do
   def save_game_state(%GameState{id: id} = game_state) do
     Repo.get(Game, id)
     |> Repo.preload(@game_preloads)
-    |> Game.update_changeset(game_state_to_map(game_state))
+    |> Game.state_changeset(game_state)
     |> Repo.update()
     |> case do
       {:ok, game} ->
@@ -220,12 +220,6 @@ defmodule Forka.Games.Repository do
       {:error, changeset} ->
         raise Ecto.InvalidChangesetError, action: :update, changeset: changeset
     end
-  end
-
-  defp game_state_to_map(%GameState{} = game_state) do
-    game_state
-    |> Game.from_game_state()
-    |> Game.to_map()
   end
 
   defp broadcast_backoffice!(game, tagger) do
