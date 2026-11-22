@@ -199,17 +199,31 @@ defmodule ForkaWeb.CoreComponentsTest do
       assert Enum.count(radios) == 2
       assert LazyHTML.attribute(radios, "aria-checked") == ["true", "false"]
       assert LazyHTML.attribute(radios, "tabindex") == ["0", "-1"]
+      assert LazyHTML.attribute(radios, "phx-click") == ["set_lang", "set_lang"]
 
       unmatched_html =
         render_component(&segmented_control/1, %{
           id: "lang-seg-empty",
           label: "Idioma",
           value: "es",
+          on_select: "set_lang",
           options: [{"pt", "PT-BR"}, {"en", "EN"}]
         })
 
       unmatched_radios = LazyHTML.query(LazyHTML.from_fragment(unmatched_html), "[role=radio]")
       assert LazyHTML.attribute(unmatched_radios, "tabindex") == ["0", "-1"]
+
+      for bad_on_select <- [nil, ""] do
+        assert_raise FunctionClauseError, fn ->
+          render_component(&segmented_control/1, %{
+            id: "lang-seg-invalid",
+            label: "Idioma",
+            value: "pt",
+            on_select: bad_on_select,
+            options: [{"pt", "PT-BR"}, {"en", "EN"}]
+          })
+        end
+      end
     end
   end
 
@@ -302,6 +316,12 @@ defmodule ForkaWeb.CoreComponentsTest do
             id: "s-#{tone}",
             tone: tone,
             title: [%{__slot__: :title, inner_block: fn _, _ -> "Cura!" end}],
+            description: [
+              %{
+                __slot__: :description,
+                inner_block: fn _, _ -> "Você ganhou uma nova corda para a próxima palavra." end
+              }
+            ],
             inner_block: [%{__slot__: :inner_block, inner_block: fn _, _ -> "Nova corda" end}]
           })
 
@@ -317,6 +337,8 @@ defmodule ForkaWeb.CoreComponentsTest do
         assert container_class =~ "max-h-full"
         assert container_class =~ "overflow-y-auto"
         assert Enum.count(LazyHTML.query(s_doc, ".sticky.top-0")) == 1
+        assert Enum.count(LazyHTML.query(s_doc, "#s-#{tone}-description")) == 1
+        assert Enum.empty?(LazyHTML.query(s_doc, ".sticky.top-0 #s-#{tone}-description"))
         assert LazyHTML.text(s_doc) =~ "Cura!"
       end
     end

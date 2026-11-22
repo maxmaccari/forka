@@ -144,28 +144,17 @@ defmodule ForkaWeb.CoreComponents do
         >
           <div id={"#{@id}-content"}>
             <div class={[
-              "sticky top-0 z-10 flex items-start justify-between gap-4 px-6 pt-6 pb-3",
+              "sticky top-0 z-10 flex items-center justify-between gap-4 px-6 pt-6 pb-3",
               if(@tone == "hero", do: "bg-hero", else: "bg-surface")
             ]}>
-              <div class="min-w-0 flex-1">
-                <h2
-                  :if={@title != []}
-                  id={"#{@id}-title"}
-                  class="font-display text-2xl font-bold"
-                >
-                  {render_slot(@title)}
-                </h2>
-                <p
-                  :if={@description != []}
-                  id={"#{@id}-description"}
-                  class={[
-                    "mt-2 text-sm",
-                    if(@tone == "hero", do: "text-hero-muted", else: "text-ink-muted")
-                  ]}
-                >
-                  {render_slot(@description)}
-                </p>
-              </div>
+              <h2
+                :if={@title != []}
+                id={"#{@id}-title"}
+                class="min-w-0 flex-1 truncate font-display text-2xl font-bold"
+              >
+                {render_slot(@title)}
+              </h2>
+              <div :if={@title == []} class="flex-1" />
               <button
                 type="button"
                 phx-click={JS.exec("data-cancel", to: "##{@id}")}
@@ -182,7 +171,17 @@ defmodule ForkaWeb.CoreComponents do
               </button>
             </div>
             <div class="px-6 pb-6">
-              <div class={@title != [] && "mt-2"}>
+              <p
+                :if={@description != []}
+                id={"#{@id}-description"}
+                class={[
+                  "mb-4 text-sm",
+                  if(@tone == "hero", do: "text-hero-muted", else: "text-ink-muted")
+                ]}
+              >
+                {render_slot(@description)}
+              </p>
+              <div class={@title != [] && @description == [] && "mt-2"}>
                 {render_slot(@inner_block)}
               </div>
               <div :if={@actions != []} class="mt-6 flex flex-wrap justify-end gap-3">
@@ -759,12 +758,13 @@ defmodule ForkaWeb.CoreComponents do
   attr :label, :string, required: true
   attr :value, :any, required: true
   attr :options, :list, required: true
-  attr :on_select, :string, default: nil
+  attr :on_select, :string, required: true
   attr :cols, :integer, default: nil
   attr :class, :string, default: nil
   attr :rest, :global
 
-  def segmented_control(assigns) do
+  def segmented_control(%{on_select: on_select} = assigns)
+      when is_binary(on_select) and on_select != "" do
     has_selected? =
       Enum.any?(assigns.options, fn {opt_value, _} -> opt_value == assigns.value end)
 

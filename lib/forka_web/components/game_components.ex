@@ -362,7 +362,7 @@ defmodule ForkaWeb.GameComponents do
       >
         {@wait_message}
       </p>
-      <div class="grid grid-cols-6 @kb-7:grid-cols-7 gap-1 md:grid-cols-13 md:gap-2">
+      <div class="grid grid-cols-6 gap-1 @kb-7:grid-cols-7 @kb-13:grid-cols-13 @kb-13:gap-2">
         <.letter_key
           :for={letter <- @alphabet}
           :key={letter}

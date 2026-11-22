@@ -177,10 +177,11 @@ defmodule ForkaWeb.GameComponentsTest do
       assert hd(LazyHTML.attribute(root, "class")) =~ "@container"
       grid_class = hd(LazyHTML.attribute(LazyHTML.query(doc, "#kb-1 > div.grid"), "class"))
       assert grid_class =~ "grid-cols-6"
-      assert grid_class =~ "@kb-7:grid-cols-7"
       assert grid_class =~ "gap-1"
-      assert grid_class =~ "md:grid-cols-13"
-      assert grid_class =~ "md:gap-2"
+      assert grid_class =~ "@kb-7:grid-cols-7"
+      assert grid_class =~ "@kb-13:grid-cols-13"
+      assert grid_class =~ "@kb-13:gap-2"
+      refute grid_class =~ "md:grid-cols-13"
       assert LazyHTML.text(doc) =~ "Aguarde: vez de Bruno"
 
       keys = LazyHTML.query(doc, "button[data-letter]")

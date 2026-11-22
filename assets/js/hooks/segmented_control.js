@@ -20,11 +20,13 @@ const SegmentedControl = {
         return
       }
 
+      const target = radios[nextIndex]
+      if (!target.hasAttribute("phx-click")) return
+
       e.preventDefault()
       radios.forEach((radio, i) => {
         radio.setAttribute("tabindex", i === nextIndex ? "0" : "-1")
       })
-      const target = radios[nextIndex]
       target.focus()
       target.click()
     }
