@@ -26,6 +26,10 @@ defmodule ForkaWeb.Plugs.ContentSecurityPolicyTest do
     assert policy =~ "'nonce-#{nonce}'"
 
     assert [^nonce] = document |> LazyHTML.query("script[src]") |> LazyHTML.attribute("nonce")
+
+    assert [^nonce] =
+             document |> LazyHTML.query("script:not([src])") |> LazyHTML.attribute("nonce")
+
     assert Enum.empty?(LazyHTML.query(document, ~s|script:not([src]):not([nonce="#{nonce}"])|))
   end
 end

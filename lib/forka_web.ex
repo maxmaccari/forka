@@ -89,6 +89,7 @@ defmodule ForkaWeb do
       import Phoenix.HTML
       # Core UI components
       import ForkaWeb.CoreComponents
+      import ForkaWeb.GameComponents
 
       # Shortcut for generating JS commands
       alias Phoenix.LiveView.JS
