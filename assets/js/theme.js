@@ -34,18 +34,18 @@ function syncToggleButtons(mode) {
   })
 }
 
-function isBackpexPage() {
-  return Boolean(document.getElementById("backpex-app-shell"))
+function isPlayerSurface() {
+  return document.documentElement.dataset.forkaSurface === "player"
 }
 
 export function initThemeToggle() {
-  if (isBackpexPage()) return
+  if (!isPlayerSurface()) return
 
   applyMode(getStoredMode())
 
   document.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-theme-toggle]")
-    if (!btn || isBackpexPage()) return
+    if (!btn || !isPlayerSurface()) return
 
     const current = getStoredMode()
     const next = MODES[(MODES.indexOf(current) + 1) % MODES.length]
@@ -60,13 +60,13 @@ export function initThemeToggle() {
   })
 
   window.addEventListener("phx:page-loading-stop", () => {
-    if (!isBackpexPage()) {
+    if (isPlayerSurface()) {
       syncToggleButtons(getStoredMode())
     }
   })
 
   window.addEventListener("storage", (e) => {
-    if (e.key === STORAGE_KEY && !isBackpexPage()) {
+    if (e.key === STORAGE_KEY && isPlayerSurface()) {
       applyMode(getStoredMode())
     }
   })

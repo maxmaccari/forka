@@ -15,7 +15,8 @@ const GameKeyboard = {
         return
       }
 
-      if (document.querySelector('[role="dialog"]:not(.hidden), [role="alertdialog"]:not(.hidden)')) {
+      const dialogs = document.querySelectorAll('[role="dialog"], [role="alertdialog"]')
+      if (Array.from(dialogs).some((dialog) => dialog.getClientRects().length > 0)) {
         return
       }
 

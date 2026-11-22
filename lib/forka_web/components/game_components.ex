@@ -180,11 +180,14 @@ defmodule ForkaWeb.GameComponents do
     <div class={@class}>
       <p class="sr-only">Palavra: {@spoken_text}</p>
       <div aria-hidden="true" class="flex flex-wrap items-center justify-center gap-3">
-        <div :for={word <- @words} class="flex flex-nowrap gap-1">
+        <div
+          :for={word <- @words}
+          class="flex max-w-full flex-nowrap gap-1 overflow-x-auto pb-1"
+        >
           <span
             :for={cell <- word}
             class={[
-              "inline-flex items-center justify-center font-display font-bold uppercase select-none",
+              "inline-flex shrink-0 items-center justify-center font-display font-bold uppercase select-none",
               tile_size_class(@resolved_size),
               tile_state_class(cell, @folded_last, @completed)
             ]}
@@ -209,8 +212,8 @@ defmodule ForkaWeb.GameComponents do
     max_len = words |> Enum.map(&length/1) |> Enum.max()
 
     cond do
-      max_len <= 10 -> :md
-      max_len <= 12 -> :sm
+      max_len <= 8 -> :md
+      max_len <= 10 -> :sm
       true -> :xs
     end
   end
@@ -220,7 +223,7 @@ defmodule ForkaWeb.GameComponents do
   defp tile_size_class(:lg), do: "w-12 h-14 text-3xl rounded-md"
   defp tile_size_class(:md), do: "w-8 h-10 text-xl rounded-sm"
   defp tile_size_class(:sm), do: "w-7 h-9 text-lg rounded-sm"
-  defp tile_size_class(:xs), do: "w-6 h-8 text-base rounded-sm"
+  defp tile_size_class(:xs), do: "w-5 h-8 text-sm rounded-sm sm:w-6 sm:h-8 sm:text-base"
 
   defp tile_state_class(_cell, _folded_last, true) do
     "bg-success-300 text-success-900 shadow-lip-success"
@@ -350,7 +353,7 @@ defmodule ForkaWeb.GameComponents do
       id={@id}
       phx-hook="GameKeyboard"
       data-disabled={to_string(@disabled or @waiting)}
-      class={@class}
+      class={["@container", @class]}
     >
       <p
         :if={@waiting && @wait_message}
@@ -359,7 +362,7 @@ defmodule ForkaWeb.GameComponents do
       >
         {@wait_message}
       </p>
-      <div class="grid grid-cols-7 gap-2 md:grid-cols-13">
+      <div class="grid grid-cols-6 @kb-7:grid-cols-7 gap-1 md:grid-cols-13 md:gap-2">
         <.letter_key
           :for={letter <- @alphabet}
           :key={letter}

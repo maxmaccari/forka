@@ -5,7 +5,9 @@
 @source "../../deps/backpex/**/*.*ex";
 @source "../../deps/backpex/assets/js/**/*.*js";
 
-@plugin "daisyui";
+@plugin "daisyui" {
+  root: "[data-forka-surface=admin]";
+}
 @plugin "@tailwindcss/forms" {
   strategy: "class";
 }
@@ -85,20 +87,18 @@
   --text-9xl: initial;
   --text-display: clamp(3rem, 1.5rem + 4vw, 4.5rem);
   --text-display--line-height: 1.1;
-  --font-weight-*: initial;
   --font-weight-normal: 400;
   --font-weight-semibold: 600;
   --font-weight-bold: 700;
   --font-weight-extrabold: 800;
 
-  --radius-*: initial;
   --radius-sm: 0.625rem;
   --radius-md: 1rem;
   --radius-lg: 1.25rem;
   --radius-xl: 1.5rem;
+  --container-kb-7: 20.75rem;
 
   /* Elevation & tactile lip shadows */
-  --shadow-*: initial;
   --shadow-1: 0 1px 2px color-mix(in srgb, var(--color-night-900) 10%, transparent), 0 1px 3px color-mix(in srgb, var(--color-night-900) 6%, transparent);
   --shadow-2: 0 1px 3px color-mix(in srgb, var(--color-night-900) 8%, transparent), 0 8px 24px color-mix(in srgb, var(--color-night-900) 6%, transparent);
   --shadow-3: 0 2px 6px color-mix(in srgb, var(--color-night-900) 8%, transparent), 0 12px 32px color-mix(in srgb, var(--color-night-900) 10%, transparent);
@@ -261,6 +261,10 @@
 
 [data-theme="dark"] {
   color-scheme: dark;
+}
+
+html[data-forka-surface="player"] {
+  --color-accent: var(--color-accent-300);
 }
 
 html {

@@ -17,7 +17,7 @@ Forka is on Phoenix 1.8, LiveView 1.2 and Tailwind v4 (with daisyUI because Back
 - **Light mode:** indigo-tinted canvas, white surfaces, indigo ink. **Dark mode:** an indigo "night stage" (night-900 canvas, night-800 surfaces). The same orange buttons in both.
 
 ## 2. daisyUI
-Kept only for the Backpex back office (`/admin`), which depends on it. Player screens never use daisyUI classes or components; they use the semantic tokens below. Because daisyUI stays, don't add `--color-*: initial`.
+Kept only for the Backpex back office (`/admin`), which depends on it. Player screens never use daisyUI classes or components; they use the semantic tokens below. daisyUI is scoped to `data-forka-surface="admin"` and player `--color-accent` is explicitly set on `html[data-forka-surface="player"]`. Because daisyUI and Backpex share `app.css`, omit wildcard resets (`--color-*: initial`, `--font-weight-*: initial`, `--radius-*: initial`, `--shadow-*: initial`).
 
 ## 3. Personality
 - **Tone:** playful party game, chunky and tactile, friendly copy in pt-BR ("Bora jogar!", "Sua vez, Lia!"). No gallows and no stick figure.

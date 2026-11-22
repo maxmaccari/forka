@@ -72,6 +72,11 @@ defmodule ForkaWeb.GameComponentsTest do
       word_groups = LazyHTML.query(doc, "div[aria-hidden=true] > div")
       assert Enum.count(word_groups) == 2
 
+      Enum.each(LazyHTML.attribute(word_groups, "class"), fn group_class ->
+        assert group_class =~ "max-w-full"
+        assert group_class =~ "overflow-x-auto"
+      end)
+
       highlighted = LazyHTML.query(doc, "span.bg-accent.forka-pop")
       assert Enum.count(highlighted) == 1
       assert LazyHTML.text(highlighted) =~ "Ç"
@@ -79,7 +84,7 @@ defmodule ForkaWeb.GameComponentsTest do
 
     test "selects tile size automatically based on longest word length" do
       short = List.duplicate(:hidden, 8)
-      medium = List.duplicate(:hidden, 12)
+      medium = List.duplicate(:hidden, 10)
       long = List.duplicate(:hidden, 14)
 
       assert hd(
@@ -110,7 +115,7 @@ defmodule ForkaWeb.GameComponentsTest do
                  ),
                  "class"
                )
-             ) =~ "w-6 h-8"
+             ) =~ "w-5 h-8"
     end
 
     test "renders completed state with success tiles" do
@@ -169,6 +174,13 @@ defmodule ForkaWeb.GameComponentsTest do
       root = LazyHTML.query(doc, "#kb-1")
       assert LazyHTML.attribute(root, "phx-hook") == ["GameKeyboard"]
       assert LazyHTML.attribute(root, "data-disabled") == ["true"]
+      assert hd(LazyHTML.attribute(root, "class")) =~ "@container"
+      grid_class = hd(LazyHTML.attribute(LazyHTML.query(doc, "#kb-1 > div.grid"), "class"))
+      assert grid_class =~ "grid-cols-6"
+      assert grid_class =~ "@kb-7:grid-cols-7"
+      assert grid_class =~ "gap-1"
+      assert grid_class =~ "md:grid-cols-13"
+      assert grid_class =~ "md:gap-2"
       assert LazyHTML.text(doc) =~ "Aguarde: vez de Bruno"
 
       keys = LazyHTML.query(doc, "button[data-letter]")

@@ -80,7 +80,10 @@ defmodule ForkaWeb.CoreComponentsTest do
           })
 
         doc = LazyHTML.from_fragment(html)
-        assert LazyHTML.attribute(LazyHTML.query(doc, "input"), "type") == [type]
+        input_el = LazyHTML.query(doc, "input")
+        assert LazyHTML.attribute(input_el, "type") == [type]
+        assert hd(LazyHTML.attribute(input_el, "class")) =~ "ring-line-strong"
+        assert hd(LazyHTML.attribute(input_el, "class")) =~ "focus:ring-brand-ink"
         assert LazyHTML.text(doc) =~ "Dica útil"
       end
 
@@ -124,7 +127,11 @@ defmodule ForkaWeb.CoreComponentsTest do
           value: "pt-BR"
         })
 
-      assert LazyHTML.text(LazyHTML.from_fragment(sel_html)) =~ "Português"
+      sel_doc = LazyHTML.from_fragment(sel_html)
+      assert LazyHTML.text(sel_doc) =~ "Português"
+
+      assert hd(LazyHTML.attribute(LazyHTML.query(sel_doc, "select"), "class")) =~
+               "ring-line-strong"
 
       ta_html =
         render_component(&input/1, %{
@@ -135,7 +142,10 @@ defmodule ForkaWeb.CoreComponentsTest do
           value: "Olá"
         })
 
-      assert LazyHTML.text(LazyHTML.query(LazyHTML.from_fragment(ta_html), "textarea")) =~ "Olá"
+      ta_doc = LazyHTML.from_fragment(ta_html)
+      ta_el = LazyHTML.query(ta_doc, "textarea")
+      assert LazyHTML.text(ta_el) =~ "Olá"
+      assert hd(LazyHTML.attribute(ta_el, "class")) =~ "ring-line-strong"
     end
 
     test "renders from a Phoenix.HTML.FormField" do
@@ -184,9 +194,22 @@ defmodule ForkaWeb.CoreComponentsTest do
       doc = LazyHTML.from_fragment(html)
       group = LazyHTML.query(doc, "[role=radiogroup]")
       assert LazyHTML.attribute(group, "aria-label") == ["Idioma"]
+      assert LazyHTML.attribute(group, "phx-hook") == ["SegmentedControl"]
       radios = LazyHTML.query(doc, "[role=radio]")
       assert Enum.count(radios) == 2
       assert LazyHTML.attribute(radios, "aria-checked") == ["true", "false"]
+      assert LazyHTML.attribute(radios, "tabindex") == ["0", "-1"]
+
+      unmatched_html =
+        render_component(&segmented_control/1, %{
+          id: "lang-seg-empty",
+          label: "Idioma",
+          value: "es",
+          options: [{"pt", "PT-BR"}, {"en", "EN"}]
+        })
+
+      unmatched_radios = LazyHTML.query(LazyHTML.from_fragment(unmatched_html), "[role=radio]")
+      assert LazyHTML.attribute(unmatched_radios, "tabindex") == ["0", "-1"]
     end
   end
 
@@ -288,6 +311,12 @@ defmodule ForkaWeb.CoreComponentsTest do
                  "true"
                ]
 
+        container_class =
+          hd(LazyHTML.attribute(LazyHTML.query(s_doc, "#s-#{tone}-container"), "class"))
+
+        assert container_class =~ "max-h-full"
+        assert container_class =~ "overflow-y-auto"
+        assert Enum.count(LazyHTML.query(s_doc, ".sticky.top-0")) == 1
         assert LazyHTML.text(s_doc) =~ "Cura!"
       end
     end

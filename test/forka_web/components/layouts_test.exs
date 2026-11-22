@@ -34,15 +34,23 @@ defmodule ForkaWeb.LayoutsTest do
     html_el = LazyHTML.query(doc, "html")
 
     assert LazyHTML.attribute(html_el, "lang") == ["pt-BR"]
+    assert LazyHTML.attribute(html_el, "data-forka-surface") == ["player"]
     assert LazyHTML.attribute(html_el, "data-theme") == []
     refute LazyHTML.text(LazyHTML.query(doc, "title")) =~ "Phoenix Framework"
     assert Enum.count(LazyHTML.query(doc, "[data-theme-toggle]")) == 1
     assert LazyHTML.text(LazyHTML.query(doc, "header")) =~ "Forka"
+    refute Enum.empty?(LazyHTML.query(doc, ".text-ink"))
+    assert Enum.empty?(LazyHTML.query(doc, ".text-zinc-900"))
   end
 
   test "admin routes use dedicated admin_root layout without player theme toggle", %{conn: conn} do
     login_doc = conn |> get(~p"/admin/log_in") |> html_response(200) |> LazyHTML.from_document()
     assert LazyHTML.attribute(LazyHTML.query(login_doc, "html"), "lang") == ["en"]
+
+    assert LazyHTML.attribute(LazyHTML.query(login_doc, "html"), "data-forka-surface") == [
+             "admin"
+           ]
+
     assert LazyHTML.attribute(LazyHTML.query(login_doc, "html"), "data-theme") == ["light"]
     assert Enum.empty?(LazyHTML.query(login_doc, "[data-theme-toggle]"))
 
@@ -52,6 +60,11 @@ defmodule ForkaWeb.LayoutsTest do
       admin_conn |> get(~p"/admin/categories") |> html_response(200) |> LazyHTML.from_document()
 
     assert LazyHTML.attribute(LazyHTML.query(admin_doc, "html"), "lang") == ["en"]
+
+    assert LazyHTML.attribute(LazyHTML.query(admin_doc, "html"), "data-forka-surface") == [
+             "admin"
+           ]
+
     assert Enum.count(LazyHTML.query(admin_doc, "#backpex-app-shell")) == 1
     assert Enum.empty?(LazyHTML.query(admin_doc, "[data-theme-toggle]"))
   end

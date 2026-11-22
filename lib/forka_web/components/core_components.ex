@@ -122,7 +122,7 @@ defmodule ForkaWeb.CoreComponents do
     >
       <div id={"#{@id}-bg"} class="fixed inset-0 bg-hero/60 transition-opacity" aria-hidden="true" />
       <div
-        class="fixed inset-x-3 bottom-3 sm:inset-x-0 sm:mx-auto sm:max-w-lg"
+        class="fixed inset-0 flex items-end justify-center p-3"
         aria-labelledby={"#{@id}-title"}
         aria-describedby={"#{@id}-description"}
         role={@role}
@@ -135,52 +135,59 @@ defmodule ForkaWeb.CoreComponents do
           phx-key="escape"
           phx-click-away={JS.exec("data-cancel", to: "##{@id}")}
           class={[
-            "forka-pop relative hidden rounded-xl p-6 shadow-5 ring-1 transition dark:shadow-none",
+            "forka-pop relative hidden w-full max-w-lg max-h-full overflow-y-auto rounded-xl shadow-5 ring-1 transition dark:shadow-none",
             if(@tone == "hero",
               do: "bg-hero text-hero-ink ring-line/20",
               else: "bg-surface text-ink ring-line"
             )
           ]}
         >
-          <div class="absolute top-4 right-4">
-            <button
-              type="button"
-              phx-click={JS.exec("data-cancel", to: "##{@id}")}
-              aria-label={gettext("close")}
-              class={[
-                "inline-flex size-11 items-center justify-center rounded-md transition-colors",
-                if(@tone == "hero",
-                  do: "text-hero-muted hover:bg-hero-2 hover:text-hero-ink",
-                  else: "text-ink-muted hover:bg-sunken hover:text-ink"
-                )
-              ]}
-            >
-              <.icon name="hero-x-mark-solid" class="size-5" />
-            </button>
-          </div>
           <div id={"#{@id}-content"}>
-            <h2
-              :if={@title != []}
-              id={"#{@id}-title"}
-              class="pr-12 font-display text-2xl font-bold"
-            >
-              {render_slot(@title)}
-            </h2>
-            <p
-              :if={@description != []}
-              id={"#{@id}-description"}
-              class={[
-                "mt-2 text-sm",
-                if(@tone == "hero", do: "text-hero-muted", else: "text-ink-muted")
-              ]}
-            >
-              {render_slot(@description)}
-            </p>
-            <div class={@title != [] && "mt-4"}>
-              {render_slot(@inner_block)}
+            <div class={[
+              "sticky top-0 z-10 flex items-start justify-between gap-4 px-6 pt-6 pb-3",
+              if(@tone == "hero", do: "bg-hero", else: "bg-surface")
+            ]}>
+              <div class="min-w-0 flex-1">
+                <h2
+                  :if={@title != []}
+                  id={"#{@id}-title"}
+                  class="font-display text-2xl font-bold"
+                >
+                  {render_slot(@title)}
+                </h2>
+                <p
+                  :if={@description != []}
+                  id={"#{@id}-description"}
+                  class={[
+                    "mt-2 text-sm",
+                    if(@tone == "hero", do: "text-hero-muted", else: "text-ink-muted")
+                  ]}
+                >
+                  {render_slot(@description)}
+                </p>
+              </div>
+              <button
+                type="button"
+                phx-click={JS.exec("data-cancel", to: "##{@id}")}
+                aria-label={gettext("close")}
+                class={[
+                  "inline-flex size-11 shrink-0 items-center justify-center rounded-md transition-colors",
+                  if(@tone == "hero",
+                    do: "text-hero-muted hover:bg-hero-2 hover:text-hero-ink",
+                    else: "text-ink-muted hover:bg-sunken hover:text-ink"
+                  )
+                ]}
+              >
+                <.icon name="hero-x-mark-solid" class="size-5" />
+              </button>
             </div>
-            <div :if={@actions != []} class="mt-6 flex flex-wrap justify-end gap-3">
-              {render_slot(@actions)}
+            <div class="px-6 pb-6">
+              <div class={@title != [] && "mt-2"}>
+                {render_slot(@inner_block)}
+              </div>
+              <div :if={@actions != []} class="mt-6 flex flex-wrap justify-end gap-3">
+                {render_slot(@actions)}
+              </div>
             </div>
           </div>
         </.focus_wrap>
@@ -584,7 +591,11 @@ defmodule ForkaWeb.CoreComponents do
           name={@name}
           value="true"
           checked={@checked}
-          class="size-6 rounded-sm border-line-strong bg-sunken accent-brand focus:ring-0"
+          class={[
+            "size-6 rounded-sm bg-sunken accent-brand focus:ring-0",
+            @errors == [] && "border-line-strong",
+            @errors != [] && "border-danger"
+          ]}
           {@rest}
         />
         <span>{@label}</span>
@@ -606,7 +617,7 @@ defmodule ForkaWeb.CoreComponents do
         name={@name}
         class={[
           "mt-2 block min-h-12 w-full rounded-md bg-sunken px-3 py-2 text-ink ring-2 ring-inset focus:outline-none sm:text-sm",
-          @errors == [] && "ring-line focus:ring-brand",
+          @errors == [] && "ring-line-strong focus:ring-brand-ink",
           @errors != [] && "ring-danger focus:ring-danger"
         ]}
         multiple={@multiple}
@@ -632,7 +643,7 @@ defmodule ForkaWeb.CoreComponents do
         name={@name}
         class={[
           "mt-2 block min-h-24 w-full rounded-md bg-sunken px-3 py-2 text-ink placeholder:text-ink-subtle ring-2 ring-inset focus:outline-none sm:text-sm sm:leading-6",
-          @errors == [] && "ring-line focus:ring-brand",
+          @errors == [] && "ring-line-strong focus:ring-brand-ink",
           @errors != [] && "ring-danger focus:ring-danger"
         ]}
         {@rest}
@@ -656,7 +667,7 @@ defmodule ForkaWeb.CoreComponents do
         value={Form.normalize_value(@type, @value)}
         class={[
           "form-input mt-2 block min-h-12 w-full rounded-md border-0 bg-sunken px-3 py-2 text-ink placeholder:text-ink-subtle ring-2 ring-inset focus:ring-2 focus:ring-inset focus:outline-none sm:text-sm sm:leading-6",
-          @errors == [] && "ring-line focus:ring-brand",
+          @errors == [] && "ring-line-strong focus:ring-brand-ink",
           @errors != [] && "ring-danger focus:ring-danger"
         ]}
         {@rest}
@@ -754,11 +765,17 @@ defmodule ForkaWeb.CoreComponents do
   attr :rest, :global
 
   def segmented_control(assigns) do
+    has_selected? =
+      Enum.any?(assigns.options, fn {opt_value, _} -> opt_value == assigns.value end)
+
+    assigns = assign(assigns, :has_selected?, has_selected?)
+
     ~H"""
     <div
       id={@id}
       role="radiogroup"
       aria-label={@label}
+      phx-hook="SegmentedControl"
       class={[
         "grid gap-1 rounded-md bg-sunken p-1 ring-1 ring-line",
         segmented_cols_class(@cols),
@@ -767,10 +784,11 @@ defmodule ForkaWeb.CoreComponents do
       {@rest}
     >
       <button
-        :for={{opt_value, opt_label} <- @options}
+        :for={{{opt_value, opt_label}, idx} <- Enum.with_index(@options)}
         type="button"
         role="radio"
         aria-checked={to_string(@value == opt_value)}
+        tabindex={if(@value == opt_value or (!@has_selected? and idx == 0), do: "0", else: "-1")}
         phx-click={@on_select}
         phx-value-value={opt_value}
         class={[

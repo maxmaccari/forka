@@ -8,12 +8,14 @@ import { Hooks as BackpexHooks, backpexParams } from 'backpex';
 import { initThemeToggle } from "./theme"
 import GameKeyboard from "./hooks/game_keyboard"
 import RopeFeedback from "./hooks/rope_feedback"
+import SegmentedControl from "./hooks/segmented_control"
 
 initThemeToggle()
 
 const Hooks = {
   GameKeyboard,
-  RopeFeedback
+  RopeFeedback,
+  SegmentedControl
 }
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
