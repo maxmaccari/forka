@@ -1,51 +1,35 @@
 <!DOCTYPE html>
-<html lang="en" class="scrollbar-gutter-stable" data-theme={assigns[:current_theme] || "light"}>
+<html lang="pt-BR" class="scrollbar-gutter-stable">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={get_csrf_token()} />
-    <.live_title default="Forka" suffix=" · Phoenix Framework">
+    <.live_title default="Forka">
       {assigns[:page_title]}
     </.live_title>
     <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
+    <script nonce={assigns[:csp_nonce]}>
+      (() => {
+        try {
+          const theme = localStorage.getItem("forka:theme");
+          if (theme === "light" || theme === "dark") {
+            document.documentElement.setAttribute("data-theme", theme);
+          } else {
+            document.documentElement.removeAttribute("data-theme");
+          }
+        } catch (_) {}
+      })();
+    </script>
     <script defer phx-track-static src={~p"/assets/app.js"} nonce={assigns[:csp_nonce]}>
     </script>
   </head>
-  <body>
+  <body class="min-h-dvh bg-canvas font-sans text-ink antialiased">
     <.worktree_badge />
-    <header class="px-4 sm:px-6 lg:px-8">
-      <div class="flex items-center justify-between border-b border-zinc-100 py-3 text-sm">
-        <div class="flex items-center gap-4">
-          <a href="/">
-            <img src={~p"/images/logo.svg"} width="36" />
-          </a>
-          <p class="bg-brand/5 text-brand rounded-full px-2 font-medium leading-6">
-            v{Application.spec(:phoenix, :vsn)}
-          </p>
-        </div>
-        <div class="flex items-center gap-4 font-semibold leading-6 text-zinc-900">
-          <%= if @current_player do %>
-            <span class="hover:text-zinc-700">{@current_player.email}</span>
-            <a href={~p"/players/settings"} class="hover:text-zinc-700">
-              Settings
-            </a>
-            <.link href={~p"/players/log_out"} method="delete" class="hover:text-zinc-700">
-              Log out
-            </.link>
-          <% else %>
-            <.link href={~p"/players/register"} class="hover:text-zinc-700">
-              Register
-            </.link>
-            <.link
-              href={~p"/players/log_in"}
-              class="rounded-lg bg-zinc-100 px-2 py-1 hover:bg-zinc-200/80"
-            >
-              Log in <span aria-hidden="true">&rarr;</span>
-            </.link>
-          <% end %>
-        </div>
-      </div>
-    </header>
+    <.player_header
+      :if={!assigns[:hide_player_header]}
+      current_player={assigns[:current_player]}
+      current_path={assigns[:current_path]}
+    />
     {@inner_content}
   </body>
 </html>

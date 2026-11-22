@@ -24,6 +24,10 @@ defmodule ForkaWeb.Router do
     plug :fetch_current_admin
   end
 
+  pipeline :admin_layout do
+    plug :put_root_layout, html: {ForkaWeb.Layouts, :admin_root}
+  end
+
   pipeline :api do
     plug :accepts, ["json"]
   end
@@ -80,7 +84,7 @@ defmodule ForkaWeb.Router do
   ## Admin routes
 
   scope "/", ForkaWeb do
-    pipe_through [:browser, :redirect_if_admin_is_authenticated]
+    pipe_through [:browser, :admin_layout, :redirect_if_admin_is_authenticated]
 
     live_session :redirect_if_admin_is_authenticated,
       on_mount: [{ForkaWeb.AdminAuth, :redirect_if_admin_is_authenticated}] do
@@ -91,7 +95,7 @@ defmodule ForkaWeb.Router do
   end
 
   scope "/", ForkaWeb do
-    pipe_through [:browser]
+    pipe_through [:browser, :admin_layout]
 
     delete "/admin/log_out", AdminSessionController, :delete
 
@@ -103,7 +107,7 @@ defmodule ForkaWeb.Router do
   end
 
   scope "/admin", ForkaWeb.Admin do
-    pipe_through [:browser, :admin, :require_authenticated_admin]
+    pipe_through [:browser, :admin_layout, :admin, :require_authenticated_admin]
 
     get "/", RedirectController, :redirect_to_categories
 
