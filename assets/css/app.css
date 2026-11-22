@@ -1,12 +1,373 @@
-@config "../tailwind.config.js";
 @import "tailwindcss" source(none);
 @source "../css";
 @source "../js";
 @source "../../lib/forka_web";
 @source "../../deps/backpex/**/*.*ex";
 @source "../../deps/backpex/assets/js/**/*.*js";
+
 @plugin "daisyui";
 @plugin "@tailwindcss/forms" {
   strategy: "class";
 }
-/* This file is for your main application CSS */
+@plugin "../vendor/heroicons";
+
+@custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
+@custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
+@custom-variant phx-change-loading (.phx-change-loading&, .phx-change-loading &);
+
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) { @slot; }
+  @media (prefers-color-scheme: dark) {
+    &:where(:not([data-theme="light"], [data-theme="light"] *)) { @slot; }
+  }
+}
+
+/* Self-hosted OFL variable fonts (Latin + Latin Extended for pt-BR) */
+@font-face {
+  font-family: "Fredoka";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/fredoka-latin-ext-wght-normal.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D1, U+02D7-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Fredoka";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/fredoka-latin-wght-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Nunito";
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url("/fonts/nunito-latin-ext-wght-normal.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D1, U+02D7-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Nunito";
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url("/fonts/nunito-latin-wght-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Nunito";
+  font-style: italic;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url("/fonts/nunito-latin-ext-wght-italic.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D1, U+02D7-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Nunito";
+  font-style: italic;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url("/fonts/nunito-latin-wght-italic.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+FEFF, U+FFFD;
+}
+
+@theme {
+  /* Fonts, weights, radii */
+  --font-sans: "Nunito", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fredoka", "Nunito", ui-sans-serif, sans-serif;
+  --text-8xl: initial;
+  --text-9xl: initial;
+  --text-display: clamp(3rem, 1.5rem + 4vw, 4.5rem);
+  --text-display--line-height: 1.1;
+  --font-weight-*: initial;
+  --font-weight-normal: 400;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-weight-extrabold: 800;
+
+  --radius-*: initial;
+  --radius-sm: 0.625rem;
+  --radius-md: 1rem;
+  --radius-lg: 1.25rem;
+  --radius-xl: 1.5rem;
+
+  /* Elevation & tactile lip shadows */
+  --shadow-*: initial;
+  --shadow-1: 0 1px 2px color-mix(in srgb, var(--color-night-900) 10%, transparent), 0 1px 3px color-mix(in srgb, var(--color-night-900) 6%, transparent);
+  --shadow-2: 0 1px 3px color-mix(in srgb, var(--color-night-900) 8%, transparent), 0 8px 24px color-mix(in srgb, var(--color-night-900) 6%, transparent);
+  --shadow-3: 0 2px 6px color-mix(in srgb, var(--color-night-900) 8%, transparent), 0 12px 32px color-mix(in srgb, var(--color-night-900) 10%, transparent);
+  --shadow-4: 0 4px 8px color-mix(in srgb, var(--color-night-900) 8%, transparent), 0 20px 40px color-mix(in srgb, var(--color-night-900) 12%, transparent);
+  --shadow-5: 0 8px 16px color-mix(in srgb, var(--color-night-900) 10%, transparent), 0 32px 64px color-mix(in srgb, var(--color-night-900) 16%, transparent);
+  --shadow-lip-brand: 0 4px 0 var(--color-brand-lip);
+  --shadow-lip-secondary: 0 3px 0 var(--color-line);
+  --shadow-lip-danger: 0 4px 0 var(--color-danger-lip);
+  --shadow-lip-tile: 0 3px 0 var(--color-tile-lip);
+  --shadow-lip-tile-lg: 0 4px 0 var(--color-tile-lip);
+  --shadow-lip-tile-xs: 0 2px 0 var(--color-tile-lip);
+  --shadow-lip-accent: 0 3px 0 var(--color-accent-lip);
+  --shadow-lip-accent-lg: 0 4px 0 var(--color-accent-lip);
+  --shadow-lip-success: 0 3px 0 var(--color-success-lip);
+  --shadow-lip-avatar: inset 0 -3px 0 color-mix(in srgb, var(--color-night-900) 22%, transparent);
+
+  /* Palette 19 scales */
+  --color-white: hsl(0 0% 100%);
+
+  --color-grey-50: hsl(216 33% 97%);
+  --color-grey-100: hsl(214 15% 91%);
+  --color-grey-200: hsl(210 16% 82%);
+  --color-grey-300: hsl(211 13% 65%);
+  --color-grey-400: hsl(211 10% 53%);
+  --color-grey-500: hsl(211 12% 43%);
+  --color-grey-600: hsl(209 14% 37%);
+  --color-grey-700: hsl(209 18% 30%);
+  --color-grey-800: hsl(209 20% 25%);
+  --color-grey-900: hsl(210 24% 16%);
+
+  --color-brand-50: hsl(24 100% 93%);
+  --color-brand-100: hsl(22 100% 85%);
+  --color-brand-200: hsl(20 100% 77%);
+  --color-brand-300: hsl(18 100% 70%);
+  --color-brand-400: hsl(16 94% 61%);
+  --color-brand-500: hsl(14 89% 55%);
+  --color-brand-600: hsl(12 86% 47%);
+  --color-brand-700: hsl(10 93% 40%);
+  --color-brand-800: hsl(8 92% 35%);
+  --color-brand-900: hsl(6 96% 26%);
+
+  --color-night-50: hsl(221 68% 93%);
+  --color-night-100: hsl(221 78% 86%);
+  --color-night-200: hsl(224 67% 76%);
+  --color-night-300: hsl(225 57% 67%);
+  --color-night-400: hsl(227 50% 59%);
+  --color-night-500: hsl(227 42% 51%);
+  --color-night-600: hsl(228 45% 45%);
+  --color-night-700: hsl(230 49% 41%);
+  --color-night-800: hsl(232 51% 36%);
+  --color-night-900: hsl(234 62% 26%);
+  --color-night-950: hsl(234 90% 25%);
+
+  --color-accent-50: hsl(49 100% 96%);
+  --color-accent-100: hsl(48 100% 88%);
+  --color-accent-200: hsl(48 95% 76%);
+  --color-accent-300: hsl(48 94% 68%);
+  --color-accent-400: hsl(44 92% 63%);
+  --color-accent-500: hsl(42 87% 55%);
+  --color-accent-600: hsl(36 77% 49%);
+  --color-accent-700: hsl(29 80% 44%);
+  --color-accent-800: hsl(22 82% 39%);
+  --color-accent-900: hsl(15 86% 30%);
+
+  --color-warning-50: var(--color-accent-50);
+  --color-warning-100: var(--color-accent-100);
+  --color-warning-200: var(--color-accent-200);
+  --color-warning-300: var(--color-accent-300);
+  --color-warning-500: var(--color-accent-500);
+  --color-warning-800: var(--color-accent-800);
+  --color-warning-900: var(--color-accent-900);
+
+  --color-success-50: hsl(125 65% 93%);
+  --color-success-100: hsl(127 65% 85%);
+  --color-success-200: hsl(124 63% 74%);
+  --color-success-300: hsl(123 53% 55%);
+  --color-success-400: hsl(123 57% 45%);
+  --color-success-500: hsl(122 73% 35%);
+  --color-success-600: hsl(122 80% 29%);
+  --color-success-700: hsl(125 79% 26%);
+  --color-success-800: hsl(125 86% 20%);
+  --color-success-900: hsl(125 97% 14%);
+
+  --color-danger-50: hsl(0 100% 95%);
+  --color-danger-100: hsl(0 100% 87%);
+  --color-danger-200: hsl(0 100% 80%);
+  --color-danger-300: hsl(0 91% 69%);
+  --color-danger-400: hsl(0 83% 62%);
+  --color-danger-500: hsl(356 75% 53%);
+  --color-danger-600: hsl(354 85% 44%);
+  --color-danger-700: hsl(352 90% 35%);
+  --color-danger-800: hsl(350 94% 28%);
+  --color-danger-900: hsl(348 94% 20%);
+
+  /* Player colours (fixed in both themes; always paired with player initial) */
+  --color-player-1: var(--color-brand-400);
+  --color-player-2: hsl(178 78% 57%);
+  --color-player-3: hsl(300 82% 60%);
+  --color-player-4: var(--color-accent-300);
+  --color-player-5: var(--color-success-300);
+  --color-player-6: var(--color-night-200);
+  --color-on-player: var(--color-night-900);
+
+  /* Semantic tokens: light-dark(light, dark) */
+  --color-canvas: light-dark(var(--color-night-50), var(--color-night-900));
+  --color-surface: light-dark(var(--color-white), var(--color-night-800));
+  --color-sunken: light-dark(var(--color-grey-50), var(--color-night-900));
+  --color-line: light-dark(var(--color-night-100), var(--color-night-700));
+  --color-line-strong: light-dark(var(--color-night-500), var(--color-night-300));
+  --color-ink: light-dark(var(--color-night-900), var(--color-night-50));
+  --color-ink-muted: light-dark(var(--color-night-700), var(--color-night-100));
+  --color-ink-subtle: light-dark(var(--color-night-600), var(--color-night-200));
+
+  --color-brand: var(--color-brand-400);
+  --color-on-brand: var(--color-night-900);
+  --color-brand-strong: var(--color-brand-300);
+  --color-brand-ink: light-dark(var(--color-brand-700), var(--color-brand-300));
+  --color-brand-soft: light-dark(var(--color-brand-50), var(--color-brand-900));
+  --color-brand-lip: var(--color-brand-700);
+
+  --color-hero: light-dark(var(--color-night-900), var(--color-night-950));
+  --color-hero-2: light-dark(var(--color-night-800), var(--color-night-900));
+  --color-hero-ink: var(--color-night-50);
+  --color-hero-muted: var(--color-night-200);
+
+  --color-accent: var(--color-accent-300);
+  --color-accent-lip: var(--color-accent-700);
+  --color-accent-soft: light-dark(var(--color-accent-100), var(--color-accent-900));
+  --color-accent-ink: light-dark(var(--color-accent-900), var(--color-accent-200));
+
+  --color-success-soft: light-dark(var(--color-success-50), var(--color-success-900));
+  --color-success-ink: light-dark(var(--color-success-800), var(--color-success-200));
+  --color-success-lip: var(--color-success-700);
+
+  --color-warning-soft: light-dark(var(--color-warning-100), var(--color-warning-900));
+  --color-warning-ink: light-dark(var(--color-warning-900), var(--color-warning-200));
+
+  --color-danger: light-dark(var(--color-danger-600), var(--color-danger-200));
+  --color-on-danger: light-dark(var(--color-white), var(--color-night-900));
+  --color-danger-strong: light-dark(var(--color-danger-700), var(--color-danger-100));
+  --color-danger-soft: light-dark(var(--color-danger-50), var(--color-danger-900));
+  --color-danger-ink: light-dark(var(--color-danger-700), var(--color-danger-200));
+  --color-danger-lip: light-dark(var(--color-danger-900), var(--color-danger-500));
+
+  /* Game-piece tokens */
+  --color-tile: light-dark(var(--color-white), var(--color-night-800));
+  --color-tile-lip: light-dark(var(--color-night-200), var(--color-night-950));
+  --color-rope: var(--color-accent-300);
+  --color-rope-twist: var(--color-accent-500);
+  --color-rope-edge: light-dark(var(--color-brand-800), var(--color-brand-900));
+}
+
+:root {
+  color-scheme: light dark;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-brand-ink);
+  outline-offset: 2px;
+}
+
+/* Game motion primitives */
+@keyframes forka-pop {
+  0% { transform: scale(0.84); opacity: 0.4; }
+  60% { transform: scale(1.06); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes forka-rise {
+  0% { transform: translateY(16px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes forka-rope-hit {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px) rotate(-1deg); }
+  45% { transform: translateX(4px) rotate(1deg); }
+  70% { transform: translateX(-2px); }
+}
+
+@keyframes forka-rope-fray {
+  0% { opacity: 0; stroke-dashoffset: 10; }
+  100% { opacity: 1; stroke-dashoffset: 0; }
+}
+
+@keyframes forka-rope-snap-l {
+  0% { transform: translate(0, 0) rotate(0); }
+  100% { transform: translate(-3px, 1px) rotate(-2deg); }
+}
+
+@keyframes forka-rope-snap-r {
+  0% { transform: translate(0, 0) rotate(0); }
+  100% { transform: translate(3px, 1px) rotate(2deg); }
+}
+
+@keyframes forka-dots {
+  0%, 80%, 100% { opacity: 0.25; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1); }
+}
+
+.forka-pop {
+  animation: forka-pop 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+.forka-rise {
+  animation: forka-rise 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.forka-rope-hit {
+  animation: forka-rope-hit 0.35s ease;
+}
+
+.forka-rope-fray {
+  stroke-dasharray: 10;
+  animation: forka-rope-fray 0.3s ease both;
+}
+
+.forka-rope-snap-l {
+  transform-box: fill-box;
+  transform-origin: left center;
+  animation: forka-rope-snap-l 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.forka-rope-snap-r {
+  transform-box: fill-box;
+  transform-origin: right center;
+  animation: forka-rope-snap-r 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.forka-dots > i {
+  display: inline-block;
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: forka-dots 1.2s infinite ease-in-out;
+}
+
+.forka-dots > i:nth-child(2) { animation-delay: 0.2s; }
+.forka-dots > i:nth-child(3) { animation-delay: 0.4s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .forka-pop,
+  .forka-rise,
+  .forka-rope-hit,
+  .forka-rope-fray,
+  .forka-dots > i {
+    animation: none !important;
+  }
+
+  .forka-rope-snap-l {
+    animation: none !important;
+    transform: translate(-3px, 1px) rotate(-2deg);
+  }
+
+  .forka-rope-snap-r {
+    animation: none !important;
+    transform: translate(3px, 1px) rotate(2deg);
+  }
+}
