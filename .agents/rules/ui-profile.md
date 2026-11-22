@@ -9,7 +9,7 @@ Applies the UI directives (`ui.md` and the files it lists). Anything not listed 
 Design canvas: https://claude.ai/artifact/3uu2uFcEyufwSknxD3scgj (status: draft, 2026-10-31, waiting on Maxsuel's answers).
 
 ## 0. Stack note
-Forka is on Phoenix 1.8, LiveView 1.2 and Tailwind v4 (with daisyUI because Backpex needs it). `app.css` still loads the legacy `tailwind.config.js` through `@config`; moving it to the `app.css` template (§3.3) is its own task. Build the player UI with the scales below.
+Forka is on Phoenix 1.8, LiveView 1.2 and Tailwind v4 (with daisyUI because Backpex needs it). `app.css` uses pure Tailwind v4 (`@theme`, `@custom-variant`, `@plugin "../vendor/heroicons"`) without `tailwind.config.js`. Build the player UI with the scales below.
 
 ## 1. Palette
 - **Palette 19** (Appendix A): Indigo + Orange (Vivid), Cool Grey; supporting Yellow (Vivid), Red (Vivid), Green (Vivid). Borrowed: Cyan (Vivid) 400 and Magenta (Vivid) 400 as player colours only.
@@ -103,7 +103,7 @@ Kept only for the Backpex back office (`/admin`), which depends on it. Player sc
 }
 ```
 
-- **Why each override:** `brand` is Orange (Vivid) 400 with dark `on-brand` text, because white on orange only passes at 700 (too dull for a game button); `brand-ink` 700 / 300 for links and focus; ink and lines come from Indigo so the night stage and light canvas share one temperature; `hero-muted` added for secondary text on the stage.
+- **Why each override:** `brand` is Orange (Vivid) 400 with dark `on-brand` text, because white on orange only passes at 700 (too dull for a game button). In light mode, `brand-400` measures 2.83:1 on `surface` and 2.32:1 on `canvas`, so primary buttons always pair `brand-400` with a solid 4px `brand-700` bottom lip (`--shadow-lip-brand`, 5.74:1 on `surface` / 4.70:1 on `canvas`) and `ring-1 ring-inset ring-brand-lip`. `brand-ink` 700 / 300 is used for links and focus; `danger` uses `danger-600` + white in light mode and `danger-200` + `night-900` in dark mode (`ui-tokens.md §3.2`); ink and lines come from Indigo so the night stage and light canvas share one temperature; `hero-muted` / `hero-2` support secondary text and gradients on the stage; `warning-*`, `tile`, `tile-lip`, `brand-lip`, `accent-lip`, `success-lip`, `danger-lip`, `rope-twist`, and `rope-edge` support game pieces and tactile lips.
 - **Lowest contrast pairs measured (WCAG 2.x):** `on-player` on player-3 magenta 4.56:1 (both themes); `brand-ink` on canvas, light 4.66:1; `brand-ink` on surface, dark 4.62:1; `ink-subtle` on surface, dark 4.58:1; `on-brand` on `brand` 5.03:1; `line-strong` on canvas 4.53:1 light, 4.77:1 dark (3:1 target); completed tile text success-900 on success-300 5.15:1.
 
 ## 5. Surfaces
@@ -122,7 +122,7 @@ Kept only for the Backpex back office (`/admin`), which depends on it. Player sc
 - **Not enabled:** EX-09 (the board has several backgrounds), EX-07.
 
 ## 7. Domain notes
-- **Components:** `ForkaWeb.GameComponents`: `cord`, `player_chip`, `word_tiles`, `letter_key`, `keyboard`, `turn_banner`, `moment_sheet`, `podium`.
+- **Components:** `ForkaWeb.GameComponents`: `rope`, `player_chip`, `word_tiles`, `letter_key`, `keyboard`, `turn_banner`, `moment_sheet`, `podium`.
 - **Keyboard:** alphabetical A–Z grid, 7 columns on phones (keys at least 44×48px), 13 columns on desktop; physical-keyboard input on desktop. Accents and Ç are folded (guessing A reveals Ã, C reveals Ç), so there are no accent keys. Key states: free, right (success tint plus ring), wrong (struck through on `sunken`); used keys are `disabled` with an `aria-label` like "E, certa".
 - **Word tiles:** spaces split words into groups that wrap; hyphens are pre-revealed. An sr-only line reads the word ("O, oculta, …").
 - **Turn:** the current player's chip has a 3px `brand` ring and a "Vez" tag (`aria-current`); the turn heading is `aria-live="polite"`. Other players' turns disable the keyboard with "Aguarde: vez de Bruno".
