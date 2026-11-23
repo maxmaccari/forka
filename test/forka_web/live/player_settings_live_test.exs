@@ -15,6 +15,7 @@ defmodule ForkaWeb.PlayerSettingsLiveTest do
         |> live(~p"/players/settings")
 
       assert page_title(lv) =~ "Minha conta"
+      assert has_element?(lv, ~s|a[href="#{~p"/"}"][aria-label="Voltar para o início"]|)
       assert has_element?(lv, "#email-settings-card")
       assert has_element?(lv, "#password-settings-card")
       assert has_element?(lv, "#session-settings-card")

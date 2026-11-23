@@ -18,9 +18,11 @@ defmodule ForkaWeb.PlayerResetPasswordLive do
           phx-submit="reset_password"
           phx-change="validate"
         >
-          <.alert :if={@check_errors} tone="danger" role="alert">
-            Revise os campos abaixo para continuar.
-          </.alert>
+          <:alert>
+            <.alert :if={@check_errors} tone="danger" role="alert" class="w-full">
+              Revise os campos abaixo para continuar.
+            </.alert>
+          </:alert>
 
           <.input
             field={@form[:password]}

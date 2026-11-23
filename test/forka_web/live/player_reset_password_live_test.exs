@@ -129,6 +129,42 @@ defmodule ForkaWeb.PlayerResetPasswordLiveTest do
       assert result =~ "deve ter no mínimo 12 caracteres"
       assert result =~ "não confere com a senha"
     end
+
+    test "REQ-07: keeps reserved alert region mounted across empty, failed submit, and valid live edit",
+         %{conn: conn, token: token} do
+      {:ok, lv, _html} = live(conn, ~p"/players/reset_password/#{token}")
+
+      assert has_element?(lv, "#reset_password_form-alert")
+      refute has_element?(lv, "#reset_password_form-alert[role]")
+      refute has_element?(lv, ~s|#reset_password_form-alert [role="alert"]|)
+
+      lv
+      |> form("#reset_password_form",
+        player: %{
+          "password" => "too short",
+          "password_confirmation" => "does not match"
+        }
+      )
+      |> render_submit()
+
+      assert has_element?(
+               lv,
+               ~s|#reset_password_form-alert [role="alert"]|,
+               "Revise os campos abaixo para continuar."
+             )
+
+      lv
+      |> element("#reset_password_form")
+      |> render_change(
+        player: %{
+          "password" => "new valid password",
+          "password_confirmation" => "new valid password"
+        }
+      )
+
+      assert has_element?(lv, "#reset_password_form-alert")
+      refute has_element?(lv, ~s|#reset_password_form-alert [role="alert"]|)
+    end
   end
 
   describe "Reset password navigation" do

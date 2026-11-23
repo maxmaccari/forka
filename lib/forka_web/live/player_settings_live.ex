@@ -7,7 +7,11 @@ defmodule ForkaWeb.PlayerSettingsLive do
   def render(assigns) do
     ~H"""
     <div class="mx-auto max-w-2xl">
-      <Layouts.subpage_header title="Minha conta" back_to={~p"/"} back_label="Voltar para salas" />
+      <Layouts.subpage_header
+        title="Minha conta"
+        back_to={~p"/"}
+        back_label="Voltar para o início"
+      />
 
       <div class="space-y-6">
         <.card id="email-settings-card" padding="lg" bordered>

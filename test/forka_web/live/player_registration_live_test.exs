@@ -92,6 +92,36 @@ defmodule ForkaWeb.PlayerRegistrationLiveTest do
 
       assert result =~ "já está em uso"
     end
+
+    test "REQ-05: keeps reserved alert region mounted across empty, failed submit, and valid live edit",
+         %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/players/register")
+
+      assert has_element?(lv, "#registration_form-alert")
+      refute has_element?(lv, "#registration_form-alert[role]")
+      refute has_element?(lv, ~s|#registration_form-alert [role="alert"]|)
+
+      player = insert(:player)
+
+      lv
+      |> form("#registration_form",
+        player: %{"email" => player.email, "password" => "valid_password"}
+      )
+      |> render_submit()
+
+      assert has_element?(
+               lv,
+               ~s|#registration_form-alert [role="alert"]|,
+               "Revise os campos abaixo para continuar."
+             )
+
+      lv
+      |> element("#registration_form")
+      |> render_change(player: player_registration_params())
+
+      assert has_element?(lv, "#registration_form-alert")
+      refute has_element?(lv, ~s|#registration_form-alert [role="alert"]|)
+    end
   end
 
   describe "registration navigation" do
