@@ -159,7 +159,7 @@ defmodule ForkaWeb.PlayerAuth do
     else
       socket =
         socket
-        |> Phoenix.LiveView.put_flash(:error, "You must log in to access this page.")
+        |> Phoenix.LiveView.put_flash(:error, "Você precisa entrar para acessar esta página.")
         |> Phoenix.LiveView.redirect(to: ~p"/players/log_in")
 
       {:halt, socket}
@@ -177,6 +177,8 @@ defmodule ForkaWeb.PlayerAuth do
   end
 
   defp mount_current_player(socket, session) do
+    Gettext.put_locale(ForkaWeb.Gettext, "pt_BR")
+
     Phoenix.Component.assign_new(socket, :current_player, fn ->
       if player_token = session["player_token"] do
         Players.get_player_by_session_token(player_token)
@@ -208,7 +210,7 @@ defmodule ForkaWeb.PlayerAuth do
       conn
     else
       conn
-      |> put_flash(:error, "You must log in to access this page.")
+      |> put_flash(:error, "Você precisa entrar para acessar esta página.")
       |> maybe_store_return_to()
       |> redirect(to: ~p"/players/log_in")
       |> halt()
