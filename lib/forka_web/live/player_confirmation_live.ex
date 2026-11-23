@@ -5,27 +5,47 @@ defmodule ForkaWeb.PlayerConfirmationLive do
 
   def render(%{live_action: :edit} = assigns) do
     ~H"""
-    <div class="mx-auto max-w-sm">
-      <.header class="text-center">Confirm Account</.header>
+    <div class="mx-auto max-w-md">
+      <.card id="confirmation-card" padding="lg" bordered>
+        <.header class="text-center">
+          Confirmar conta
+          <:subtitle>Clique no botão abaixo para confirmar seu endereço de e-mail.</:subtitle>
+        </.header>
 
-      <.simple_form for={@form} id="confirmation_form" phx-submit="confirm_account">
-        <input type="hidden" name={@form[:token].name} value={@form[:token].value} />
-        <:actions>
-          <.button phx-disable-with="Confirming..." class="w-full">Confirm my account</.button>
-        </:actions>
-      </.simple_form>
+        <.simple_form for={@form} id="confirmation_form" phx-submit="confirm_account">
+          <input type="hidden" name={@form[:token].name} value={@form[:token].value} />
+          <:actions>
+            <.button phx-disable-with="Confirmando..." full>Confirmar minha conta</.button>
+          </:actions>
+        </.simple_form>
 
-      <p class="text-center mt-4">
-        <.link href={~p"/players/register"}>Register</.link>
-        | <.link href={~p"/players/log_in"}>Log in</.link>
-      </p>
+        <p class="mt-6 text-center text-sm text-ink-muted">
+          <.link
+            navigate={~p"/players/register"}
+            class="font-semibold text-brand-ink hover:underline"
+          >
+            Criar conta
+          </.link>
+          <span aria-hidden="true" class="mx-2 text-ink-subtle">·</span>
+          <.link
+            navigate={~p"/players/log_in"}
+            class="font-semibold text-brand-ink hover:underline"
+          >
+            Entrar
+          </.link>
+        </p>
+      </.card>
     </div>
     """
   end
 
   def mount(%{"token" => token}, _session, socket) do
     form = to_form(%{"token" => token}, as: "player")
-    {:ok, assign(socket, form: form), temporary_assigns: [form: nil]}
+
+    {:ok,
+     socket
+     |> assign(:page_title, "Confirmar conta")
+     |> assign(:form, form), temporary_assigns: [form: nil]}
   end
 
   # Do not log in the player after confirmation to avoid a
@@ -35,7 +55,7 @@ defmodule ForkaWeb.PlayerConfirmationLive do
       {:ok, _} ->
         {:noreply,
          socket
-         |> put_flash(:info, "Player confirmed successfully.")
+         |> put_flash(:info, "Conta confirmada com sucesso!")
          |> redirect(to: ~p"/")}
 
       :error ->
@@ -50,7 +70,7 @@ defmodule ForkaWeb.PlayerConfirmationLive do
           %{} ->
             {:noreply,
              socket
-             |> put_flash(:error, "Player confirmation link is invalid or it has expired.")
+             |> put_flash(:error, "O link de confirmação é inválido ou expirou.")
              |> redirect(to: ~p"/")}
         end
     end

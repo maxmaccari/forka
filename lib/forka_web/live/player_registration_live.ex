@@ -6,39 +6,63 @@ defmodule ForkaWeb.PlayerRegistrationLive do
 
   def render(assigns) do
     ~H"""
-    <div class="mx-auto max-w-sm">
-      <.header class="text-center">
-        Register for an account
-        <:subtitle>
-          Already registered?
-          <.link navigate={~p"/players/log_in"} class="font-semibold text-brand hover:underline">
-            Log in
-          </.link>
-          to your account now.
-        </:subtitle>
-      </.header>
+    <div class="mx-auto max-w-md">
+      <.card id="registration-card" padding="lg" bordered>
+        <.header class="text-center">
+          Criar conta
+          <:subtitle>
+            Já tem uma conta?
+            <.link
+              navigate={~p"/players/log_in"}
+              class="font-semibold text-brand-ink hover:underline"
+            >
+              Entrar
+            </.link>
+          </:subtitle>
+        </.header>
 
-      <.simple_form
-        for={@form}
-        id="registration_form"
-        phx-submit="save"
-        phx-change="validate"
-        phx-trigger-action={@trigger_submit}
-        action={~p"/players/log_in?_action=registered"}
-        method="post"
-      >
-        <.error :if={@check_errors}>
-          Oops, something went wrong! Please check the errors below.
-        </.error>
+        <.simple_form
+          for={@form}
+          id="registration_form"
+          phx-submit="save"
+          phx-change="validate"
+          phx-trigger-action={@trigger_submit}
+          action={~p"/players/log_in?_action=registered"}
+          method="post"
+        >
+          <.alert :if={@check_errors} tone="danger" role="alert">
+            Revise os campos abaixo para continuar.
+          </.alert>
 
-        <.input field={@form[:email]} type="email" label="Email" required />
-        <.input field={@form[:username]} type="text" label="Username" required />
-        <.input field={@form[:password]} type="password" label="Password" required />
+          <.input
+            field={@form[:email]}
+            type="email"
+            label="E-mail"
+            autocomplete="email"
+            required
+          />
+          <.input
+            field={@form[:username]}
+            type="text"
+            label="Nome de usuário"
+            hint="De 3 a 20 caracteres: letras, números e underline (_)."
+            autocomplete="username"
+            required
+          />
+          <.input
+            field={@form[:password]}
+            type="password"
+            label="Senha"
+            hint="Mínimo de 12 caracteres."
+            autocomplete="new-password"
+            required
+          />
 
-        <:actions>
-          <.button phx-disable-with="Creating account..." class="w-full">Create an account</.button>
-        </:actions>
-      </.simple_form>
+          <:actions>
+            <.button phx-disable-with="Criando conta..." full>Criar conta</.button>
+          </:actions>
+        </.simple_form>
+      </.card>
     </div>
     """
   end
@@ -48,7 +72,7 @@ defmodule ForkaWeb.PlayerRegistrationLive do
 
     socket =
       socket
-      |> assign(trigger_submit: false, check_errors: false)
+      |> assign(page_title: "Criar conta", trigger_submit: false, check_errors: false)
       |> assign_form(changeset)
 
     {:ok, socket, temporary_assigns: [form: nil]}

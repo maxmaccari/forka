@@ -4,11 +4,15 @@ defmodule ForkaWeb.PlayerRegistrationLiveTest do
   import Phoenix.LiveViewTest
 
   describe "Registration page" do
-    test "renders registration page", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/players/register")
+    test "REQ-05: renders registration page in player shell with pt-BR copy", %{conn: conn} do
+      {:ok, lv, html} = live(conn, ~p"/players/register")
 
-      assert html =~ "Register"
-      assert html =~ "Log in"
+      assert page_title(lv) =~ "Criar conta"
+      assert has_element?(lv, "#registration-card")
+      assert has_element?(lv, "#registration_form")
+      assert html =~ "Criar conta"
+      assert html =~ "Entrar"
+      assert html =~ "Nome de usuário"
     end
 
     test "redirects if already logged in", %{conn: conn} do
@@ -21,17 +25,31 @@ defmodule ForkaWeb.PlayerRegistrationLiveTest do
       assert {:ok, _conn} = result
     end
 
-    test "renders errors for invalid data", %{conn: conn} do
+    test "REQ-05: renders accessible pt-BR validation errors for invalid data", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/players/register")
 
       result =
         lv
         |> element("#registration_form")
-        |> render_change(player: %{"email" => "with spaces", "password" => "too short"})
+        |> render_change(
+          player: %{
+            "email" => "with spaces",
+            "username" => "bad user!",
+            "password" => "too short"
+          }
+        )
 
-      assert result =~ "Register"
-      assert result =~ "must have the @ sign and no spaces"
-      assert result =~ "should be at least 12 character"
+      refute has_element?(lv, ~s|#registration_form [role="alert"]|)
+
+      assert has_element?(
+               lv,
+               ~s|input#player_email[aria-invalid="true"][aria-describedby="player_email-feedback"]|
+             )
+
+      assert result =~ "Criar conta"
+      assert result =~ "deve conter @ e não ter espaços"
+      assert result =~ "use apenas letras, números e underline (_)"
+      assert result =~ "deve ter no mínimo 12 caracteres"
     end
   end
 
@@ -50,11 +68,11 @@ defmodule ForkaWeb.PlayerRegistrationLiveTest do
       conn = get(conn, "/")
       response = html_response(conn, 200)
       assert response =~ email
-      assert response =~ "Settings"
-      assert response =~ "Log out"
+      assert response =~ "Minha conta"
+      assert response =~ "Sair"
     end
 
-    test "renders errors for duplicated email", %{conn: conn} do
+    test "REQ-05: renders scoped alert and pt-BR error for duplicated email", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/players/register")
 
       player = insert(:player, email: "test@email.com")
@@ -66,21 +84,27 @@ defmodule ForkaWeb.PlayerRegistrationLiveTest do
         )
         |> render_submit()
 
-      assert result =~ "has already been taken"
+      assert has_element?(
+               lv,
+               ~s|#registration_form [role="alert"]|,
+               "Revise os campos abaixo para continuar."
+             )
+
+      assert result =~ "já está em uso"
     end
   end
 
   describe "registration navigation" do
-    test "redirects to login page when the Log in button is clicked", %{conn: conn} do
+    test "redirects to login page when Entrar link is clicked", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/players/register")
 
       {:ok, _login_live, login_html} =
         lv
-        |> element("main a", "Log in")
+        |> element("main a", "Entrar")
         |> render_click()
         |> follow_redirect(conn, ~p"/players/log_in")
 
-      assert login_html =~ "Log in"
+      assert login_html =~ "Entrar na sua conta"
     end
   end
 end
