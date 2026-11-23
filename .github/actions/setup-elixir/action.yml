@@ -1,0 +1,64 @@
+name: Set up Elixir
+description: >-
+  Installs Erlang/OTP and Elixir, restores the deps and _build cache, and
+  fetches and compiles the dependencies. MIX_ENV comes from the calling
+  workflow.
+
+inputs:
+  save-cache:
+    description: >-
+      Save the deps and _build cache when it was not an exact hit. Only one
+      job per MIX_ENV sets this, so parallel jobs don't race to save the same
+      key.
+    required: false
+    default: "false"
+
+outputs:
+  otp-version:
+    description: The installed Erlang/OTP version.
+    value: ${{ steps.beam.outputs.otp-version }}
+  elixir-version:
+    description: The installed Elixir version.
+    value: ${{ steps.beam.outputs.elixir-version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install Erlang/OTP and Elixir
+      id: beam
+      uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+      with:
+        otp-version: '29.1.2'
+        elixir-version: '1.20.4'
+        version-type: strict
+
+    - name: Restore deps and _build cache
+      id: mix-cache
+      uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      with:
+        path: |
+          deps
+          _build
+        key: mix-${{ runner.os }}-${{ runner.arch }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ env.MIX_ENV }}-${{ hashFiles('mix.lock') }}
+        restore-keys: |
+          mix-${{ runner.os }}-${{ runner.arch }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ env.MIX_ENV }}-
+
+    - name: Fetch locked dependencies
+      shell: bash
+      run: mix deps.get --check-locked
+
+    - name: Compile dependencies
+      shell: bash
+      run: mix deps.compile
+
+    # Saved before the app compiles, so the cache holds dependencies only and
+    # every job compiles Forka from scratch: a cached build can never hide a
+    # compile warning from `mix compile --warnings-as-errors`.
+    - name: Save deps and _build cache
+      if: inputs.save-cache == 'true' && steps.mix-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      with:
+        path: |
+          deps
+          _build
+        key: ${{ steps.mix-cache.outputs.cache-primary-key }}
