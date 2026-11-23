@@ -153,14 +153,14 @@ defmodule ForkaWeb.Layouts do
                   navigate={~p"/players/settings"}
                   class="flex min-h-11 items-center rounded-md px-3 text-sm font-semibold text-ink hover:bg-sunken"
                 >
-                  Settings
+                  Minha conta
                 </.link>
                 <.link
                   href={~p"/players/log_out"}
                   method="delete"
                   class="flex min-h-11 items-center rounded-md px-3 text-sm font-semibold text-danger-ink hover:bg-danger-soft"
                 >
-                  Log out
+                  Sair
                 </.link>
               </div>
             </details>
@@ -169,13 +169,13 @@ defmodule ForkaWeb.Layouts do
               navigate={~p"/players/register"}
               class="inline-flex min-h-11 items-center rounded-md px-3 text-sm font-bold text-ink-muted hover:bg-sunken hover:text-ink"
             >
-              Register
+              Criar conta
             </.link>
             <.link
               navigate={~p"/players/log_in"}
               class="inline-flex min-h-11 items-center rounded-md bg-brand px-4 font-display text-sm font-bold text-on-brand shadow-lip-brand ring-1 ring-inset ring-brand-lip transition active:translate-y-1 active:shadow-none hover:bg-brand-strong"
             >
-              Log in
+              Entrar
             </.link>
           <% end %>
         </div>

@@ -160,6 +160,58 @@ defmodule ForkaWeb.CoreComponentsTest do
       doc = LazyHTML.from_fragment(html)
       assert LazyHTML.attribute(LazyHTML.query(doc, "input"), "value") == ["Lia"]
     end
+
+    test "REQ-04A: associates hints and errors with aria-describedby and aria-invalid" do
+      hint_html =
+        render_component(&input/1, %{
+          id: "field-hint",
+          name: "player[password]",
+          type: "password",
+          label: "Senha",
+          hint: "Mínimo de 12 caracteres.",
+          value: ""
+        })
+
+      hint_doc = LazyHTML.from_fragment(hint_html)
+      hint_input = LazyHTML.query(hint_doc, "input#field-hint")
+      assert LazyHTML.attribute(hint_input, "aria-invalid") == []
+      assert LazyHTML.attribute(hint_input, "aria-describedby") == ["field-hint-feedback"]
+
+      assert LazyHTML.text(LazyHTML.query(hint_doc, "#field-hint-feedback")) =~
+               "Mínimo de 12 caracteres."
+
+      err_html =
+        render_component(&input/1, %{
+          id: "field-invalid",
+          name: "player[email]",
+          type: "email",
+          label: "E-mail",
+          errors: ["deve conter @ e não ter espaços"],
+          value: "invalid"
+        })
+
+      err_doc = LazyHTML.from_fragment(err_html)
+      err_input = LazyHTML.query(err_doc, "input#field-invalid")
+      assert LazyHTML.attribute(err_input, "aria-invalid") == ["true"]
+      assert LazyHTML.attribute(err_input, "aria-describedby") == ["field-invalid-feedback"]
+
+      assert LazyHTML.text(LazyHTML.query(err_doc, "#field-invalid-feedback")) =~
+               "deve conter @ e não ter espaços"
+
+      plain_html =
+        render_component(&input/1, %{
+          id: "field-plain",
+          name: "player[email]",
+          type: "email",
+          label: "E-mail",
+          value: ""
+        })
+
+      plain_doc = LazyHTML.from_fragment(plain_html)
+      plain_input = LazyHTML.query(plain_doc, "input#field-plain")
+      assert LazyHTML.attribute(plain_input, "aria-invalid") == []
+      assert LazyHTML.attribute(plain_input, "aria-describedby") == []
+    end
   end
 
   describe "switch/1 and segmented_control/1" do
@@ -407,6 +459,76 @@ defmodule ForkaWeb.CoreComponentsTest do
 
       assert LazyHTML.attribute(LazyHTML.query(LazyHTML.from_fragment(back_html), "a"), "href") ==
                ["/"]
+    end
+  end
+
+  describe "simple_form/1" do
+    test "omits reserved alert region and keeps mt-8 spacing when :alert is not provided" do
+      form = Component.to_form(%{}, as: :player)
+
+      html =
+        render_component(&simple_form/1, %{
+          for: form,
+          id: "sample_form",
+          inner_block: [%{__slot__: :inner_block, inner_block: fn _, _ -> "Campo" end}]
+        })
+
+      doc = LazyHTML.from_fragment(html)
+      assert Enum.empty?(LazyHTML.query(doc, "#sample_form-alert"))
+      fields_class = hd(LazyHTML.attribute(LazyHTML.query(doc, "form > div"), "class"))
+      assert fields_class =~ "mt-8"
+      refute fields_class =~ "mt-4"
+    end
+
+    test "reserves accessible height for :alert slot across empty and populated states" do
+      form = Component.to_form(%{}, as: :player)
+
+      empty_html =
+        render_component(&simple_form/1, %{
+          for: form,
+          id: "sample_form",
+          alert: [%{__slot__: :alert, inner_block: fn _, _ -> "" end}],
+          inner_block: [%{__slot__: :inner_block, inner_block: fn _, _ -> "Campo" end}]
+        })
+
+      empty_doc = LazyHTML.from_fragment(empty_html)
+      empty_alert_region = LazyHTML.query(empty_doc, "#sample_form-alert")
+      assert Enum.count(empty_alert_region) == 1
+      assert LazyHTML.attribute(empty_alert_region, "role") == []
+      assert Enum.empty?(LazyHTML.query(empty_doc, ~s|#sample_form-alert [role="alert"]|))
+
+      empty_alert_class = hd(LazyHTML.attribute(empty_alert_region, "class"))
+      assert empty_alert_class =~ "min-h-24"
+      assert empty_alert_class =~ "sm:min-h-16"
+
+      empty_fields_class =
+        hd(LazyHTML.attribute(LazyHTML.query(empty_doc, "form > div:last-child"), "class"))
+
+      assert empty_fields_class =~ "mt-4"
+      refute empty_fields_class =~ "mt-8"
+
+      populated_html =
+        render_component(&simple_form/1, %{
+          for: form,
+          id: "sample_form",
+          alert: [
+            %{
+              __slot__: :alert,
+              inner_block: fn _, _ -> Phoenix.HTML.raw(~s|<div role="alert">Erro</div>|) end
+            }
+          ],
+          inner_block: [%{__slot__: :inner_block, inner_block: fn _, _ -> "Campo" end}]
+        })
+
+      populated_doc = LazyHTML.from_fragment(populated_html)
+      populated_alert_region = LazyHTML.query(populated_doc, "#sample_form-alert")
+      assert Enum.count(populated_alert_region) == 1
+      assert LazyHTML.attribute(populated_alert_region, "role") == []
+
+      assert Enum.count(LazyHTML.query(populated_doc, ~s|#sample_form-alert [role="alert"]|)) == 1
+
+      assert LazyHTML.text(LazyHTML.query(populated_doc, ~s|#sample_form-alert [role="alert"]|)) =~
+               "Erro"
     end
   end
 end

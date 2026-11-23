@@ -5,31 +5,53 @@ defmodule ForkaWeb.PlayerConfirmationInstructionsLive do
 
   def render(assigns) do
     ~H"""
-    <div class="mx-auto max-w-sm">
-      <.header class="text-center">
-        No confirmation instructions received?
-        <:subtitle>We'll send a new confirmation link to your inbox</:subtitle>
-      </.header>
+    <div class="mx-auto max-w-md">
+      <.card id="resend-confirmation-card" padding="lg" bordered>
+        <.header class="text-center">
+          Não recebeu o e-mail de confirmação?
+          <:subtitle>Enviaremos um novo link de confirmação para sua caixa de entrada.</:subtitle>
+        </.header>
 
-      <.simple_form for={@form} id="resend_confirmation_form" phx-submit="send_instructions">
-        <.input field={@form[:email]} type="email" placeholder="Email" required />
-        <:actions>
-          <.button phx-disable-with="Sending..." class="w-full">
-            Resend confirmation instructions
-          </.button>
-        </:actions>
-      </.simple_form>
+        <.simple_form for={@form} id="resend_confirmation_form" phx-submit="send_instructions">
+          <.input
+            field={@form[:email]}
+            type="email"
+            label="E-mail"
+            autocomplete="email"
+            required
+          />
+          <:actions>
+            <.button phx-disable-with="Enviando..." full>
+              Reenviar instruções de confirmação
+            </.button>
+          </:actions>
+        </.simple_form>
 
-      <p class="text-center mt-4">
-        <.link href={~p"/players/register"}>Register</.link>
-        | <.link href={~p"/players/log_in"}>Log in</.link>
-      </p>
+        <p class="mt-6 text-center text-sm text-ink-muted">
+          <.link
+            navigate={~p"/players/register"}
+            class="font-semibold text-brand-ink hover:underline"
+          >
+            Criar conta
+          </.link>
+          <span aria-hidden="true" class="mx-2 text-ink-subtle">·</span>
+          <.link
+            navigate={~p"/players/log_in"}
+            class="font-semibold text-brand-ink hover:underline"
+          >
+            Entrar
+          </.link>
+        </p>
+      </.card>
     </div>
     """
   end
 
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, form: to_form(%{}, as: "player"))}
+    {:ok,
+     socket
+     |> assign(:page_title, "Reenviar confirmação")
+     |> assign(:form, to_form(%{}, as: "player"))}
   end
 
   def handle_event("send_instructions", %{"player" => %{"email" => email}}, socket) do
@@ -41,7 +63,7 @@ defmodule ForkaWeb.PlayerConfirmationInstructionsLive do
     end
 
     info =
-      "If your email is in our system and it has not been confirmed yet, you will receive an email with instructions shortly."
+      "Se este e-mail estiver cadastrado e ainda não confirmado, você receberá as instruções em instantes."
 
     {:noreply,
      socket

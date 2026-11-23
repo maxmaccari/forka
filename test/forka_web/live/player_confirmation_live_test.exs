@@ -12,9 +12,15 @@ defmodule ForkaWeb.PlayerConfirmationLiveTest do
   end
 
   describe "Confirm player" do
-    test "renders confirmation page", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/players/confirm/some-token")
-      assert html =~ "Confirm Account"
+    test "REQ-06: renders confirmation page in player shell with pt-BR copy", %{conn: conn} do
+      {:ok, lv, html} = live(conn, ~p"/players/confirm/some-token")
+
+      assert page_title(lv) =~ "Confirmar conta"
+      assert has_element?(lv, "#confirmation-card")
+      assert has_element?(lv, "#confirmation_form")
+      assert html =~ "Confirmar conta"
+      assert html =~ "Criar conta"
+      assert html =~ "Entrar"
     end
 
     test "confirms the given token once", %{conn: conn, player: player} do
@@ -33,8 +39,8 @@ defmodule ForkaWeb.PlayerConfirmationLiveTest do
 
       assert {:ok, conn} = result
 
-      assert Phoenix.Flash.get(conn.assigns.flash, :info) =~
-               "Player confirmed successfully"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) ==
+               "Conta confirmada com sucesso!"
 
       assert Players.get_player!(player.id).confirmed_at
       refute get_session(conn, :player_token)
@@ -51,8 +57,8 @@ defmodule ForkaWeb.PlayerConfirmationLiveTest do
 
       assert {:ok, conn} = result
 
-      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~
-               "Player confirmation link is invalid or it has expired"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
+               "O link de confirmação é inválido ou expirou."
 
       # when logged in
       conn =
@@ -80,8 +86,8 @@ defmodule ForkaWeb.PlayerConfirmationLiveTest do
         |> render_submit()
         |> follow_redirect(conn, ~p"/")
 
-      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~
-               "Player confirmation link is invalid or it has expired"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
+               "O link de confirmação é inválido ou expirou."
 
       refute Players.get_player!(player.id).confirmed_at
     end

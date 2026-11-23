@@ -4,12 +4,17 @@ defmodule ForkaWeb.PlayerLoginLiveTest do
   import Phoenix.LiveViewTest
 
   describe "Log in page" do
-    test "renders log in page", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/players/log_in")
+    test "REQ-04: renders log in page in player shell with pt-BR copy", %{conn: conn} do
+      {:ok, lv, html} = live(conn, ~p"/players/log_in")
 
-      assert html =~ "Log in"
-      assert html =~ "Register"
-      assert html =~ "Forgot your password?"
+      assert page_title(lv) =~ "Entrar"
+      assert has_element?(lv, "#login-card")
+      assert has_element?(lv, "#login_form")
+      assert html =~ "Entrar na sua conta"
+      assert html =~ "Criar conta"
+      assert html =~ "Esqueceu a senha?"
+      assert html =~ "E-mail ou nome de usuário"
+      assert html =~ "Manter sessão conectada"
     end
 
     test "redirects if already logged in", %{conn: conn} do
@@ -56,9 +61,8 @@ defmodule ForkaWeb.PlayerLoginLiveTest do
       assert redirected_to(conn) == ~p"/"
     end
 
-    test "redirects to login page with a flash error if there are no valid credentials", %{
-      conn: conn
-    } do
+    test "REQ-04: redirects to login page with localized flash error and preserves identifier on invalid credentials",
+         %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/players/log_in")
 
       form =
@@ -68,37 +72,44 @@ defmodule ForkaWeb.PlayerLoginLiveTest do
 
       conn = submit_form(form, conn)
 
-      assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Invalid email or password"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
+               "E-mail, usuário ou senha inválidos."
 
-      assert redirected_to(conn) == "/players/log_in"
+      assert redirected_to(conn) == ~p"/players/log_in"
+
+      {:ok, lv, _html} = live(conn, ~p"/players/log_in")
+      assert has_element?(lv, "#flash-error", "Erro!")
+      assert has_element?(lv, "#flash-error", "E-mail, usuário ou senha inválidos.")
+      assert has_element?(lv, ~s|#flash-error button[aria-label="fechar"]|)
+      assert has_element?(lv, ~s|input[name="player[email_or_username]"][value="test@email.com"]|)
     end
   end
 
   describe "login navigation" do
-    test "redirects to registration page when the Register button is clicked", %{conn: conn} do
+    test "redirects to registration page when Criar conta link is clicked", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/players/log_in")
 
-      {:ok, _login_live, login_html} =
+      {:ok, register_live, _register_html} =
         lv
-        |> element("main a", "Sign up")
+        |> element("main a", "Criar conta")
         |> render_click()
         |> follow_redirect(conn, ~p"/players/register")
 
-      assert login_html =~ "Register"
+      assert has_element?(register_live, "#registration_form")
     end
 
-    test "redirects to forgot password page when the Forgot Password button is clicked", %{
+    test "redirects to forgot password page when Esqueceu a senha? link is clicked", %{
       conn: conn
     } do
       {:ok, lv, _html} = live(conn, ~p"/players/log_in")
 
-      {:ok, conn} =
+      {:ok, forgot_live, _forgot_html} =
         lv
-        |> element("main a", "Forgot your password?")
+        |> element("main a", "Esqueceu a senha?")
         |> render_click()
         |> follow_redirect(conn, ~p"/players/reset_password")
 
-      assert conn.resp_body =~ "Forgot your password?"
+      assert has_element?(forgot_live, "#reset_password_form")
     end
   end
 end

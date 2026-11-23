@@ -5,17 +5,17 @@ defmodule ForkaWeb.PlayerSessionController do
   alias ForkaWeb.PlayerAuth
 
   def create(conn, %{"_action" => "registered"} = params) do
-    create(conn, params, "Account created successfully!")
+    create(conn, params, "Conta criada com sucesso!")
   end
 
   def create(conn, %{"_action" => "password_updated"} = params) do
     conn
     |> put_session(:player_return_to, ~p"/players/settings")
-    |> create(params, "Password updated successfully!")
+    |> create(params, "Senha atualizada com sucesso!")
   end
 
   def create(conn, params) do
-    create(conn, params, "Welcome back!")
+    create(conn, params, "Bem-vindo de volta!")
   end
 
   defp create(conn, %{"player" => player_params}, info) do
@@ -26,7 +26,7 @@ defmodule ForkaWeb.PlayerSessionController do
     else
       # In order to prevent user enumeration attacks, don't disclose whether the email is registered.
       conn
-      |> put_flash(:error, "Invalid email or password")
+      |> put_flash(:error, "E-mail, usuário ou senha inválidos.")
       |> put_credentials_in_flash(player_params)
       |> redirect(to: ~p"/players/log_in")
     end
@@ -41,12 +41,12 @@ defmodule ForkaWeb.PlayerSessionController do
   def put_credentials_in_flash(conn, %{"email" => email}),
     do: put_flash(conn, :email, String.slice(email, 0, 160))
 
-  def put_credentials_in_flash(conn, %{"email_or_username" => email_or_password}),
-    do: put_flash(conn, :email_or_password, String.slice(email_or_password, 0, 160))
+  def put_credentials_in_flash(conn, %{"email_or_username" => email_or_username}),
+    do: put_flash(conn, :email_or_username, String.slice(email_or_username, 0, 160))
 
   def delete(conn, _params) do
     conn
-    |> put_flash(:info, "Logged out successfully.")
+    |> put_flash(:info, "Você saiu da conta.")
     |> PlayerAuth.log_out_player()
   end
 end
