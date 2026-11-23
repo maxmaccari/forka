@@ -160,6 +160,58 @@ defmodule ForkaWeb.CoreComponentsTest do
       doc = LazyHTML.from_fragment(html)
       assert LazyHTML.attribute(LazyHTML.query(doc, "input"), "value") == ["Lia"]
     end
+
+    test "REQ-04A: associates hints and errors with aria-describedby and aria-invalid" do
+      hint_html =
+        render_component(&input/1, %{
+          id: "field-hint",
+          name: "player[password]",
+          type: "password",
+          label: "Senha",
+          hint: "Mínimo de 12 caracteres.",
+          value: ""
+        })
+
+      hint_doc = LazyHTML.from_fragment(hint_html)
+      hint_input = LazyHTML.query(hint_doc, "input#field-hint")
+      assert LazyHTML.attribute(hint_input, "aria-invalid") == []
+      assert LazyHTML.attribute(hint_input, "aria-describedby") == ["field-hint-feedback"]
+
+      assert LazyHTML.text(LazyHTML.query(hint_doc, "#field-hint-feedback")) =~
+               "Mínimo de 12 caracteres."
+
+      err_html =
+        render_component(&input/1, %{
+          id: "field-invalid",
+          name: "player[email]",
+          type: "email",
+          label: "E-mail",
+          errors: ["deve conter @ e não ter espaços"],
+          value: "invalid"
+        })
+
+      err_doc = LazyHTML.from_fragment(err_html)
+      err_input = LazyHTML.query(err_doc, "input#field-invalid")
+      assert LazyHTML.attribute(err_input, "aria-invalid") == ["true"]
+      assert LazyHTML.attribute(err_input, "aria-describedby") == ["field-invalid-feedback"]
+
+      assert LazyHTML.text(LazyHTML.query(err_doc, "#field-invalid-feedback")) =~
+               "deve conter @ e não ter espaços"
+
+      plain_html =
+        render_component(&input/1, %{
+          id: "field-plain",
+          name: "player[email]",
+          type: "email",
+          label: "E-mail",
+          value: ""
+        })
+
+      plain_doc = LazyHTML.from_fragment(plain_html)
+      plain_input = LazyHTML.query(plain_doc, "input#field-plain")
+      assert LazyHTML.attribute(plain_input, "aria-invalid") == []
+      assert LazyHTML.attribute(plain_input, "aria-describedby") == []
+    end
   end
 
   describe "switch/1 and segmented_control/1" do

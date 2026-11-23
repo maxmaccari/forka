@@ -590,6 +590,8 @@ defmodule ForkaWeb.CoreComponents do
           name={@name}
           value="true"
           checked={@checked}
+          aria-invalid={@errors != [] && "true"}
+          aria-describedby={input_feedback_id(@id, @errors, @hint)}
           class={[
             "size-6 rounded-sm bg-sunken accent-brand focus:ring-0",
             @errors == [] && "border-line-strong",
@@ -599,7 +601,7 @@ defmodule ForkaWeb.CoreComponents do
         />
         <span>{@label}</span>
       </label>
-      <div class="mt-1 min-h-6">
+      <div id={@id && "#{@id}-feedback"} class="mt-1 min-h-6">
         <.error :for={msg <- @errors}>{msg}</.error>
         <p :if={@hint && @errors == []} class="text-xs text-ink-subtle">{@hint}</p>
       </div>
@@ -614,6 +616,8 @@ defmodule ForkaWeb.CoreComponents do
       <select
         id={@id}
         name={@name}
+        aria-invalid={@errors != [] && "true"}
+        aria-describedby={input_feedback_id(@id, @errors, @hint)}
         class={[
           "mt-2 block min-h-12 w-full rounded-md bg-sunken px-3 py-2 text-ink ring-2 ring-inset focus:outline-none sm:text-sm",
           @errors == [] && "ring-line-strong focus:ring-brand-ink",
@@ -625,7 +629,7 @@ defmodule ForkaWeb.CoreComponents do
         <option :if={@prompt} value="">{@prompt}</option>
         {Form.options_for_select(@options, @value)}
       </select>
-      <div class="mt-1 min-h-6">
+      <div id={@id && "#{@id}-feedback"} class="mt-1 min-h-6">
         <.error :for={msg <- @errors}>{msg}</.error>
         <p :if={@hint && @errors == []} class="text-xs text-ink-subtle">{@hint}</p>
       </div>
@@ -640,6 +644,8 @@ defmodule ForkaWeb.CoreComponents do
       <textarea
         id={@id}
         name={@name}
+        aria-invalid={@errors != [] && "true"}
+        aria-describedby={input_feedback_id(@id, @errors, @hint)}
         class={[
           "mt-2 block min-h-24 w-full rounded-md bg-sunken px-3 py-2 text-ink placeholder:text-ink-subtle ring-2 ring-inset focus:outline-none sm:text-sm sm:leading-6",
           @errors == [] && "ring-line-strong focus:ring-brand-ink",
@@ -647,7 +653,7 @@ defmodule ForkaWeb.CoreComponents do
         ]}
         {@rest}
       >{Form.normalize_value("textarea", @value)}</textarea>
-      <div class="mt-1 min-h-6">
+      <div id={@id && "#{@id}-feedback"} class="mt-1 min-h-6">
         <.error :for={msg <- @errors}>{msg}</.error>
         <p :if={@hint && @errors == []} class="text-xs text-ink-subtle">{@hint}</p>
       </div>
@@ -664,6 +670,8 @@ defmodule ForkaWeb.CoreComponents do
         name={@name}
         id={@id}
         value={Form.normalize_value(@type, @value)}
+        aria-invalid={@errors != [] && "true"}
+        aria-describedby={input_feedback_id(@id, @errors, @hint)}
         class={[
           "form-input mt-2 block min-h-12 w-full rounded-md border-0 bg-sunken px-3 py-2 text-ink placeholder:text-ink-subtle ring-2 ring-inset focus:ring-2 focus:ring-inset focus:outline-none sm:text-sm sm:leading-6",
           @errors == [] && "ring-line-strong focus:ring-brand-ink",
@@ -671,13 +679,19 @@ defmodule ForkaWeb.CoreComponents do
         ]}
         {@rest}
       />
-      <div class="mt-1 min-h-6">
+      <div id={@id && "#{@id}-feedback"} class="mt-1 min-h-6">
         <.error :for={msg <- @errors}>{msg}</.error>
         <p :if={@hint && @errors == []} class="text-xs text-ink-subtle">{@hint}</p>
       </div>
     </div>
     """
   end
+
+  defp input_feedback_id(id, errors, hint)
+       when not is_nil(id) and (errors != [] or not is_nil(hint)),
+       do: "#{id}-feedback"
+
+  defp input_feedback_id(_id, _errors, _hint), do: nil
 
   @doc """
   Renders a label.
