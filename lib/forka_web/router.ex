@@ -17,6 +17,7 @@ defmodule ForkaWeb.Router do
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug :fetch_current_player
+    plug :put_player_locale
     plug ForkaWeb.Plugs.ContentSecurityPolicy
   end
 
@@ -26,6 +27,7 @@ defmodule ForkaWeb.Router do
 
   pipeline :admin_layout do
     plug :put_root_layout, html: {ForkaWeb.Layouts, :admin_root}
+    plug :put_admin_locale
   end
 
   pipeline :api do
@@ -145,5 +147,15 @@ defmodule ForkaWeb.Router do
       forward "/mailbox", Plug.Swoosh.MailboxPreview,
         csp_nonce_assign_key: %{script: :csp_nonce, style: :csp_nonce}
     end
+  end
+
+  defp put_player_locale(conn, _opts) do
+    Gettext.put_locale(ForkaWeb.Gettext, "pt_BR")
+    conn
+  end
+
+  defp put_admin_locale(conn, _opts) do
+    Gettext.put_locale(ForkaWeb.Gettext, "en")
+    conn
   end
 end

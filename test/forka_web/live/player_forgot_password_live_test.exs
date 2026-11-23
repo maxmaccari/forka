@@ -7,12 +7,17 @@ defmodule ForkaWeb.PlayerForgotPasswordLiveTest do
   alias Forka.Repo
 
   describe "Forgot password page" do
-    test "renders email page", %{conn: conn} do
+    test "REQ-07: renders forgot password page in player shell with accessible label and pt-BR copy",
+         %{conn: conn} do
       {:ok, lv, html} = live(conn, ~p"/players/reset_password")
 
-      assert html =~ "Forgot your password?"
-      assert has_element?(lv, ~s|a[href="#{~p"/players/register"}"]|, "Register")
-      assert has_element?(lv, ~s|a[href="#{~p"/players/log_in"}"]|, "Log in")
+      assert page_title(lv) =~ "Recuperar senha"
+      assert has_element?(lv, "#forgot-password-card")
+      assert has_element?(lv, "#reset_password_form")
+      assert has_element?(lv, "label", "E-mail")
+      assert html =~ "Esqueceu a senha?"
+      assert has_element?(lv, ~s|a[href="#{~p"/players/register"}"]|, "Criar conta")
+      assert has_element?(lv, ~s|a[href="#{~p"/players/log_in"}"]|, "Entrar")
     end
 
     test "redirects if already logged in", %{conn: conn} do
@@ -40,7 +45,8 @@ defmodule ForkaWeb.PlayerForgotPasswordLiveTest do
         |> render_submit()
         |> follow_redirect(conn, "/")
 
-      assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "If your email is in our system"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) ==
+               "Se este e-mail estiver cadastrado, você receberá as instruções para redefinir sua senha em instantes."
 
       assert Repo.get_by!(Players.PlayerToken, player_id: player.id).context ==
                "reset_password"
@@ -55,7 +61,9 @@ defmodule ForkaWeb.PlayerForgotPasswordLiveTest do
         |> render_submit()
         |> follow_redirect(conn, "/")
 
-      assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "If your email is in our system"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) ==
+               "Se este e-mail estiver cadastrado, você receberá as instruções para redefinir sua senha em instantes."
+
       assert Repo.all(Players.PlayerToken) == []
     end
   end

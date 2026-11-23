@@ -11,9 +11,17 @@ defmodule ForkaWeb.PlayerConfirmationInstructionsLiveTest do
   end
 
   describe "Resend confirmation" do
-    test "renders the resend confirmation page", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/players/confirm")
-      assert html =~ "Resend confirmation instructions"
+    test "REQ-06: renders resend confirmation page in player shell with accessible label and pt-BR copy",
+         %{conn: conn} do
+      {:ok, lv, html} = live(conn, ~p"/players/confirm")
+
+      assert page_title(lv) =~ "Reenviar confirmação"
+      assert has_element?(lv, "#resend-confirmation-card")
+      assert has_element?(lv, "#resend_confirmation_form")
+      assert has_element?(lv, "label", "E-mail")
+      assert html =~ "Reenviar instruções de confirmação"
+      assert html =~ "Criar conta"
+      assert html =~ "Entrar"
     end
 
     test "sends a new confirmation token", %{conn: conn, player: player} do
@@ -25,8 +33,8 @@ defmodule ForkaWeb.PlayerConfirmationInstructionsLiveTest do
         |> render_submit()
         |> follow_redirect(conn, ~p"/")
 
-      assert Phoenix.Flash.get(conn.assigns.flash, :info) =~
-               "If your email is in our system"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) ==
+               "Se este e-mail estiver cadastrado e ainda não confirmado, você receberá as instruções em instantes."
 
       assert Repo.get_by!(Players.PlayerToken, player_id: player.id).context == "confirm"
     end
@@ -42,8 +50,8 @@ defmodule ForkaWeb.PlayerConfirmationInstructionsLiveTest do
         |> render_submit()
         |> follow_redirect(conn, ~p"/")
 
-      assert Phoenix.Flash.get(conn.assigns.flash, :info) =~
-               "If your email is in our system"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) ==
+               "Se este e-mail estiver cadastrado e ainda não confirmado, você receberá as instruções em instantes."
 
       refute Repo.get_by(Players.PlayerToken, player_id: player.id)
     end
@@ -57,8 +65,8 @@ defmodule ForkaWeb.PlayerConfirmationInstructionsLiveTest do
         |> render_submit()
         |> follow_redirect(conn, ~p"/")
 
-      assert Phoenix.Flash.get(conn.assigns.flash, :info) =~
-               "If your email is in our system"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) ==
+               "Se este e-mail estiver cadastrado e ainda não confirmado, você receberá as instruções em instantes."
 
       assert Repo.all(Players.PlayerToken) == []
     end

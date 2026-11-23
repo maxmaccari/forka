@@ -6,14 +6,28 @@ defmodule ForkaWeb.PlayerSettingsLiveTest do
   import Forka.TestHelpers
 
   describe "Settings page" do
-    test "renders settings page", %{conn: conn} do
-      {:ok, _lv, html} =
+    test "REQ-08: renders settings page in player shell with pt-BR copy and logout action", %{
+      conn: conn
+    } do
+      {:ok, lv, html} =
         conn
         |> log_in_player(insert(:player))
         |> live(~p"/players/settings")
 
-      assert html =~ "Change Email"
-      assert html =~ "Change Password"
+      assert page_title(lv) =~ "Minha conta"
+      assert has_element?(lv, ~s|a[href="#{~p"/"}"][aria-label="Voltar para o início"]|)
+      assert has_element?(lv, "#email-settings-card")
+      assert has_element?(lv, "#password-settings-card")
+      assert has_element?(lv, "#session-settings-card")
+
+      assert has_element?(
+               lv,
+               ~s|#session-settings-card a[href="#{~p"/players/log_out"}"][data-method="delete"]|,
+               "Sair da conta"
+             )
+
+      assert html =~ "Alterar e-mail"
+      assert html =~ "Alterar senha"
     end
 
     test "redirects if player is not logged in", %{conn: conn} do
@@ -21,7 +35,7 @@ defmodule ForkaWeb.PlayerSettingsLiveTest do
 
       assert {:redirect, %{to: path, flash: flash}} = redirect
       assert path == ~p"/players/log_in"
-      assert %{"error" => "You must log in to access this page."} = flash
+      assert %{"error" => "Você precisa entrar para acessar esta página."} = flash
     end
   end
 
@@ -44,11 +58,11 @@ defmodule ForkaWeb.PlayerSettingsLiveTest do
         })
         |> render_submit()
 
-      assert result =~ "A link to confirm your email"
+      assert result =~ "Enviamos um link de confirmação para o novo e-mail."
       assert Players.get_player_by_email(player.email)
     end
 
-    test "renders errors with invalid data (phx-change)", %{conn: conn} do
+    test "renders accessible pt-BR errors with invalid data (phx-change)", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/players/settings")
 
       result =
@@ -60,11 +74,16 @@ defmodule ForkaWeb.PlayerSettingsLiveTest do
           "player" => %{"email" => "with spaces"}
         })
 
-      assert result =~ "Change Email"
-      assert result =~ "must have the @ sign and no spaces"
+      assert has_element?(
+               lv,
+               ~s|input#player_email[aria-invalid="true"][aria-describedby="player_email-feedback"]|
+             )
+
+      assert result =~ "Alterar e-mail"
+      assert result =~ "deve conter @ e não ter espaços"
     end
 
-    test "renders errors with invalid data (phx-submit)", %{conn: conn, player: player} do
+    test "renders pt-BR errors with invalid data (phx-submit)", %{conn: conn, player: player} do
       {:ok, lv, _html} = live(conn, ~p"/players/settings")
 
       result =
@@ -75,9 +94,9 @@ defmodule ForkaWeb.PlayerSettingsLiveTest do
         })
         |> render_submit()
 
-      assert result =~ "Change Email"
-      assert result =~ "did not change"
-      assert result =~ "is not valid"
+      assert result =~ "Alterar e-mail"
+      assert result =~ "não foi alterado"
+      assert result =~ "não é válida"
     end
   end
 
@@ -110,13 +129,13 @@ defmodule ForkaWeb.PlayerSettingsLiveTest do
 
       assert get_session(new_password_conn, :player_token) != get_session(conn, :player_token)
 
-      assert Phoenix.Flash.get(new_password_conn.assigns.flash, :info) =~
-               "Password updated successfully"
+      assert Phoenix.Flash.get(new_password_conn.assigns.flash, :info) ==
+               "Senha atualizada com sucesso!"
 
       assert Players.get_player_by_email_and_password(player.email, new_password)
     end
 
-    test "renders errors with invalid data (phx-change)", %{conn: conn} do
+    test "renders pt-BR errors with invalid data (phx-change)", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/players/settings")
 
       result =
@@ -130,12 +149,12 @@ defmodule ForkaWeb.PlayerSettingsLiveTest do
           }
         })
 
-      assert result =~ "Change Password"
-      assert result =~ "should be at least 12 character(s)"
-      assert result =~ "does not match password"
+      assert result =~ "Alterar senha"
+      assert result =~ "deve ter no mínimo 12 caracteres"
+      assert result =~ "não confere com a senha"
     end
 
-    test "renders errors with invalid data (phx-submit)", %{conn: conn} do
+    test "renders pt-BR errors with invalid data (phx-submit)", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/players/settings")
 
       result =
@@ -149,10 +168,10 @@ defmodule ForkaWeb.PlayerSettingsLiveTest do
         })
         |> render_submit()
 
-      assert result =~ "Change Password"
-      assert result =~ "should be at least 12 character(s)"
-      assert result =~ "does not match password"
-      assert result =~ "is not valid"
+      assert result =~ "Alterar senha"
+      assert result =~ "deve ter no mínimo 12 caracteres"
+      assert result =~ "não confere com a senha"
+      assert result =~ "não é válida"
     end
   end
 
@@ -184,7 +203,7 @@ defmodule ForkaWeb.PlayerSettingsLiveTest do
       assert {:live_redirect, %{to: path, flash: flash}} = redirect
       assert path == ~p"/players/settings"
       assert %{"info" => message} = flash
-      assert message == "Email changed successfully."
+      assert message == "E-mail alterado com sucesso!"
       refute Players.get_player_by_email(player.email)
       assert Players.get_player_by_email(email)
 
@@ -193,7 +212,7 @@ defmodule ForkaWeb.PlayerSettingsLiveTest do
       assert {:live_redirect, %{to: path, flash: flash}} = redirect
       assert path == ~p"/players/settings"
       assert %{"error" => message} = flash
-      assert message == "Email change link is invalid or it has expired."
+      assert message == "O link de alteração de e-mail é inválido ou expirou."
     end
 
     test "does not update email with invalid token", %{conn: conn, player: player} do
@@ -201,7 +220,7 @@ defmodule ForkaWeb.PlayerSettingsLiveTest do
       assert {:live_redirect, %{to: path, flash: flash}} = redirect
       assert path == ~p"/players/settings"
       assert %{"error" => message} = flash
-      assert message == "Email change link is invalid or it has expired."
+      assert message == "O link de alteração de e-mail é inválido ou expirou."
       assert Players.get_player_by_email(player.email)
     end
 
@@ -211,7 +230,7 @@ defmodule ForkaWeb.PlayerSettingsLiveTest do
       assert {:redirect, %{to: path, flash: flash}} = redirect
       assert path == ~p"/players/log_in"
       assert %{"error" => message} = flash
-      assert message == "You must log in to access this page."
+      assert message == "Você precisa entrar para acessar esta página."
     end
   end
 end
