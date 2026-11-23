@@ -453,16 +453,17 @@ defmodule Forka.Games.RepositoryTest do
 
       # Insert a new game
       {:ok, game} = Repository.insert_game(owner.id, %{name: "Test Game", max_players: 4})
+      game_id = game.id
 
       # Assert we receive the broadcast
-      assert_receive {"backpex:created", broadcasted_game}
-      assert broadcasted_game.id == game.id
+      assert_receive {"backpex:created", %{id: ^game_id} = broadcasted_game}
       assert broadcasted_game.name == "Test Game"
     end
 
     test "broadcasts backpex:updated when a game state is saved" do
       owner = insert(:player) |> to_games_player()
       game = insert(:game, owner: owner, status: :lobby)
+      game_id = game.id
 
       {:ok, game_state} = Repository.get_game_state(game.id)
 
@@ -474,8 +475,7 @@ defmodule Forka.Games.RepositoryTest do
       {:ok, _saved_state} = Repository.save_game_state(updated_game_state)
 
       # Assert we receive the broadcast
-      assert_receive {"backpex:updated", broadcasted_game}
-      assert broadcasted_game.id == game.id
+      assert_receive {"backpex:updated", %{id: ^game_id} = broadcasted_game}
       assert broadcasted_game.name == "Updated Game Name"
     end
   end

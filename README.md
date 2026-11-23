@@ -34,11 +34,11 @@ Run `mix precommit` with PostgreSQL running. It compiles with warnings treated
 as errors, formats the code, runs Credo, Sobelow, MixAudit, Doctor, and Dialyzer,
 then runs the tests with ExCoveralls. The first Dialyzer run builds a local PLT.
 
-GitHub Actions runs on pull requests and pushes to `main`. It verifies formatting
-and the Mix lockfile, runs `mix precommit` against PostgreSQL, audits the npm
-lockfile with `npm --prefix assets audit --audit-level=low`, and builds and digests
-the production assets with `MIX_ENV=prod mix assets.deploy`. The GitHub check is
-named **Precommit and assets**.
+GitHub Actions runs parallel checks (**Test**, **Lint**, **Security**, **Doctor**,
+**Dialyzer**, **Assets**, and **Audit**) on pull requests and pushes to `main`.
+Merging to `main` requires a pull request and all checks except **Audit** to
+pass (enforced by the `main` branch ruleset). Pull requests labelled only
+`documentation` (and docs-only pushes to `main`) skip CI.
 
 Ready to run in production? Please [check our deployment guides](https://hexdocs.pm/phoenix/deployment.html).
 

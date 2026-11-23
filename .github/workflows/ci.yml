@@ -3,22 +3,45 @@ name: CI
 on:
   push:
     branches: [main]
+    # A push that changes only documentation skips CI. A push with any other
+    # file runs it all, so a pull request mislabelled `documentation` still
+    # gets checked on main.
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - ".agents/**"
+  # labeled / unlabeled re-run the checks when the labels change, since the
+  # labels decide whether they run (see DOCS_ONLY below).
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+# Cancel superseded runs on pull requests; every push to main keeps its run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+# DOCS_ONLY: a pull request labelled only `documentation` skips every job.
+# Each job repeats the condition, since a job's `if` can't read `env`. A job
+# skipped by its `if` reports success, so the required checks (the ruleset on
+# main) pass without spending minutes. Path filters can't do this for pull
+# requests: a workflow skipped by them leaves required checks pending. Any
+# other label (`elixir`, `bug`, `enhancement`, ...) or none runs everything.
+# Pushes to main have no labels and always run (unless paths-ignore skips them).
+
+env:
+  # Every check except `assets` runs in :test, like `mix precommit` (mix.exs
+  # `cli/0`), so those jobs share one compiled dependency cache.
+  MIX_ENV: test
 
 jobs:
-  precommit:
-    name: Precommit and assets
+  test:
+    name: Test
+    if: join(github.event.pull_request.labels.*.name, ',') != 'documentation' # DOCS_ONLY
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    env:
-      MIX_ENV: test
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:18
@@ -32,35 +55,138 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/setup-elixir
+      # The `test` alias creates and migrates the database first (mix.exs).
+      - name: Run tests with the coverage gate
+        run: mix coveralls
 
-      - id: beam
-        uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+  lint:
+    name: Lint
+    if: join(github.event.pull_request.labels.*.name, ',') != 'documentation' # DOCS_ONLY
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          otp-version: '29.1.2'
-          elixir-version: '1.20.4'
-          version-type: strict
+          persist-credentials: false
+      - uses: ./.github/actions/setup-elixir
+        with:
+          save-cache: "true"
+      - name: Compile with warnings as errors
+        run: mix compile --warnings-as-errors
+      - name: Check formatting
+        run: mix format --check-formatted
+      - name: Check for unused dependencies in mix.lock
+        run: mix deps.unlock --check-unused
+      - name: Credo
+        run: mix credo --strict
 
+  security:
+    name: Security
+    if: join(github.event.pull_request.labels.*.name, ',') != 'documentation' # DOCS_ONLY
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-elixir
+      - name: Sobelow
+        run: mix sobelow --config
+
+  doctor:
+    name: Doctor
+    if: join(github.event.pull_request.labels.*.name, ',') != 'documentation' # DOCS_ONLY
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-elixir
+      - name: Doctor
+        run: mix doctor
+
+  dialyzer:
+    name: Dialyzer
+    if: join(github.event.pull_request.labels.*.name, ',') != 'documentation' # DOCS_ONLY
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: setup
+        uses: ./.github/actions/setup-elixir
+      - name: Restore PLT cache
+        id: plt-cache
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: priv/plts
+          key: plt-${{ runner.os }}-${{ runner.arch }}-${{ steps.setup.outputs.otp-version }}-${{ steps.setup.outputs.elixir-version }}-${{ hashFiles('mix.lock', 'mix.exs') }}
+          restore-keys: |
+            plt-${{ runner.os }}-${{ runner.arch }}-${{ steps.setup.outputs.otp-version }}-${{ steps.setup.outputs.elixir-version }}-
+      # Built and saved in their own steps so the PLT is cached even when the
+      # analysis below fails. Dialyxir does not create priv/plts itself.
+      - name: Build PLTs
+        if: steps.plt-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p priv/plts
+          mix dialyzer --plt
+      - name: Save PLT cache
+        if: steps.plt-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: priv/plts
+          key: ${{ steps.plt-cache.outputs.cache-primary-key }}
+      # `github` annotates the PR diff; `dialyxir` prints full warnings in the log.
+      - name: Dialyzer
+        run: mix dialyzer --format github --format dialyxir
+
+  assets:
+    name: Assets
+    if: join(github.event.pull_request.labels.*.name, ',') != 'documentation' # DOCS_ONLY
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      MIX_ENV: prod
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: assets/package-lock.json
-
-      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      - uses: ./.github/actions/setup-elixir
         with:
-          path: priv/plts
-          key: plts-${{ runner.os }}-${{ runner.arch }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ hashFiles('mix.lock', 'mix.exs') }}
+          save-cache: "true"
+      - name: Build and digest production assets
+        run: mix assets.deploy
 
-      - run: mix deps.get --check-locked
-      - run: mix format --check-formatted
-      - run: mix deps.unlock --check-unused
-      - run: mix precommit
-      - run: npm --prefix assets audit --audit-level=low
-      - run: mix assets.deploy
-        env:
-          MIX_ENV: prod
+  audit:
+    name: Audit
+    if: join(github.event.pull_request.labels.*.name, ',') != 'documentation' # DOCS_ONLY
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: assets/package-lock.json
+      - uses: ./.github/actions/setup-elixir
+      - name: Audit Mix dependencies
+        run: mix deps.audit
+      - name: Check for retired Hex packages
+        run: mix hex.audit
+      - name: Audit npm dependencies
+        run: npm --prefix assets audit --audit-level=low
