@@ -381,13 +381,21 @@ defmodule ForkaWeb.CoreComponents do
     include: ~w(autocomplete name rel action enctype method novalidate target multipart),
     doc: "the arbitrary HTML attributes to apply to the form tag"
 
+  slot :alert, doc: "optional reserved region at the top of the form for form-level alerts"
   slot :inner_block, required: true
   slot :actions, doc: "the slot for form actions, such as a submit button"
 
   def simple_form(assigns) do
     ~H"""
     <.form :let={f} for={@for} as={@as} {@rest}>
-      <div class="mt-8 space-y-6 bg-transparent">
+      <div
+        :if={@alert != []}
+        id={@rest[:id] && "#{@rest[:id]}-alert"}
+        class="mt-4 flex min-h-24 items-center sm:min-h-16"
+      >
+        {render_slot(@alert, f)}
+      </div>
+      <div class={[if(@alert != [], do: "mt-4", else: "mt-8"), "space-y-6 bg-transparent"]}>
         {render_slot(@inner_block, f)}
         <div :for={action <- @actions} class="mt-2 flex items-center justify-between gap-6">
           {render_slot(action, f)}
