@@ -2,73 +2,121 @@ defmodule ForkaWeb.PlayerSettingsLive do
   use ForkaWeb, :live_view
 
   alias Forka.Players
+  alias ForkaWeb.Layouts
 
   def render(assigns) do
     ~H"""
-    <.header class="text-center">
-      Account Settings
-      <:subtitle>Manage your account email address and password settings</:subtitle>
-    </.header>
+    <div class="mx-auto max-w-2xl">
+      <Layouts.subpage_header
+        title="Minha conta"
+        back_to={~p"/"}
+        back_label="Voltar para o início"
+      />
 
-    <div class="space-y-12 divide-y">
-      <div>
-        <.simple_form
-          for={@email_form}
-          id="email_form"
-          phx-submit="update_email"
-          phx-change="validate_email"
-        >
-          <.input field={@email_form[:username]} type="text" label="Username" disabled />
-          <.input field={@email_form[:email]} type="email" label="Email" required />
-          <.input
-            field={@email_form[:current_password]}
-            name="current_password"
-            id="current_password_for_email"
-            type="password"
-            label="Current password"
-            value={@email_form_current_password}
-            required
-          />
+      <div class="space-y-6">
+        <.card id="email-settings-card" padding="lg" bordered>
+          <:title>E-mail</:title>
+          <p class="text-sm text-ink-muted">
+            Atualize o endereço de e-mail usado para entrar e recuperar sua conta.
+          </p>
+
+          <.simple_form
+            for={@email_form}
+            id="email_form"
+            phx-submit="update_email"
+            phx-change="validate_email"
+          >
+            <.input
+              field={@email_form[:username]}
+              type="text"
+              label="Nome de usuário"
+              disabled
+            />
+            <.input
+              field={@email_form[:email]}
+              type="email"
+              label="E-mail"
+              autocomplete="email"
+              required
+            />
+            <.input
+              field={@email_form[:current_password]}
+              name="current_password"
+              id="current_password_for_email"
+              type="password"
+              label="Senha atual"
+              autocomplete="current-password"
+              value={@email_form_current_password}
+              required
+            />
+            <:actions>
+              <.button phx-disable-with="Salvando...">Alterar e-mail</.button>
+            </:actions>
+          </.simple_form>
+        </.card>
+
+        <.card id="password-settings-card" padding="lg" bordered>
+          <:title>Senha</:title>
+          <p class="text-sm text-ink-muted">
+            Use uma senha com pelo menos 12 caracteres para manter sua conta protegida.
+          </p>
+
+          <.simple_form
+            for={@password_form}
+            id="password_form"
+            action={~p"/players/log_in?_action=password_updated"}
+            method="post"
+            phx-change="validate_password"
+            phx-submit="update_password"
+            phx-trigger-action={@trigger_submit}
+          >
+            <input
+              name={@password_form[:email].name}
+              type="hidden"
+              id="hidden_player_email"
+              value={@current_email}
+            />
+            <.input
+              field={@password_form[:password]}
+              type="password"
+              label="Nova senha"
+              hint="Mínimo de 12 caracteres."
+              autocomplete="new-password"
+              required
+            />
+            <.input
+              field={@password_form[:password_confirmation]}
+              type="password"
+              label="Confirmar nova senha"
+              autocomplete="new-password"
+            />
+            <.input
+              field={@password_form[:current_password]}
+              name="current_password"
+              type="password"
+              label="Senha atual"
+              id="current_password_for_password"
+              autocomplete="current-password"
+              value={@current_password}
+              required
+            />
+            <:actions>
+              <.button phx-disable-with="Salvando...">Alterar senha</.button>
+            </:actions>
+          </.simple_form>
+        </.card>
+
+        <.card id="session-settings-card" padding="lg" bordered>
+          <:title>Sessão</:title>
+          <p class="text-sm text-ink-muted">
+            Encerre sua sessão atual neste dispositivo.
+          </p>
           <:actions>
-            <.button phx-disable-with="Changing...">Change Email</.button>
+            <.button variant="danger-link" href={~p"/players/log_out"} method="delete">
+              Sair da conta
+            </.button>
           </:actions>
-        </.simple_form>
-      </div>
-      <div>
-        <.simple_form
-          for={@password_form}
-          id="password_form"
-          action={~p"/players/log_in?_action=password_updated"}
-          method="post"
-          phx-change="validate_password"
-          phx-submit="update_password"
-          phx-trigger-action={@trigger_submit}
-        >
-          <input
-            name={@password_form[:email].name}
-            type="hidden"
-            id="hidden_player_email"
-            value={@current_email}
-          />
-          <.input field={@password_form[:password]} type="password" label="New password" required />
-          <.input
-            field={@password_form[:password_confirmation]}
-            type="password"
-            label="Confirm new password"
-          />
-          <.input
-            field={@password_form[:current_password]}
-            name="current_password"
-            type="password"
-            label="Current password"
-            id="current_password_for_password"
-            value={@current_password}
-            required
-          />
-          <:actions>
-            <.button phx-disable-with="Changing...">Change Password</.button>
-          </:actions>
-        </.simple_form>
+        </.card>
       </div>
     </div>
     """
@@ -78,10 +126,10 @@ defmodule ForkaWeb.PlayerSettingsLive do
     socket =
       case Players.update_player_email(socket.assigns.current_player, token) do
         :ok ->
-          put_flash(socket, :info, "Email changed successfully.")
+          put_flash(socket, :info, "E-mail alterado com sucesso!")
 
         :error ->
-          put_flash(socket, :error, "Email change link is invalid or it has expired.")
+          put_flash(socket, :error, "O link de alteração de e-mail é inválido ou expirou.")
       end
 
     {:ok, push_navigate(socket, to: ~p"/players/settings")}
@@ -94,6 +142,7 @@ defmodule ForkaWeb.PlayerSettingsLive do
 
     socket =
       socket
+      |> assign(:page_title, "Minha conta")
       |> assign(:current_password, nil)
       |> assign(:email_form_current_password, nil)
       |> assign(:current_email, player.email)
@@ -128,7 +177,7 @@ defmodule ForkaWeb.PlayerSettingsLive do
           &url(~p"/players/settings/confirm_email/#{&1}")
         )
 
-        info = "A link to confirm your email change has been sent to the new address."
+        info = "Enviamos um link de confirmação para o novo e-mail."
         {:noreply, socket |> put_flash(:info, info) |> assign(email_form_current_password: nil)}
 
       {:error, changeset} ->

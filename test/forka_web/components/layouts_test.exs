@@ -41,6 +41,11 @@ defmodule ForkaWeb.LayoutsTest do
     assert LazyHTML.text(LazyHTML.query(doc, "header")) =~ "Forka"
     refute Enum.empty?(LazyHTML.query(doc, ".text-ink"))
     assert Enum.empty?(LazyHTML.query(doc, ".text-zinc-900"))
+    assert LazyHTML.text(LazyHTML.query(doc, "#client-error")) =~ "Sem conexão com a internet"
+
+    assert LazyHTML.attribute(LazyHTML.query(doc, "#client-error button"), "aria-label") == [
+             "fechar"
+           ]
   end
 
   test "admin routes use dedicated admin_root layout without player theme toggle", %{conn: conn} do
@@ -53,6 +58,12 @@ defmodule ForkaWeb.LayoutsTest do
 
     assert LazyHTML.attribute(LazyHTML.query(login_doc, "html"), "data-theme") == ["light"]
     assert Enum.empty?(LazyHTML.query(login_doc, "[data-theme-toggle]"))
+
+    assert LazyHTML.text(LazyHTML.query(login_doc, "#client-error")) =~
+             "We can't find the internet"
+
+    assert LazyHTML.attribute(LazyHTML.query(login_doc, "#client-error button"), "aria-label") ==
+             ["close"]
 
     %{conn: admin_conn} = register_and_log_in_admin(%{conn: conn})
 
@@ -67,6 +78,32 @@ defmodule ForkaWeb.LayoutsTest do
 
     assert Enum.count(LazyHTML.query(admin_doc, "#backpex-app-shell")) == 1
     assert Enum.empty?(LazyHTML.query(admin_doc, "[data-theme-toggle]"))
+  end
+
+  test "REQ-03: player header renders pt-BR register and login links when logged out", %{
+    conn: conn
+  } do
+    doc = home_document(conn)
+    header = LazyHTML.query(doc, "header")
+
+    assert LazyHTML.text(header) =~ "Criar conta"
+    assert LazyHTML.text(header) =~ "Entrar"
+    refute LazyHTML.text(header) =~ "Register"
+    refute LazyHTML.text(header) =~ "Log in"
+  end
+
+  test "REQ-03: player header renders pt-BR account and logout links when logged in", %{
+    conn: conn
+  } do
+    player = insert(:player)
+    doc = conn |> log_in_player(player) |> home_document()
+    header = LazyHTML.query(doc, "header")
+
+    assert LazyHTML.text(header) =~ player.email
+    assert LazyHTML.text(header) =~ "Minha conta"
+    assert LazyHTML.text(header) =~ "Sair"
+    refute LazyHTML.text(header) =~ "Settings"
+    refute LazyHTML.text(header) =~ "Log out"
   end
 
   defp home_document(conn) do

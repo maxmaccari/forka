@@ -177,6 +177,9 @@ defmodule ForkaWeb.PlayerAuthTest do
 
       {:halt, updated_socket} = PlayerAuth.on_mount(:ensure_authenticated, %{}, session, socket)
       assert updated_socket.assigns.current_player == nil
+
+      assert Phoenix.Flash.get(updated_socket.assigns.flash, :error) ==
+               "Você precisa entrar para acessar esta página."
     end
 
     test "redirects to login page if there isn't a player_token", %{conn: conn} do
@@ -189,6 +192,9 @@ defmodule ForkaWeb.PlayerAuthTest do
 
       {:halt, updated_socket} = PlayerAuth.on_mount(:ensure_authenticated, %{}, session, socket)
       assert updated_socket.assigns.current_player == nil
+
+      assert Phoenix.Flash.get(updated_socket.assigns.flash, :error) ==
+               "Você precisa entrar para acessar esta página."
     end
   end
 
@@ -245,7 +251,7 @@ defmodule ForkaWeb.PlayerAuthTest do
       assert redirected_to(conn) == ~p"/players/log_in"
 
       assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
-               "You must log in to access this page."
+               "Você precisa entrar para acessar esta página."
     end
 
     test "stores the path to redirect to on GET", %{conn: conn} do
@@ -280,6 +286,49 @@ defmodule ForkaWeb.PlayerAuthTest do
 
       refute conn.halted
       refute conn.status
+    end
+  end
+
+  describe "player LiveView locale" do
+    test "REQ-01: sets Gettext locale to pt_BR on mount_current_player and translates errors and flash chrome",
+         %{conn: conn} do
+      session = conn |> get_session()
+      Gettext.put_locale(ForkaWeb.Gettext, "en")
+
+      {:cont, _updated_socket} =
+        PlayerAuth.on_mount(:mount_current_player, %{}, session, %LiveView.Socket{})
+
+      assert Gettext.get_locale(ForkaWeb.Gettext) == "pt_BR"
+
+      assert Gettext.gettext(ForkaWeb.Gettext, "Success!") == "Sucesso!"
+      assert Gettext.gettext(ForkaWeb.Gettext, "Error!") == "Erro!"
+      assert Gettext.gettext(ForkaWeb.Gettext, "close") == "fechar"
+
+      assert ForkaWeb.CoreComponents.translate_error({"can't be blank", []}) ==
+               "não pode ficar em branco"
+
+      assert ForkaWeb.CoreComponents.translate_error({"has already been taken", []}) ==
+               "já está em uso"
+
+      assert ForkaWeb.CoreComponents.translate_error({"must have the @ sign and no spaces", []}) ==
+               "deve conter @ e não ter espaços"
+
+      assert ForkaWeb.CoreComponents.translate_error(
+               {"only letters, numbers, and underscores allowed", []}
+             ) == "use apenas letras, números e underline (_)"
+
+      assert ForkaWeb.CoreComponents.translate_error({"did not change", []}) ==
+               "não foi alterado"
+
+      assert ForkaWeb.CoreComponents.translate_error({"does not match password", []}) ==
+               "não confere com a senha"
+
+      assert ForkaWeb.CoreComponents.translate_error({"is not valid", []}) ==
+               "não é válida"
+
+      assert ForkaWeb.CoreComponents.translate_error(
+               {"should be at least %{count} character(s)", [count: 12]}
+             ) == "deve ter no mínimo 12 caracteres"
     end
   end
 end
