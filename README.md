@@ -28,6 +28,26 @@ development mailbox using the active port.
 When HTTP tests enable the endpoint, the OS assigns an available port. Read
 that port with `ForkaWeb.Endpoint.server_info(:http)`.
 
+### Tidewave MCP (dev only)
+
+In development, `ForkaWeb.Endpoint` exposes the Tidewave MCP server on localhost
+at `http://localhost:<port>/tidewave/mcp` (`toolbar: false`, dev-only).
+
+- **Claude Code:** `.mcp.json` uses `http://localhost:${PORT:-4000}/tidewave/mcp`
+  (reads `PORT` from the environment and falls back to `4000`). In a linked
+  worktree, export `PORT=<port>` or run
+  `claude mcp add --transport http tidewave http://localhost:<port>/tidewave/mcp`.
+- **OpenCode:** register the MCP server for the active port in your global
+  config so the tracked `opencode.json` stays clean:
+  `opencode mcp add --global --url http://localhost:<port>/tidewave/mcp tidewave`
+  (omitting `--global` writes `mcp.servers.tidewave` into `opencode.json`;
+  remove only that `tidewave` entry before committing).
+- **Codex:** register the MCP server with the active port:
+  `codex mcp add tidewave --url http://localhost:<port>/tidewave/mcp`
+- **Antigravity:** add an entry to `~/.gemini/config/mcp_config.json` under
+  `"mcpServers"`:
+  `"tidewave": { "url": "http://localhost:<port>/tidewave/mcp" }`
+
 ### Code checks
 
 Run `mix precommit` with PostgreSQL running. It compiles with warnings treated
