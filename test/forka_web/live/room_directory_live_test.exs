@@ -120,6 +120,7 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
             load_error: nil,
             pending_events: [],
             rooms_count: 0,
+            room_order: [],
             room_ids: MapSet.new()
           },
           private: %{
@@ -170,6 +171,7 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
             load_error: nil,
             pending_events: [],
             rooms_count: limit,
+            room_order: [],
             room_ids: MapSet.new()
           },
           private: %{
@@ -260,10 +262,13 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
         %Phoenix.LiveView.Socket{
           assigns: %{
             __changed__: %{},
+            directory_limit: Games.directory_limit(),
+            capped?: false,
             loading?: true,
             load_error: nil,
             pending_events: [],
             rooms_count: 0,
+            room_order: [],
             room_ids: MapSet.new()
           },
           private: %{
@@ -341,6 +346,23 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
 
       assert after_archive_text =~
                "Ao vivo · #{limit - 1} salas · mostrando as #{limit} mais recentes"
+    end
+
+    test "does not show capped notice when visible room count equals directory_limit/0", %{
+      conn: conn
+    } do
+      owner = insert(:player, username: "lia")
+      limit = Games.directory_limit()
+
+      for i <- 1..limit do
+        insert(:game, owner: owner, status: :lobby, name: "Sala #{i}")
+      end
+
+      {:ok, lv, _html} = live(conn, ~p"/")
+      text = lv |> render_async() |> visible_text()
+
+      assert text =~ "Ao vivo · #{limit} salas"
+      refute text =~ "mostrando as #{limit} mais recentes"
     end
   end
 

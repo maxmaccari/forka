@@ -22,7 +22,7 @@ defmodule ForkaWeb.RoomDirectoryLive do
     socket =
       if connected?(socket) do
         :ok = Games.subscribe_to_game_list()
-        start_async(socket, :load_rooms, fn -> Games.list_directory_rooms() end)
+        start_async(socket, :load_rooms, fn -> Games.list_directory_rooms_page() end)
       else
         socket
       end
@@ -31,8 +31,24 @@ defmodule ForkaWeb.RoomDirectoryLive do
   end
 
   @impl true
-  def handle_async(:load_rooms, {:ok, rooms}, socket) do
-    limit = Map.get(socket.assigns, :directory_limit, Games.directory_limit())
+  def handle_async(:load_rooms, {:ok, %{rooms: rooms, has_more?: has_more?}}, socket) do
+    finish_load_rooms(socket, rooms, has_more?)
+  end
+
+  def handle_async(:load_rooms, {:ok, rooms}, socket) when is_list(rooms) do
+    {page_rooms, extra} = Enum.split(rooms, socket.assigns.directory_limit)
+    finish_load_rooms(socket, page_rooms, extra != [])
+  end
+
+  def handle_async(:load_rooms, {:exit, _reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(:loading?, false)
+     |> assign(:load_error, "Não foi possível carregar as salas agora.")
+     |> assign(:pending_events, [])}
+  end
+
+  defp finish_load_rooms(socket, rooms, has_more?) do
     room_order = Enum.map(rooms, & &1.id)
     room_ids = MapSet.new(room_order)
 
@@ -40,7 +56,7 @@ defmodule ForkaWeb.RoomDirectoryLive do
       socket
       |> assign(:loading?, false)
       |> assign(:load_error, nil)
-      |> assign(:capped?, length(rooms) >= limit)
+      |> assign(:capped?, has_more?)
       |> assign(:room_order, room_order)
       |> assign(:room_ids, room_ids)
       |> assign(:rooms_count, MapSet.size(room_ids))
@@ -53,14 +69,6 @@ defmodule ForkaWeb.RoomDirectoryLive do
       |> assign(:pending_events, [])
 
     {:noreply, socket}
-  end
-
-  def handle_async(:load_rooms, {:exit, _reason}, socket) do
-    {:noreply,
-     socket
-     |> assign(:loading?, false)
-     |> assign(:load_error, "Não foi possível carregar as salas agora.")
-     |> assign(:pending_events, [])}
   end
 
   @impl true
@@ -79,10 +87,9 @@ defmodule ForkaWeb.RoomDirectoryLive do
 
   defp apply_room_event(payload, socket) do
     item = Games.room_list_item_from_event(payload)
-    room_ids = socket.assigns.room_ids
-    room_order = Map.get(socket.assigns, :room_order, MapSet.to_list(room_ids))
-    capped? = Map.get(socket.assigns, :capped?, false)
-    limit = Map.get(socket.assigns, :directory_limit, Games.directory_limit())
+
+    %{room_ids: room_ids, room_order: room_order, capped?: capped?, directory_limit: limit} =
+      socket.assigns
 
     if RoomListItem.visible_status?(item.status) do
       apply_visible_room_event(socket, item, payload, room_ids, room_order, capped?, limit)
@@ -142,7 +149,7 @@ defmodule ForkaWeb.RoomDirectoryLive do
      socket
      |> assign(:loading?, true)
      |> assign(:load_error, nil)
-     |> start_async(:load_rooms, fn -> Games.list_directory_rooms() end)}
+     |> start_async(:load_rooms, fn -> Games.list_directory_rooms_page() end)}
   end
 
   def handle_event("create_room", _params, %{assigns: %{current_player: nil}} = socket) do
