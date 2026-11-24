@@ -265,6 +265,102 @@ defmodule Forka.GamesTest do
     end
   end
 
+  describe "list_directory_rooms/0" do
+    test "AC-03: returns visible rooms with player counts, owner username, language, and resolved categories while excluding archived rooms" do
+      owner = insert(:player, username: "lia")
+      guest = insert(:player, username: "bruno")
+      cat_music = insert(:category, name: "Música", language: "pt")
+      cat_games = insert(:category, name: "Jogos", language: "pt")
+
+      {:ok, lobby_game} =
+        Games.create_game(owner.id, %{
+          name: "Noite de palavras",
+          max_players: 6,
+          word_options: %{language: "pt", category_ids: [cat_music.id, cat_games.id]}
+        })
+
+      :ok = Games.join_game(lobby_game.id, owner.id)
+      :ok = Games.join_game(lobby_game.id, guest.id)
+
+      playing_game =
+        insert(:game,
+          owner: owner,
+          status: :playing,
+          name: "Turma do RPG",
+          max_players: 4,
+          word_options: %Forka.Games.Schemas.WordOptions{language: "en", category_ids: []}
+        )
+
+      finished_game =
+        insert(:game,
+          owner: owner,
+          status: :finished,
+          name: "Revanche",
+          max_players: 4
+        )
+
+      game_over_game =
+        insert(:game,
+          owner: owner,
+          status: :game_over,
+          name: "Todo mundo caiu",
+          max_players: 2
+        )
+
+      archived_game =
+        insert(:game,
+          owner: owner,
+          status: :archived,
+          name: "Sala arquivada",
+          max_players: 4
+        )
+
+      rooms = Games.list_directory_rooms()
+      room_ids = Enum.map(rooms, & &1.id)
+
+      assert lobby_game.id in room_ids
+      assert playing_game.id in room_ids
+      assert finished_game.id in room_ids
+      assert game_over_game.id in room_ids
+      refute archived_game.id in room_ids
+
+      lobby_item = Enum.find(rooms, &(&1.id == lobby_game.id))
+      assert lobby_item.name == "Noite de palavras"
+      assert lobby_item.status == :lobby
+      assert lobby_item.player_count == 2
+      assert lobby_item.max_players == 6
+      assert lobby_item.owner_username == "lia"
+      assert lobby_item.language == "pt"
+      assert lobby_item.category_names == ["Jogos", "Música"]
+
+      playing_item = Enum.find(rooms, &(&1.id == playing_game.id))
+      assert playing_item.status == :playing
+      assert playing_item.player_count == 0
+      assert playing_item.language == "en"
+      assert playing_item.category_names == []
+    end
+
+    test "AC-03: returns an empty list when no visible rooms exist" do
+      owner = insert(:player)
+      insert(:game, owner: owner, status: :archived, name: "Antiga")
+
+      assert Games.list_directory_rooms() == []
+    end
+
+    test "caps the public directory query at directory_limit/0 newest rooms" do
+      owner = insert(:player)
+      limit = Games.directory_limit()
+
+      for i <- 1..(limit + 2) do
+        insert(:game, owner: owner, status: :lobby, name: "Sala #{i}")
+      end
+
+      assert length(Games.list_directory_rooms()) == limit
+      assert length(Games.list_directory_rooms(limit: limit + 50)) == limit
+      assert length(Games.list_directory_rooms(limit: 5)) == 5
+    end
+  end
+
   describe "create_game/2" do
     test "creates a game with valid parameters" do
       owner = insert(:player)
@@ -613,6 +709,41 @@ defmodule Forka.GamesTest do
       {:ok, _game} = Games.create_game(owner.id, params_for(:game))
 
       refute_receive {:game_list_updated, _}
+    end
+
+    test "AC-04: broadcasts owner username, word language, and resolved category names on create and settings update" do
+      owner = insert(:player, username: "lia")
+      cat_cinema = insert(:category, name: "Cinema", language: "pt")
+      cat_sports = insert(:category, name: "Esportes", language: "pt")
+
+      {:ok, game} =
+        Games.create_game(owner.id, %{
+          name: "Sala PT",
+          max_players: 4,
+          word_options: %{language: "pt", category_ids: [cat_cinema.id]}
+        })
+
+      assert_receive {:game_list_updated, created_data}
+      assert created_data.id == game.id
+      assert created_data.owner_username == "lia"
+      assert created_data.language == "pt"
+      assert created_data.category_names == ["Cinema"]
+
+      created_item = Games.room_list_item_from_event(created_data)
+      assert created_item.owner_username == "lia"
+      assert created_item.language == "pt"
+      assert created_item.category_names == ["Cinema"]
+
+      :ok =
+        Games.update_settings(game.id, %{
+          word_options: %{language: "pt", category_ids: [cat_sports.id, cat_cinema.id]}
+        })
+
+      assert_receive {:game_list_updated, updated_data}
+      assert updated_data.id == game.id
+      assert updated_data.action == :updated
+      assert updated_data.language == "pt"
+      assert updated_data.category_names == ["Cinema", "Esportes"]
     end
   end
 end
