@@ -18,6 +18,7 @@ defmodule ForkaWeb.Router do
     plug :put_secure_browser_headers
     plug :fetch_current_player
     plug :put_player_locale
+    plug :put_current_path
     plug ForkaWeb.Plugs.ContentSecurityPolicy
   end
 
@@ -32,12 +33,6 @@ defmodule ForkaWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
-  end
-
-  scope "/", ForkaWeb do
-    pipe_through :browser
-
-    get "/", PageController, :home
   end
 
   # Other scopes may use custom stacks.
@@ -78,6 +73,7 @@ defmodule ForkaWeb.Router do
 
     live_session :current_player,
       on_mount: [{ForkaWeb.PlayerAuth, :mount_current_player}] do
+      live "/", RoomDirectoryLive, :index
       live "/players/confirm/:token", PlayerConfirmationLive, :edit
       live "/players/confirm", PlayerConfirmationInstructionsLive, :new
     end
@@ -153,6 +149,8 @@ defmodule ForkaWeb.Router do
     Gettext.put_locale(ForkaWeb.Gettext, "pt_BR")
     conn
   end
+
+  defp put_current_path(conn, _opts), do: assign(conn, :current_path, conn.request_path)
 
   defp put_admin_locale(conn, _opts) do
     Gettext.put_locale(ForkaWeb.Gettext, "en")
