@@ -39,6 +39,45 @@ defmodule ForkaWeb.TidewaveTest do
     assert policy =~ "frame-ancestors 'self'"
   end
 
+  test "AC-03 (dev): /tidewave/mcp answers 200 and GET / preserves strict CSP in dev" do
+    script = """
+    mcp_conn =
+      Plug.Test.conn(:post, "http://localhost/tidewave/mcp", Jason.encode!(%{
+        "jsonrpc" => "2.0",
+        "id" => 1,
+        "method" => "initialize",
+        "params" => %{
+          "protocolVersion" => "2025-03-26",
+          "capabilities" => %{},
+          "clientInfo" => %{"name" => "dev-regression", "version" => "0.1.0"}
+        }
+      }))
+      |> Plug.Conn.put_req_header("content-type", "application/json")
+      |> Plug.Conn.put_req_header("accept", "application/json, text/event-stream")
+      |> ForkaWeb.Endpoint.call([])
+
+    unless mcp_conn.status == 200 do
+      raise "Expected 200 from /tidewave/mcp, got \#{mcp_conn.status}: \#{mcp_conn.resp_body}"
+    end
+
+    home_conn =
+      Plug.Test.conn(:get, "http://localhost/")
+      |> ForkaWeb.Endpoint.call([])
+
+    [policy] = Plug.Conn.get_resp_header(home_conn, "content-security-policy")
+    if policy =~ "unsafe-eval", do: raise("Unexpected unsafe-eval in dev CSP: \#{policy}")
+    unless policy =~ "frame-ancestors 'self'", do: raise("Missing frame-ancestors in dev CSP: \#{policy}")
+    """
+
+    {output, status} =
+      System.cmd("mix", ["run", "-e", script],
+        env: [{"MIX_ENV", "dev"}],
+        stderr_to_stdout: true
+      )
+
+    assert status == 0, output
+  end
+
   test "AC-04: agent MCP configs register tidewave on the default dev URL" do
     mcp_json =
       "../../.mcp.json"
@@ -61,14 +100,7 @@ defmodule ForkaWeb.TidewaveTest do
       |> File.read!()
       |> Jason.decode!()
 
-    assert opencode_json["mcp"] == %{
-             "tidewave" => %{
-               "type" => "remote",
-               "url" => "http://localhost:{env:PORT}/tidewave/mcp",
-               "enabled" => true
-             }
-           }
-
+    refute Map.has_key?(opencode_json, "mcp")
     assert opencode_json["instructions"] == [".agents/rules/*.md"]
   end
 end
