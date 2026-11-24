@@ -112,6 +112,21 @@ defmodule Forka.Games do
   """
   @spec list_directory_rooms(keyword()) :: [RoomListItem.t()]
   def list_directory_rooms(opts \\ []) do
+    list_directory_rooms_page(opts).rooms
+  end
+
+  @doc """
+  Lists a bounded page of rooms visible in the public live room directory along with
+  whether additional older rooms exist beyond the page cap.
+
+  Queries `limit + 1` rows (with `limit` capped server-side at `directory_limit/0`)
+  so callers can tell an exact page-sized result apart from a truncated one.
+  """
+  @spec list_directory_rooms_page(keyword()) :: %{
+          rooms: [RoomListItem.t()],
+          has_more?: boolean()
+        }
+  def list_directory_rooms_page(opts \\ []) do
     limit = opts |> Keyword.get(:limit, @directory_limit) |> cap_directory_limit()
     visible_statuses = RoomListItem.visible_statuses()
 
@@ -122,7 +137,7 @@ defmodule Forka.Games do
         where: g.status in ^visible_statuses,
         group_by: [g.id, o.id],
         order_by: [desc: g.inserted_at, desc: g.id],
-        limit: ^limit,
+        limit: ^(limit + 1),
         select: %{
           game: g,
           owner_username: o.username,
@@ -131,8 +146,10 @@ defmodule Forka.Games do
       )
       |> Repo.all()
 
+    {page_rows, extra_rows} = Enum.split(rows, limit)
+
     category_ids =
-      rows
+      page_rows
       |> Enum.flat_map(fn %{game: game} -> extract_category_ids(game.word_options) end)
       |> Enum.uniq()
 
@@ -141,9 +158,16 @@ defmodule Forka.Games do
       |> Words.list_categories_by_ids()
       |> Map.new(&{&1.id, &1.name})
 
-    Enum.map(rows, fn %{game: game, owner_username: owner_username, player_count: player_count} ->
-      RoomListItem.from_game(game, player_count, owner_username, categories_by_id)
-    end)
+    rooms =
+      Enum.map(page_rows, fn %{
+                               game: game,
+                               owner_username: owner_username,
+                               player_count: player_count
+                             } ->
+        RoomListItem.from_game(game, player_count, owner_username, categories_by_id)
+      end)
+
+    %{rooms: rooms, has_more?: extra_rows != []}
   end
 
   defp cap_directory_limit(limit) when is_integer(limit) and limit > 0,

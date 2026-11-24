@@ -358,6 +358,25 @@ defmodule Forka.GamesTest do
       assert length(Games.list_directory_rooms()) == limit
       assert length(Games.list_directory_rooms(limit: limit + 50)) == limit
       assert length(Games.list_directory_rooms(limit: 5)) == 5
+
+      assert %{rooms: page_rooms, has_more?: true} = Games.list_directory_rooms_page()
+      assert length(page_rooms) == limit
+      assert %{rooms: small_page, has_more?: true} = Games.list_directory_rooms_page(limit: 5)
+      assert length(small_page) == 5
+    end
+
+    test "list_directory_rooms_page/1 reports has_more?: false when visible rooms equal the limit" do
+      owner = insert(:player)
+
+      for i <- 1..3 do
+        insert(:game, owner: owner, status: :lobby, name: "Sala #{i}")
+      end
+
+      assert %{rooms: rooms, has_more?: false} = Games.list_directory_rooms_page(limit: 3)
+      assert length(rooms) == 3
+
+      assert %{rooms: capped_rooms, has_more?: true} = Games.list_directory_rooms_page(limit: 2)
+      assert length(capped_rooms) == 2
     end
   end
 
