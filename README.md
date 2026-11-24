@@ -37,10 +37,10 @@ at `http://localhost:<port>/tidewave/mcp` (`toolbar: false`, dev-only).
   (reads `PORT` from the environment and falls back to `4000`). In a linked
   worktree, export `PORT=<port>` or run
   `claude mcp add --transport http tidewave http://localhost:<port>/tidewave/mcp`.
-- **OpenCode:** register the MCP server for the active port (without modifying
-  the tracked `opencode.json`):
+- **OpenCode:** register the MCP server for the active port:
   `opencode mcp add --url http://localhost:<port>/tidewave/mcp tidewave`
-  (add `--global` to store it in global config).
+  (writes to `opencode.json` — keep it out of commits with
+  `git checkout -- opencode.json`, or pass `--global` to write to global config).
 - **Codex:** register the MCP server with the active port:
   `codex mcp add tidewave --url http://localhost:<port>/tidewave/mcp`
 - **Antigravity:** add an entry to `~/.gemini/config/mcp_config.json` under

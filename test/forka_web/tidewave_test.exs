@@ -41,6 +41,9 @@ defmodule ForkaWeb.TidewaveTest do
 
   test "AC-03 (dev): /tidewave/mcp answers 200 and GET / preserves strict CSP in dev" do
     script = """
+    Application.put_env(:forka, :ecto_repos, [])
+    {:ok, _} = Application.ensure_all_started(:forka)
+
     mcp_conn =
       Plug.Test.conn(:post, "http://localhost/tidewave/mcp", Jason.encode!(%{
         "jsonrpc" => "2.0",
@@ -70,7 +73,7 @@ defmodule ForkaWeb.TidewaveTest do
     """
 
     {output, status} =
-      System.cmd("mix", ["run", "-e", script],
+      System.cmd("mix", ["run", "--no-start", "-e", script],
         env: [{"MIX_ENV", "dev"}],
         stderr_to_stdout: true
       )
