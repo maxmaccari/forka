@@ -299,6 +299,31 @@ defmodule ForkaWeb.CoreComponentsTest do
       assert LazyHTML.text(article) =~ "Entrar"
     end
 
+    test "card supports inline_header layout and responsive padding" do
+      html =
+        render_component(&card/1, %{
+          id: "inline-card",
+          padding: "responsive",
+          layout: "inline_header",
+          bordered: true,
+          title: [%{__slot__: :title, inner_block: fn _, _ -> "Noite de palavras" end}],
+          badge: [%{__slot__: :badge, inner_block: fn _, _ -> "Na sala" end}],
+          inner_block: [%{__slot__: :inner_block, inner_block: fn _, _ -> "de Lia" end}],
+          actions: [%{__slot__: :actions, inner_block: fn _, _ -> "Entrar" end}]
+        })
+
+      doc = LazyHTML.from_fragment(html)
+      article = LazyHTML.query(doc, "article#inline-card")
+
+      assert LazyHTML.attribute(article, "aria-labelledby") == ["inline-card-title"]
+      assert hd(LazyHTML.attribute(article, "class")) =~ "p-4 sm:p-6"
+      assert Enum.count(LazyHTML.query(doc, "h2#inline-card-title")) == 1
+      assert LazyHTML.text(article) =~ "Noite de palavras"
+      assert LazyHTML.text(article) =~ "Na sala"
+      assert LazyHTML.text(article) =~ "de Lia"
+      assert LazyHTML.text(article) =~ "Entrar"
+    end
+
     test "chip sets aria-pressed" do
       html =
         render_component(&chip/1, %{

@@ -17,6 +17,18 @@ defmodule Forka.WordsTest do
       assert Words.list_categories(language: "en") == [en_category]
       assert Words.list_categories(language: "EN") == [en_category]
     end
+
+    test "AC-01: list_categories_by_ids/1 returns matching categories sorted by name and handles empty list" do
+      music = insert(:category, name: "Música", language: "pt")
+      games = insert(:category, name: "Jogos", language: "pt")
+      _other = insert(:category, name: "Cinema", language: "pt")
+
+      assert Words.list_categories_by_ids([]) == []
+
+      result = Words.list_categories_by_ids([music.id, games.id, music.id])
+      assert Enum.map(result, & &1.id) == [games.id, music.id]
+      assert Enum.map(result, & &1.name) == ["Jogos", "Música"]
+    end
   end
 
   describe "import_words/1" do

@@ -89,4 +89,19 @@ defmodule ForkaWeb.ConnCase do
     |> Phoenix.ConnTest.init_test_session(%{})
     |> Plug.Conn.put_session(:player_token, token)
   end
+
+  @doc """
+  Extracts visible text from an HTML string or `LazyHTML` node with collapsed whitespace,
+  matching how browsers normalize line breaks and indentation.
+  """
+  def visible_text(html_or_node) do
+    html_or_node
+    |> then(fn
+      bin when is_binary(bin) -> LazyHTML.from_fragment(bin)
+      node -> node
+    end)
+    |> LazyHTML.text()
+    |> String.replace(~r/\s+/u, " ")
+    |> String.trim()
+  end
 end

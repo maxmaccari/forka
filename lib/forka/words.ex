@@ -127,4 +127,22 @@ defmodule Forka.Words do
       lang -> Repo.all(from c in Category, where: c.language == ^lang)
     end
   end
+
+  @doc """
+  Returns categories matching the given list of IDs, ordered alphabetically by name.
+
+  Returns an empty list without querying the database when given an empty list.
+  """
+  @spec list_categories_by_ids([Ecto.UUID.t()]) :: [Category.t()]
+  def list_categories_by_ids([]), do: []
+
+  def list_categories_by_ids(ids) when is_list(ids) do
+    ids = Enum.uniq(ids)
+
+    Repo.all(
+      from c in Category,
+        where: c.id in ^ids,
+        order_by: [asc: c.name]
+    )
+  end
 end
