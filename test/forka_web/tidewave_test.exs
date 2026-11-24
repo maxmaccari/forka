@@ -15,7 +15,7 @@ defmodule ForkaWeb.TidewaveTest do
       |> File.read!()
 
     tidewave_block =
-      ~r/if Mix\.env\(\) == :dev do\s+plug Tidewave, toolbar: false\s+end/
+      ~r/if Mix\.env\(\) == :dev do\s+plug :tidewave_mcp[\s\S]+?Tidewave\.call\(conn, Tidewave\.init\(toolbar: false\)\)[\s\S]+?end/
 
     assert [{tidewave_idx, _}] = Regex.run(tidewave_block, source, return: :index)
     assert [{reload_idx, _}] = Regex.run(~r/if code_reloading\? do/, source, return: :index)
@@ -50,7 +50,7 @@ defmodule ForkaWeb.TidewaveTest do
              "mcpServers" => %{
                "tidewave" => %{
                  "type" => "http",
-                 "url" => "http://localhost:4000/tidewave/mcp"
+                 "url" => "http://localhost:${PORT:-4000}/tidewave/mcp"
                }
              }
            }
@@ -64,7 +64,7 @@ defmodule ForkaWeb.TidewaveTest do
     assert opencode_json["mcp"] == %{
              "tidewave" => %{
                "type" => "remote",
-               "url" => "http://localhost:4000/tidewave/mcp",
+               "url" => "http://localhost:{env:PORT}/tidewave/mcp",
                "enabled" => true
              }
            }

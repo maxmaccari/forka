@@ -33,12 +33,13 @@ that port with `ForkaWeb.Endpoint.server_info(:http)`.
 In development, `ForkaWeb.Endpoint` exposes the Tidewave MCP server on localhost
 at `http://localhost:<port>/tidewave/mcp` (`toolbar: false`, dev-only).
 
-- **Claude Code:** `.mcp.json` is preconfigured for port `4000`. In a linked
-  worktree, point Claude Code at the worktree's port (`4100`–`4999`):
-  `claude mcp add --transport http tidewave http://localhost:<port>/tidewave/mcp`
-- **OpenCode:** `opencode.json` is preconfigured for port `4000`. Update
-  `mcp.tidewave.url` locally (do not commit) or start the server with `PORT=4000`
-  when using a linked worktree.
+- **Claude Code:** `.mcp.json` uses `http://localhost:${PORT:-4000}/tidewave/mcp`
+  (reads `PORT` from the environment and falls back to `4000`). In a linked
+  worktree, export `PORT=<port>` or run
+  `claude mcp add --transport http tidewave http://localhost:<port>/tidewave/mcp`.
+- **OpenCode:** `opencode.json` uses `http://localhost:{env:PORT}/tidewave/mcp`.
+  Set `PORT` in the environment when launching OpenCode (e.g. `PORT=4000 opencode`
+  or `PORT=<worktree-port> opencode`).
 - **Codex:** register the MCP server with the active port:
   `codex mcp add tidewave --url http://localhost:<port>/tidewave/mcp`
 - **Antigravity:** add an entry to `~/.gemini/config/mcp_config.json` under
