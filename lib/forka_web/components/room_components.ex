@@ -50,38 +50,26 @@ defmodule ForkaWeb.RoomComponents do
       |> assign(:categories_text, categories_label(assigns.room.category_names))
 
     ~H"""
-    <article
-      id={@id}
-      aria-labelledby={"#{@id}-title"}
-      class="flex h-full flex-col justify-between gap-4 rounded-lg bg-surface p-4 text-ink shadow-2 ring-1 ring-line dark:shadow-none sm:p-6"
-    >
-      <div class="flex flex-col gap-3">
-        <div class="flex items-start justify-between gap-3">
-          <h2
-            id={"#{@id}-title"}
-            class="min-w-0 flex-1 truncate font-display text-xl font-bold leading-tight text-ink"
-          >
-            {@room.name}
-          </h2>
-          <.room_status_badge status={@room.status} class="shrink-0" />
-        </div>
+    <.card id={@id} padding="responsive" layout="inline_header" bordered>
+      <:title>{@room.name}</:title>
+      <:badge>
+        <.room_status_badge status={@room.status} />
+      </:badge>
 
-        <div class="flex items-center gap-3">
-          <.avatar name={@owner_name} player_index={@owner_color} size="xs" />
-          <p class="min-w-0 flex-1 text-sm text-ink-subtle">
-            de <strong class="font-bold text-ink-muted">{@owner_name}</strong>
-            · {@lang_code} ·
-            <span class="tabular-nums">{@room.player_count}/{@room.max_players}</span>
-            jogadores
-          </p>
-        </div>
-
-        <p class="truncate text-xs font-semibold text-ink-subtle">
-          {@categories_text}
+      <div class="flex items-center gap-3">
+        <.avatar name={@owner_name} player_index={@owner_color} size="xs" />
+        <p class="min-w-0 flex-1 text-sm text-ink-subtle">
+          de <strong class="font-bold text-ink-muted">{@owner_name}</strong>
+          · {@lang_code} · <span class="tabular-nums">{@room.player_count}/{@room.max_players}</span>
+          jogadores
         </p>
       </div>
 
-      <div class="flex items-center justify-end">
+      <p class="truncate text-xs font-semibold text-ink-subtle">
+        {@categories_text}
+      </p>
+
+      <:actions>
         <%= if @joinable? do %>
           <%= if @current_player do %>
             <.button
@@ -108,8 +96,8 @@ defmodule ForkaWeb.RoomComponents do
             {@closed_note}
           </span>
         <% end %>
-      </div>
-    </article>
+      </:actions>
+    </.card>
     """
   end
 
@@ -122,24 +110,28 @@ defmodule ForkaWeb.RoomComponents do
       aria-label="Carregando salas"
       class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 lg:gap-6"
     >
-      <div
+      <.card
         :for={idx <- 1..3}
         :key={idx}
-        class="flex flex-col gap-4 rounded-lg bg-surface p-6 shadow-2 ring-1 ring-line dark:shadow-none motion-safe:animate-pulse"
+        padding="responsive"
+        bordered
+        class="motion-safe:animate-pulse"
       >
-        <div class="flex items-center justify-between gap-3">
-          <div class="h-6 w-40 rounded-sm bg-sunken" />
-          <div class="h-6 w-16 rounded-full bg-sunken" />
+        <div class="flex flex-col gap-4">
+          <div class="flex items-center justify-between gap-3">
+            <div class="h-6 w-40 rounded-sm bg-sunken" />
+            <div class="h-6 w-16 rounded-full bg-sunken" />
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="size-6 rounded-full bg-sunken" />
+            <div class="h-4 w-48 rounded-sm bg-sunken" />
+          </div>
+          <div class="h-4 w-32 rounded-sm bg-sunken" />
+          <div class="flex justify-end">
+            <div class="h-11 w-24 rounded-md bg-sunken" />
+          </div>
         </div>
-        <div class="flex items-center gap-3">
-          <div class="size-6 rounded-full bg-sunken" />
-          <div class="h-4 w-48 rounded-sm bg-sunken" />
-        </div>
-        <div class="h-4 w-32 rounded-sm bg-sunken" />
-        <div class="flex justify-end">
-          <div class="h-11 w-24 rounded-md bg-sunken" />
-        </div>
-      </div>
+      </.card>
     </div>
     """
   end

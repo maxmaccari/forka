@@ -836,9 +836,13 @@ defmodule ForkaWeb.CoreComponents do
 
   @doc """
   Renders a surface card.
+
+  Supports `"stacked"` (default) and `"inline_header"` layouts, plus `"responsive"`
+  padding (`p-4 sm:p-6`) for card grids.
   """
   attr :id, :string, default: nil
-  attr :padding, :string, default: "md", values: ~w(sm md lg)
+  attr :padding, :string, default: "md", values: ~w(sm md lg responsive)
+  attr :layout, :string, default: "stacked", values: ~w(stacked inline_header)
   attr :bordered, :boolean, default: false
   attr :class, :string, default: nil
   slot :badge
@@ -854,28 +858,48 @@ defmodule ForkaWeb.CoreComponents do
       aria-labelledby={@id && @title != [] && "#{@id}-title"}
       class={[
         "rounded-lg bg-surface text-ink shadow-2 dark:shadow-none",
+        @layout == "inline_header" && "flex h-full flex-col justify-between gap-4",
         @bordered && "ring-1 ring-line",
         card_padding(@padding),
         @class
       ]}
     >
-      <div :if={@badge != [] || @meta != []} class="mb-3 flex items-center justify-between gap-2">
-        <div>{render_slot(@badge)}</div>
-        <div class="text-xs font-semibold text-ink-subtle">{render_slot(@meta)}</div>
-      </div>
-      <h2
-        :if={@title != []}
-        id={@id && "#{@id}-title"}
-        class="font-display text-xl font-bold text-ink"
-      >
-        {render_slot(@title)}
-      </h2>
-      <div class={@title != [] && "mt-2"}>
-        {render_slot(@inner_block)}
-      </div>
-      <div :if={@actions != []} class="mt-4 flex flex-wrap items-center gap-2">
-        {render_slot(@actions)}
-      </div>
+      <%= if @layout == "inline_header" do %>
+        <div class="flex flex-col gap-3">
+          <div :if={@title != [] || @badge != []} class="flex items-start justify-between gap-3">
+            <h2
+              :if={@title != []}
+              id={@id && "#{@id}-title"}
+              class="min-w-0 flex-1 truncate font-display text-xl font-bold leading-tight text-ink"
+            >
+              {render_slot(@title)}
+            </h2>
+            <div :if={@badge != []} class="shrink-0">{render_slot(@badge)}</div>
+          </div>
+          {render_slot(@inner_block)}
+        </div>
+        <div :if={@actions != []} class="flex flex-wrap items-center justify-end gap-2">
+          {render_slot(@actions)}
+        </div>
+      <% else %>
+        <div :if={@badge != [] || @meta != []} class="mb-3 flex items-center justify-between gap-2">
+          <div>{render_slot(@badge)}</div>
+          <div class="text-xs font-semibold text-ink-subtle">{render_slot(@meta)}</div>
+        </div>
+        <h2
+          :if={@title != []}
+          id={@id && "#{@id}-title"}
+          class="font-display text-xl font-bold text-ink"
+        >
+          {render_slot(@title)}
+        </h2>
+        <div class={@title != [] && "mt-2"}>
+          {render_slot(@inner_block)}
+        </div>
+        <div :if={@actions != []} class="mt-4 flex flex-wrap items-center gap-2">
+          {render_slot(@actions)}
+        </div>
+      <% end %>
     </article>
     """
   end
@@ -883,6 +907,7 @@ defmodule ForkaWeb.CoreComponents do
   defp card_padding("sm"), do: "p-4"
   defp card_padding("md"), do: "p-6"
   defp card_padding("lg"), do: "p-8"
+  defp card_padding("responsive"), do: "p-4 sm:p-6"
 
   @doc """
   Renders a toggle filter chip with `aria-pressed`.
