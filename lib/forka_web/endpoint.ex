@@ -25,6 +25,16 @@ defmodule ForkaWeb.Endpoint do
     gzip: false,
     only: ForkaWeb.static_paths()
 
+  if Mix.env() == :dev do
+    plug :tidewave_mcp
+
+    defp tidewave_mcp(%{path_info: ["tidewave" | _]} = conn, _opts) do
+      Tidewave.call(conn, Tidewave.init(toolbar: false))
+    end
+
+    defp tidewave_mcp(conn, _opts), do: conn
+  end
+
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.
   if code_reloading? do
