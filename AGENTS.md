@@ -88,6 +88,7 @@ The full rules and checklist are `.agents/rules/security.md`; these are the ones
 - Read the [context map and architecture audit](docs/forka-architecture.md) before working on rooms or matches. It records the current code, known gaps, and how the shared guide applies to Forka.
 - Player-facing screens use the UI profile. The Backpex exception is scoped to the authenticated `/admin` area. See the [Backpex ADR](docs/adrs/0002-backpex-admin-boundary.md).
 - [Kit provenance and updates](docs/agent_workflow.md#updating-shared-guidance) are documented alongside the workflow.
+- **Dev server & Tidewave MCP:** In a linked worktree, `config/runtime.exs` assigns port `4100 + :erlang.phash2(worktree_root, 900)` (or `$PORT` if set; `4000` in the main checkout). When `mix phx.server` is running, Tidewave MCP is at `http://localhost:<port>/tidewave/mcp` (check `lsof -iTCP -sTCP:LISTEN -n -P | grep beam` if `$PORT` was overridden).
 
 ## Project guidelines
 
