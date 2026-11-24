@@ -115,6 +115,7 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
             __changed__: %{},
             current_player: nil,
             directory_limit: Games.directory_limit(),
+            capped?: false,
             loading?: true,
             load_error: nil,
             pending_events: [],
@@ -164,6 +165,7 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
             __changed__: %{},
             current_player: nil,
             directory_limit: limit,
+            capped?: true,
             loading?: false,
             load_error: nil,
             pending_events: [],
@@ -294,6 +296,51 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
       assert loaded_socket.assigns.pending_events == []
       assert loaded_socket.assigns.rooms_count == 1
       assert MapSet.member?(loaded_socket.assigns.room_ids, id)
+    end
+
+    test "enforces directory cap on live updates: ignores unknown updates and evicts oldest on new room",
+         %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      limit = Games.directory_limit()
+
+      games =
+        for i <- 1..(limit + 1) do
+          insert(:game, owner: owner, status: :lobby, name: "Sala #{i}")
+        end
+
+      ordered = Enum.sort_by(games, &{DateTime.to_unix(&1.inserted_at), &1.id}, :desc)
+      oldest_game = List.last(ordered)
+      second_oldest_game = Enum.at(ordered, limit - 1)
+
+      {:ok, lv, _html} = live(conn, ~p"/")
+      initial_text = lv |> render_async() |> visible_text()
+
+      refute has_element?(lv, "#rooms-#{oldest_game.id}")
+      assert has_element?(lv, "#rooms-#{second_oldest_game.id}")
+
+      assert initial_text =~
+               "Ao vivo · #{limit} salas · mostrando as #{limit} mais recentes"
+
+      # An :updated broadcast for a room beyond the cap must not insert it or raise the count
+      :ok = Games.join_game(oldest_game.id, owner.id)
+      after_update_text = lv |> render() |> visible_text()
+      refute has_element?(lv, "#rooms-#{oldest_game.id}")
+      assert after_update_text =~ "Ao vivo · #{limit} salas · mostrando as #{limit} mais recentes"
+
+      # A :created broadcast prepends the new room and evicts the oldest visible room to stay capped
+      {:ok, created_game} = Games.create_game(owner.id, %{name: "Sala novinha", max_players: 4})
+      after_create_text = lv |> render() |> visible_text()
+      assert has_element?(lv, "#rooms-#{created_game.id}")
+      refute has_element?(lv, "#rooms-#{second_oldest_game.id}")
+      assert after_create_text =~ "Ao vivo · #{limit} salas · mostrando as #{limit} mais recentes"
+
+      # Archiving a visible room keeps the capped notice because older rooms remain hidden
+      :ok = Games.archive_game(created_game.id)
+      after_archive_text = lv |> render() |> visible_text()
+      refute has_element?(lv, "#rooms-#{created_game.id}")
+
+      assert after_archive_text =~
+               "Ao vivo · #{limit - 1} salas · mostrando as #{limit} mais recentes"
     end
   end
 

@@ -10,9 +10,11 @@ defmodule ForkaWeb.RoomDirectoryLive do
       socket
       |> assign(:page_title, "Salas")
       |> assign(:directory_limit, Games.directory_limit())
+      |> assign(:capped?, false)
       |> assign(:loading?, true)
       |> assign(:load_error, nil)
       |> assign(:rooms_count, 0)
+      |> assign(:room_order, [])
       |> assign(:room_ids, MapSet.new())
       |> assign(:pending_events, [])
       |> stream(:rooms, [])
@@ -30,12 +32,16 @@ defmodule ForkaWeb.RoomDirectoryLive do
 
   @impl true
   def handle_async(:load_rooms, {:ok, rooms}, socket) do
-    room_ids = MapSet.new(rooms, & &1.id)
+    limit = Map.get(socket.assigns, :directory_limit, Games.directory_limit())
+    room_order = Enum.map(rooms, & &1.id)
+    room_ids = MapSet.new(room_order)
 
     socket =
       socket
       |> assign(:loading?, false)
       |> assign(:load_error, nil)
+      |> assign(:capped?, length(rooms) >= limit)
+      |> assign(:room_order, room_order)
       |> assign(:room_ids, room_ids)
       |> assign(:rooms_count, MapSet.size(room_ids))
       |> stream(:rooms, rooms, reset: true)
@@ -74,23 +80,59 @@ defmodule ForkaWeb.RoomDirectoryLive do
   defp apply_room_event(payload, socket) do
     item = Games.room_list_item_from_event(payload)
     room_ids = socket.assigns.room_ids
+    room_order = Map.get(socket.assigns, :room_order, MapSet.to_list(room_ids))
+    capped? = Map.get(socket.assigns, :capped?, false)
+    limit = Map.get(socket.assigns, :directory_limit, Games.directory_limit())
 
     if RoomListItem.visible_status?(item.status) do
-      existed? = MapSet.member?(room_ids, item.id)
-      next_ids = MapSet.put(room_ids, item.id)
-      insert_opts = if existed?, do: [], else: [at: 0]
-
-      socket
-      |> assign(:room_ids, next_ids)
-      |> assign(:rooms_count, MapSet.size(next_ids))
-      |> stream_insert(:rooms, item, insert_opts)
+      apply_visible_room_event(socket, item, payload, room_ids, room_order, capped?, limit)
     else
+      apply_hidden_room_event(socket, item, room_ids, room_order)
+    end
+  end
+
+  defp apply_visible_room_event(socket, item, payload, room_ids, room_order, capped?, limit) do
+    cond do
+      MapSet.member?(room_ids, item.id) ->
+        stream_insert(socket, :rooms, item)
+
+      Map.get(payload, :action) == :created or not capped? ->
+        insert_new_room(socket, item, room_order, capped?, limit)
+
+      true ->
+        socket
+    end
+  end
+
+  defp insert_new_room(socket, item, room_order, capped?, limit) do
+    {kept_order, evicted_ids} = Enum.split([item.id | room_order], limit)
+    next_ids = MapSet.new(kept_order)
+
+    socket =
+      Enum.reduce(evicted_ids, socket, fn evicted_id, acc ->
+        stream_delete_by_dom_id(acc, :rooms, "rooms-#{evicted_id}")
+      end)
+
+    socket
+    |> assign(:room_order, kept_order)
+    |> assign(:room_ids, next_ids)
+    |> assign(:rooms_count, MapSet.size(next_ids))
+    |> assign(:capped?, capped? or evicted_ids != [])
+    |> stream_insert(:rooms, item, at: 0)
+  end
+
+  defp apply_hidden_room_event(socket, item, room_ids, room_order) do
+    if MapSet.member?(room_ids, item.id) do
+      next_order = List.delete(room_order, item.id)
       next_ids = MapSet.delete(room_ids, item.id)
 
       socket
+      |> assign(:room_order, next_order)
       |> assign(:room_ids, next_ids)
       |> assign(:rooms_count, MapSet.size(next_ids))
       |> stream_delete_by_dom_id(:rooms, "rooms-#{item.id}")
+    else
+      socket
     end
   end
 
@@ -147,7 +189,7 @@ defmodule ForkaWeb.RoomDirectoryLive do
                 <% @load_error != nil -> %>
                   Sem conexão com a lista
                 <% true -> %>
-                  Ao vivo · {count_label(@rooms_count)}<span :if={@rooms_count >= @directory_limit}> · mostrando as {@directory_limit} mais recentes</span><span class="hidden sm:inline"> · a lista se atualiza sozinha</span>
+                  Ao vivo · {count_label(@rooms_count)}<span :if={@capped?}> · mostrando as {@directory_limit} mais recentes</span><span class="hidden sm:inline"> · a lista se atualiza sozinha</span>
               <% end %>
             </span>
           </p>
