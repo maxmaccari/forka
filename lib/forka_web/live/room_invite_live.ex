@@ -157,9 +157,18 @@ defmodule ForkaWeb.RoomInviteLive do
                 <p class="mt-1 text-sm text-ink-muted">{error_description(@error_state)}</p>
               </div>
 
-              <.button id="invite-directory-link" navigate={~p"/"} variant="secondary">
-                Voltar para as salas
-              </.button>
+              <div class="flex flex-wrap items-center gap-3">
+                <.button
+                  :if={is_nil(@current_scope) && @invite}
+                  id="invite-login-link"
+                  navigate={~p"/players/log_in?return_to=#{~p"/rooms/#{@invite.id}/join"}"}
+                >
+                  Entrar para jogar
+                </.button>
+                <.button id="invite-directory-link" navigate={~p"/"} variant="secondary">
+                  Voltar para as salas
+                </.button>
+              </div>
             </div>
           <% else %>
             <%= if @current_scope do %>

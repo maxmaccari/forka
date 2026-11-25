@@ -114,6 +114,37 @@ defmodule ForkaWeb.RoomInviteLiveTest do
       {:ok, lv_archived, html_archived} = live(conn, ~p"/rooms/#{archived.id}/join")
       assert visible_text(html_archived) =~ "Esta sala foi arquivada"
       assert has_element?(lv_archived, ~s|#invite-directory-link[href="/"]|)
+      refute has_element?(lv_archived, "#invite-login-link")
+    end
+
+    test "REQ-03 & REQ-05: guest viewing full or playing room keeps sign-in link with return_to for returning participants",
+         %{conn: conn} do
+      owner = insert(:player)
+      p2 = insert(:player)
+      insert(:word)
+
+      {:ok, game} = Games.create_game(owner.id, %{name: "Sala Cheia", max_players: 2})
+      :ok = Games.join_game(game.id, p2.id)
+
+      encoded = URI.encode_www_form("/rooms/#{game.id}/join")
+      {:ok, lv_full, _html} = live(conn, ~p"/rooms/#{game.id}/join")
+
+      assert has_element?(
+               lv_full,
+               ~s|#invite-login-link[href="/players/log_in?return_to=#{encoded}"]|
+             )
+
+      assert has_element?(lv_full, ~s|#invite-directory-link[href="/"]|)
+
+      :ok = Games.start_game(game.id)
+      {:ok, lv_playing, _html} = live(conn, ~p"/rooms/#{game.id}/join")
+
+      assert has_element?(
+               lv_playing,
+               ~s|#invite-login-link[href="/players/log_in?return_to=#{encoded}"]|
+             )
+
+      assert has_element?(lv_playing, ~s|#invite-directory-link[href="/"]|)
     end
   end
 end
