@@ -6,6 +6,7 @@ defmodule ForkaWeb.RoomComponentsTest do
   import ForkaWeb.RoomComponents
 
   alias Forka.Games.RoomListItem
+  alias Forka.Games.WordAvailability
 
   describe "room_status_badge/1" do
     test "AC-05: renders human pt-BR labels and semantic tones for every visible status" do
@@ -159,6 +160,88 @@ defmodule ForkaWeb.RoomComponentsTest do
       assert Enum.count(LazyHTML.query(error_doc, ~s|#rooms-error [role="alert"]|)) == 1
       assert LazyHTML.text(error_doc) =~ "Não foi possível carregar as salas agora."
       assert Enum.count(LazyHTML.query(error_doc, ~s|button[phx-click="retry_load"]|)) == 1
+    end
+  end
+
+  describe "word availability messaging and alert" do
+    test "REQ-06: explains how to broaden categories when filtered pool is too small" do
+      availability =
+        WordAvailability.evaluate(%{
+          available_words: 3,
+          player_count: 2,
+          max_players: 4,
+          language: "pt",
+          has_category_filter?: true
+        })
+
+      message = insufficient_words_message(availability)
+      assert message =~ "3 palavras válidas"
+      assert message =~ "4"
+      assert message =~ "2 por jogador"
+      assert message =~ "mais categorias"
+      assert message =~ "Todas as categorias"
+      assert message =~ "troque o idioma"
+
+      html =
+        render_component(&word_availability_alert/1, %{
+          id: "room-word-availability-alert",
+          availability: availability,
+          settings_path: "/rooms/room-1/settings"
+        })
+
+      doc = LazyHTML.from_fragment(html)
+
+      assert Enum.count(LazyHTML.query(doc, ~s|#room-word-availability-alert [role="alert"]|)) ==
+               1
+
+      assert visible_text(doc) =~ "Poucas palavras para começar"
+      assert visible_text(doc) =~ message
+
+      assert Enum.count(
+               LazyHTML.query(doc, ~s|#broaden-word-selection[href="/rooms/room-1/settings"]|)
+             ) == 1
+    end
+
+    test "REQ-06: explains language and player-count options when all categories are already selected" do
+      availability =
+        WordAvailability.evaluate(%{
+          available_words: 4,
+          player_count: 3,
+          max_players: 6,
+          language: "pt",
+          has_category_filter?: false
+        })
+
+      message = insufficient_words_message(availability)
+      assert message =~ "4 palavras válidas"
+      assert message =~ "6"
+      assert message =~ "todas as categorias já estão incluídas"
+      assert message =~ "troque o idioma"
+      assert message =~ "menos jogadores"
+
+      # Singular formatting for 1 word and no settings link for non-owners
+      one_word =
+        WordAvailability.evaluate(%{
+          available_words: 1,
+          player_count: 2,
+          max_players: 4,
+          language: "pt",
+          has_category_filter?: false
+        })
+
+      one_msg = insufficient_words_message(one_word)
+      assert one_msg =~ "1 palavra válida"
+      refute one_msg =~ "menos jogadores"
+
+      html =
+        render_component(&word_availability_alert/1, %{
+          id: "player-alert",
+          availability: one_word,
+          settings_path: nil
+        })
+
+      doc = LazyHTML.from_fragment(html)
+      assert Enum.empty?(LazyHTML.query(doc, "#broaden-word-selection"))
     end
   end
 end

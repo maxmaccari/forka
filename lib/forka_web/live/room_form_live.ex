@@ -244,6 +244,13 @@ defmodule ForkaWeb.RoomFormLive do
               cols={5}
             />
             <p
+              id="room-words-note"
+              aria-live="polite"
+              class="mt-2 text-xs font-semibold text-ink-subtle"
+            >
+              Cada jogador traz 2 palavras: com {@max_players} jogadores, são {@max_players * 2} palavras. Mínimo de 2 para começar.
+            </p>
+            <p
               :for={msg <- field_errors(@form, :max_players)}
               id="room-max-players-error"
               class="mt-2 text-sm font-semibold text-danger-ink"

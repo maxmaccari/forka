@@ -132,5 +132,89 @@ defmodule ForkaWeb.RoomLiveTest do
       assert text =~ "Português"
       assert text =~ "Cinema"
     end
+
+    test "REQ-05 & REQ-06: shows word requirement and updates broadening alert live on join, leave, and settings change",
+         %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      p2 = insert(:player, username: "bruno")
+      p3 = insert(:player, username: "caio")
+      owner_scope = Forka.Scope.for_player(owner)
+
+      cat_small = insert(:category, name: "Pequena", language: "pt")
+      cat_extra = insert(:category, name: "Extra", language: "pt")
+
+      for text <- ~w(alfa bravo charlie delta) do
+        insert(:word, text: text, category: cat_small)
+      end
+
+      for text <- ~w(eco foxtrot) do
+        insert(:word, text: text, category: cat_extra)
+      end
+
+      {:ok, game} =
+        Games.create_game(owner.id, %{
+          name: "Noite de palavras",
+          max_players: 6,
+          word_options: %{language: "pt", category_ids: [cat_small.id]}
+        })
+
+      :ok = Games.join_game(game.id, p2.id)
+
+      {:ok, lv, html} = conn |> log_in_player(owner) |> live(~p"/rooms/#{game.id}")
+      assert visible_text(html) =~ "2 de 6 · 4 palavras (2 por jogador)"
+      refute has_element?(lv, "#room-word-availability-alert")
+
+      # 3rd player joins -> required rises to 6 while pool has 4 -> alert appears with owner link
+      :ok = Games.join_game(game.id, p3.id)
+      joined_text = lv |> render() |> visible_text()
+      assert joined_text =~ "3 de 6 · 6 palavras (2 por jogador)"
+      assert has_element?(lv, "#room-word-availability-alert")
+      assert joined_text =~ "Poucas palavras para começar"
+      assert joined_text =~ "4 palavras válidas"
+      assert joined_text =~ "Todas as categorias"
+
+      assert has_element?(
+               lv,
+               ~s|#broaden-word-selection[href="/rooms/#{game.id}/settings"]|
+             )
+
+      # 3rd player leaves -> required returns to 4 -> alert disappears
+      :ok = Games.leave_game(game.id, p3.id)
+      left_text = lv |> render() |> visible_text()
+      assert left_text =~ "2 de 6 · 4 palavras (2 por jogador)"
+      refute has_element?(lv, "#room-word-availability-alert")
+
+      # 3rd player rejoins, then owner broadens categories -> alert disappears
+      :ok = Games.join_game(game.id, p3.id)
+      assert has_element?(lv, "#room-word-availability-alert")
+
+      :ok =
+        Games.update_room_settings(owner_scope, game.id, %{
+          word_options: %{language: "pt", category_ids: [cat_small.id, cat_extra.id]}
+        })
+
+      _ = render(lv)
+      refute has_element?(lv, "#room-word-availability-alert")
+    end
+
+    test "REQ-06: hides owner settings action inside word alert for non-owner viewers", %{
+      conn: conn
+    } do
+      owner = insert(:player, username: "lia")
+      viewer = insert(:player, username: "bruno")
+      cat_empty = insert(:category, name: "Vazia", language: "pt")
+
+      {:ok, game} =
+        Games.create_game(owner.id, %{
+          name: "Sala Vazia",
+          max_players: 4,
+          word_options: %{language: "pt", category_ids: [cat_empty.id]}
+        })
+
+      {:ok, lv, html} = conn |> log_in_player(viewer) |> live(~p"/rooms/#{game.id}")
+      assert has_element?(lv, "#room-word-availability-alert")
+      assert visible_text(html) =~ "0 palavras válidas"
+      refute has_element?(lv, "#broaden-word-selection")
+    end
   end
 end
