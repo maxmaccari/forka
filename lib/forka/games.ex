@@ -27,9 +27,13 @@ defmodule Forka.Games do
   alias Forka.Games.GameSummary
   alias Forka.Games.Repository
   alias Forka.Games.RoomListItem
+  alias Forka.Games.RoomLobby
+  alias Forka.Games.RoomSettings
   alias Forka.Games.Schemas.Game
   alias Forka.Games.Schemas.WordOptions
+  alias Forka.Players.Player, as: AuthPlayer
   alias Forka.Repo
+  alias Forka.Scope
   alias Forka.Words
 
   @directory_limit 60
@@ -186,6 +190,31 @@ defmodule Forka.Games do
     RoomListItem.from_event(payload)
   end
 
+  @doc "Returns the list of supported word languages."
+  @spec supported_languages() :: [String.t()]
+  def supported_languages, do: WordOptions.supported_languages()
+
+  @doc "Builds a changeset for room settings validation."
+  @spec change_room_settings(RoomSettings.t(), map(), keyword()) ::
+          Ecto.Changeset.t(RoomSettings.t())
+  def change_room_settings(%RoomSettings{} = settings, attrs \\ %{}, opts \\ []) do
+    RoomSettings.changeset(settings, attrs, opts)
+  end
+
+  @doc "Creates a room for the scoped authenticated player."
+  @spec create_room(Scope.t() | nil, map()) ::
+          {:ok, Game.t()}
+          | {:error, Ecto.Changeset.t() | :unauthorized | term()}
+          | :ignore
+          | {:ok, pid(), term()}
+  def create_room(scope, params \\ %{})
+
+  def create_room(%Scope{player: %AuthPlayer{id: owner_id}}, params) when is_map(params) do
+    create_game(owner_id, params)
+  end
+
+  def create_room(_invalid_scope, _params), do: {:error, :unauthorized}
+
   @doc """
   Creates a new game with the given parameters.
 
@@ -202,10 +231,24 @@ defmodule Forka.Games do
   @spec create_game(Ecto.UUID.t(), map()) ::
           {:ok, Game.t()} | {:error, term()} | :ignore | {:ok, pid(), term()}
   def create_game(owner_id, params \\ %{}) do
-    with {:ok, game} <- Repository.insert_game(owner_id, params),
+    {norm_lang, valid_uuids} =
+      RoomSettings.extract_lookup_inputs(
+        %RoomSettings{word_options: %WordOptions{language: "en", category_ids: []}},
+        params
+      )
+
+    allowed_ids =
+      if norm_lang in WordOptions.supported_languages() do
+        Words.list_category_ids_for_language(norm_lang, valid_uuids)
+      else
+        []
+      end
+
+    with {:ok, game} <-
+           Repository.insert_game(owner_id, params, allowed_category_ids: allowed_ids),
          {:ok, _pid} <- start_supervised_game(game.id) do
       game
-      |> Repo.preload([:owner, :game_players, :game_words])
+      |> Repo.preload([:owner, {:game_players, :player}, :game_words])
       |> Game.to_game_state()
       |> GameListNotifier.broadcast_created()
 
@@ -221,25 +264,104 @@ defmodule Forka.Games do
   end
 
   @doc """
-  Updates the settings of a game.
-
-  ## Parameters
-    - game_id: The ID of the game.
-    - settings: A map containing the settings to update:
-      - name: (optional) The name of the game
-      - max_players: (optional) Maximum number of players allowed
-      - word_settings: (optional) Settings for word selection
-
-  ## Returns
-    - `:ok` if the settings were updated successfully
-    - `{:error, reason}` if the update failed
-
-  Note: Settings can only be updated when the game is in the lobby state.
+  Updates the settings of a game if the actor is the owner and the game is in the lobby.
   """
-  @spec update_settings(Ecto.UUID.t(), map()) :: :ok | {:error, term()}
-  def update_settings(game_id, settings) when is_map(settings) do
-    ensure_game_server_available(game_id, fn -> GameServer.update_settings(game_id, settings) end)
+  @spec update_settings(Ecto.UUID.t(), Ecto.UUID.t(), map()) ::
+          :ok
+          | {:error, Ecto.Changeset.t() | :unauthorized | :game_not_in_lobby | :not_found}
+  def update_settings(game_id, actor_id, settings)
+      when is_binary(game_id) and is_binary(actor_id) and is_map(settings) do
+    ensure_game_server_available(game_id, fn ->
+      GameServer.update_settings(game_id, actor_id, settings)
+    end)
   end
+
+  @doc "Updates room settings for the scoped authenticated owner while the room is in lobby."
+  @spec update_room_settings(Scope.t() | nil, Ecto.UUID.t(), map()) ::
+          :ok
+          | {:error, Ecto.Changeset.t() | :unauthorized | :game_not_in_lobby | :not_found}
+  def update_room_settings(%Scope{player: %AuthPlayer{id: actor_id}}, game_id, settings)
+      when is_map(settings) do
+    case Ecto.UUID.cast(game_id) do
+      {:ok, valid_id} -> update_settings(valid_id, actor_id, settings)
+      :error -> {:error, :not_found}
+    end
+  end
+
+  def update_room_settings(_invalid_scope, _game_id, _settings), do: {:error, :unauthorized}
+
+  @doc "Returns the lobby projection for an existing room scoped to an authenticated viewer."
+  @spec get_room_lobby(Scope.t() | nil, Ecto.UUID.t()) ::
+          {:ok, RoomLobby.t()} | {:error, :not_found | :unauthorized}
+  def get_room_lobby(%Scope{player: %AuthPlayer{}} = scope, game_id) do
+    with {:ok, valid_id} <- Ecto.UUID.cast(game_id),
+         %GameSummary{} = summary <- get_game_summary(valid_id) do
+      word_options = WordOptions.normalize(summary.word_options)
+
+      category_names =
+        word_options.category_ids
+        |> Words.list_categories_by_ids()
+        |> Enum.map(& &1.name)
+
+      {:ok, RoomLobby.from_game_summary(scope, valid_id, summary, category_names)}
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
+  def get_room_lobby(_invalid_scope, _game_id), do: {:error, :unauthorized}
+
+  @doc "Subscribes an authenticated viewer to lobby-safe updates for a room."
+  @spec subscribe_to_room_lobby(Scope.t() | nil, Ecto.UUID.t()) ::
+          :ok | {:error, :not_found | :unauthorized}
+  def subscribe_to_room_lobby(%Scope{player: %AuthPlayer{}}, game_id) do
+    with {:ok, valid_id} <- Ecto.UUID.cast(game_id),
+         %GameSummary{} <- get_game_summary(valid_id) do
+      GameServer.subscribe_lobby(valid_id)
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
+  def subscribe_to_room_lobby(_invalid_scope, _game_id), do: {:error, :unauthorized}
+
+  @doc "Projects a `:room_lobby_updated` PubSub payload for the given authenticated viewer."
+  @spec room_lobby_from_payload(Scope.t() | nil, map()) ::
+          {:ok, RoomLobby.t()} | {:error, :unauthorized}
+  def room_lobby_from_payload(%Scope{player: %AuthPlayer{}} = scope, payload)
+      when is_map(payload) do
+    {:ok, RoomLobby.from_payload(scope, payload)}
+  end
+
+  def room_lobby_from_payload(_invalid_scope, _payload), do: {:error, :unauthorized}
+
+  @doc "Loads room settings for editing, enforcing authenticated owner and `:lobby` state."
+  @spec get_room_settings_for_edit(Scope.t() | nil, Ecto.UUID.t()) ::
+          {:ok, %{settings: RoomSettings.t(), min_players: pos_integer()}}
+          | {:error, :not_found | :unauthorized | :game_not_in_lobby}
+  def get_room_settings_for_edit(%Scope{player: %AuthPlayer{id: actor_id}}, game_id) do
+    with {:ok, valid_id} <- Ecto.UUID.cast(game_id),
+         %GameSummary{} = summary <- get_game_summary(valid_id) do
+      cond do
+        summary.owner == nil or summary.owner.id != actor_id ->
+          {:error, :unauthorized}
+
+        summary.game_status != :lobby ->
+          {:error, :game_not_in_lobby}
+
+        true ->
+          {:ok,
+           %{
+             settings: RoomSettings.from_game_summary(summary),
+             min_players: max(2, map_size(summary.players))
+           }}
+      end
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
+  def get_room_settings_for_edit(_invalid_scope, _game_id), do: {:error, :unauthorized}
 
   @doc """
   Adds a player to the game.

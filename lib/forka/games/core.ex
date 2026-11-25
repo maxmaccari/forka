@@ -4,9 +4,10 @@ defmodule Forka.Games.Core do
   alias Forka.Games.Core.GameLogic
   alias Forka.Games.Core.GameState
   alias Forka.Games.GameSummary
+  alias Forka.Games.RoomSettings
   alias Forka.Games.Schemas.GamePlayer
   alias Forka.Games.Schemas.GameWord
-  alias Forka.Games.Schemas.{Player, Word, WordOptions}
+  alias Forka.Games.Schemas.{Player, Word}
 
   import Forka.Games.Core.Helpers, only: [increment_tick: 1, push_event: 2, push_event: 3]
 
@@ -497,60 +498,57 @@ defmodule Forka.Games.Core do
   end
 
   @doc """
-  Updates game settings including name, max_players, and word_options.
-
-  ## Parameters
-    - game_state: The current GameState struct
-    - settings: Map containing settings to update:
-      - name: Optional new name for the game
-      - max_players: Optional new maximum number of players
-      - word_options: Optional new word options
-
-  ## Returns
-    - {:ok, updated_game_state} if the settings were successfully updated
-    - {:error, :game_not_in_lobby} if the game is not in lobby status
+  Updates the settings of a game if it is in the lobby state and called by the owner.
   """
-  @spec update_settings(GameState.t(), map()) ::
-          {:ok, GameState.t()} | {:error, :game_not_in_lobby}
-  def update_settings(%GameState{status: :lobby} = game_state, settings) when is_map(settings) do
-    updated_game_state =
-      game_state
-      |> maybe_update_name(settings)
-      |> maybe_update_max_players(settings)
-      |> maybe_update_word_options(settings)
-      |> increment_tick()
-      |> push_event(:settings_updated, settings)
+  @spec update_settings(GameState.t(), Ecto.UUID.t(), map(), keyword()) ::
+          {:ok, GameState.t()}
+          | {:error, :unauthorized | :game_not_in_lobby | Ecto.Changeset.t()}
+  def update_settings(game_state, actor_id, settings, opts \\ [])
 
-    {:ok, updated_game_state}
-  end
+  def update_settings(%GameState{owner: %{id: owner_id}}, actor_id, _settings, _opts)
+      when actor_id != owner_id,
+      do: {:error, :unauthorized}
 
-  def update_settings(%GameState{} = _game_state, _settings),
-    do: {:error, :game_not_in_lobby}
+  def update_settings(%GameState{owner: nil}, _actor_id, _settings, _opts),
+    do: {:error, :unauthorized}
 
-  defp maybe_update_name(%GameState{} = game_state, %{name: name}) when is_binary(name) do
-    sanitized_name = String.trim(name)
+  def update_settings(%GameState{status: status}, _actor_id, _settings, _opts)
+      when status != :lobby,
+      do: {:error, :game_not_in_lobby}
 
-    if sanitized_name != "" do
-      %GameState{game_state | name: name}
-    else
-      game_state
+  def update_settings(%GameState{status: :lobby} = game_state, _actor_id, settings, opts)
+      when is_map(settings) do
+    current = RoomSettings.from_game_state(game_state)
+    occupancy = max(@min_players_allowed, map_size(game_state.game_players))
+    cs_opts = Keyword.put(opts, :min_players, occupancy)
+
+    case RoomSettings.changeset(current, settings, cs_opts) do
+      %Ecto.Changeset{valid?: true} = changeset ->
+        applied = Ecto.Changeset.apply_changes(changeset)
+
+        updated_game_state =
+          %GameState{
+            game_state
+            | name: applied.name,
+              max_players: applied.max_players,
+              word_options: applied.word_options
+          }
+          |> increment_tick()
+          |> push_event(:settings_updated, %{
+            name: applied.name,
+            max_players: applied.max_players,
+            word_options: %{
+              language: applied.word_options.language,
+              category_ids: applied.word_options.category_ids
+            }
+          })
+
+        {:ok, updated_game_state}
+
+      %Ecto.Changeset{valid?: false} = changeset ->
+        {:error, changeset}
     end
   end
-
-  defp maybe_update_name(game_state, _), do: game_state
-
-  defp maybe_update_max_players(%GameState{} = game_state, %{max_players: max_players})
-       when is_integer(max_players) and max_players >= @min_players_allowed and
-              max_players <= @max_players_allowed,
-       do: %GameState{game_state | max_players: max_players}
-
-  defp maybe_update_max_players(game_state, _), do: game_state
-
-  defp maybe_update_word_options(%GameState{} = game_state, %{word_options: word_options})
-       when is_map(word_options),
-       do: %GameState{game_state | word_options: WordOptions.new(word_options)}
-
-  defp maybe_update_word_options(game_state, _), do: game_state
 
   @doc false
   @spec min_players_allowed() :: 2

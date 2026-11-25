@@ -176,12 +176,16 @@ defmodule Forka.Games.GameServerTest do
     end
   end
 
-  describe "update_settings/2" do
+  describe "update_settings/3" do
     test "updates game settings and sends update via PubSub", %{game_state: game_state} do
-      category_ids = [insert(:category).id, insert(:category).id]
+      category_ids = [
+        insert(:category, language: "pt").id,
+        insert(:category, language: "pt").id
+      ]
+
       settings = %{word_options: %{language: "pt", category_ids: category_ids}}
 
-      assert :ok = GameServer.update_settings(game_state.id, settings)
+      assert :ok = GameServer.update_settings(game_state.id, game_state.owner.id, settings)
 
       assert_receive {:game_updated, game_summary}
 
@@ -192,10 +196,14 @@ defmodule Forka.Games.GameServerTest do
     end
 
     test "persists the game state after updating settings", %{game_state: game_state} do
-      category_ids = [insert(:category).id, insert(:category).id]
+      category_ids = [
+        insert(:category, language: "pt").id,
+        insert(:category, language: "pt").id
+      ]
+
       settings = %{word_options: %{language: "pt", category_ids: category_ids}}
 
-      assert :ok = GameServer.update_settings(game_state.id, settings)
+      assert :ok = GameServer.update_settings(game_state.id, game_state.owner.id, settings)
 
       # Verify the gate state was persisted
       {:ok, persisted_game_state} = Repository.get_game_state(game_state.id)
@@ -215,8 +223,10 @@ defmodule Forka.Games.GameServerTest do
       flush_messages()
 
       # Try to update settings after game started
-      settings = %{word_options: %{language: "es"}}
-      assert {:error, :game_not_in_lobby} = GameServer.update_settings(game_state.id, settings)
+      settings = %{word_options: %{language: "pt"}}
+
+      assert {:error, :game_not_in_lobby} =
+               GameServer.update_settings(game_state.id, game_state.owner.id, settings)
 
       # Don't receive messages in case of errors
       refute_receive {:game_updated, _game_summary}
@@ -269,7 +279,9 @@ defmodule Forka.Games.GameServerTest do
       )
 
       # Set language option to Portuguese
-      GameServer.update_settings(game_state.id, %{word_options: %{language: "pt"}})
+      GameServer.update_settings(game_state.id, game_state.owner.id, %{
+        word_options: %{language: "pt"}
+      })
 
       flush_messages()
 
@@ -313,7 +325,7 @@ defmodule Forka.Games.GameServerTest do
       )
 
       # Set language option to Portuguese
-      GameServer.update_settings(game_state.id, %{
+      GameServer.update_settings(game_state.id, game_state.owner.id, %{
         word_options: %{category_ids: [category_1.id, category_2.id]}
       })
 

@@ -18,7 +18,11 @@ defmodule Forka.Games.GameServer do
   alias Forka.Games.Core.GameState
   alias Forka.Games.GameListNotifier
   alias Forka.Games.Repository
+  alias Forka.Games.RoomLobby
+  alias Forka.Games.RoomSettings
   alias Forka.Games.Schemas.Player
+  alias Forka.Games.Schemas.WordOptions
+  alias Forka.Words
   alias Phoenix.PubSub
 
   @pubsub_topic_prefix "game"
@@ -71,8 +75,9 @@ defmodule Forka.Games.GameServer do
   end
 
   @doc false
-  def update_settings(game_id, settings) when is_binary(game_id) and is_map(settings) do
-    GenServer.call(global_name(game_id), {:update_settings, settings})
+  def update_settings(game_id, actor_id, settings)
+      when is_binary(game_id) and is_binary(actor_id) and is_map(settings) do
+    GenServer.call(global_name(game_id), {:update_settings, actor_id, settings})
   end
 
   @doc false
@@ -109,6 +114,11 @@ defmodule Forka.Games.GameServer do
   @doc false
   def subscribe(game_id) when is_binary(game_id) do
     PubSub.subscribe(Forka.PubSub, topic(game_id))
+  end
+
+  @doc false
+  def subscribe_lobby(game_id) when is_binary(game_id) do
+    PubSub.subscribe(Forka.PubSub, lobby_topic(game_id))
   end
 
   @doc false
@@ -160,11 +170,20 @@ defmodule Forka.Games.GameServer do
   end
 
   @impl true
-  def handle_call({:update_settings, settings}, _from, game) do
-    case Core.update_settings(game, settings) do
+  def handle_call({:update_settings, actor_id, settings}, _from, game) do
+    current = RoomSettings.from_game_state(game)
+    {norm_lang, valid_uuids} = RoomSettings.extract_lookup_inputs(current, settings)
+
+    allowed_ids =
+      if norm_lang in WordOptions.supported_languages() do
+        Words.list_category_ids_for_language(norm_lang, valid_uuids)
+      else
+        []
+      end
+
+    case Core.update_settings(game, actor_id, settings, allowed_category_ids: allowed_ids) do
       {:ok, new_game} ->
         saved_game = save_and_publish!(game, new_game)
-
         {:reply, :ok, saved_game, @timeout_ms}
 
       {:error, error} ->
@@ -272,15 +291,29 @@ defmodule Forka.Games.GameServer do
   # Private Helpers
 
   defp topic(game_id), do: "#{@pubsub_topic_prefix}:#{game_id}"
+  defp lobby_topic(game_id), do: "room_lobby:#{game_id}"
 
   defp broadcast!(%GameState{id: game_id} = game_state) do
     game_summary = Core.to_game_summary(game_state)
     PubSub.broadcast!(Forka.PubSub, topic(game_id), {@message_tagger, game_summary})
   end
 
+  defp broadcast_lobby!(%GameState{id: game_id} = game_state) do
+    word_options = WordOptions.normalize(game_state.word_options)
+
+    category_names =
+      word_options.category_ids
+      |> Words.list_categories_by_ids()
+      |> Enum.map(& &1.name)
+
+    payload = RoomLobby.payload(game_state, category_names)
+    PubSub.broadcast!(Forka.PubSub, lobby_topic(game_id), {:room_lobby_updated, payload})
+  end
+
   defp save_and_publish!(previous, updated) do
     saved = Repository.save_game_state!(updated)
     broadcast!(saved)
+    broadcast_lobby!(saved)
     :ok = GameListNotifier.broadcast_update_if_changed(previous, saved)
     saved
   end

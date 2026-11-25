@@ -106,7 +106,7 @@ defmodule Forka.GamesTest do
 
     assert :ok = Games.join_game(game.id, owner.id)
     assert [%{tick: 1, type: :player_joined}] = Games.get_game_summary(game.id).last_events
-    assert :ok = Games.update_settings(game.id, %{name: "Updated counter"})
+    assert :ok = Games.update_settings(game.id, owner.id, %{name: "Updated counter"})
     assert [%{tick: 2, type: :settings_updated}] = Games.get_game_summary(game.id).last_events
 
     assert {:ok, %{tick: 2, events: events}} = Repository.get_game_state(game.id)
@@ -400,39 +400,202 @@ defmodule Forka.GamesTest do
       assert "can't be blank" in errors_on(changeset).name
       assert errors_on(changeset).max_players
     end
+
+    test "AC-03: auto-joins the owner at position 0 and broadcasts player_count 1" do
+      :ok = Games.subscribe_to_game_list()
+      owner = insert(:player, username: "lia")
+      cat_pt = insert(:category, name: "Animais", language: "pt")
+
+      assert {:ok, game} =
+               Games.create_game(owner.id, %{
+                 name: "  Sala da Lia  ",
+                 max_players: 4,
+                 word_options: %{language: "pt", category_ids: [cat_pt.id]}
+               })
+
+      assert game.name == "Sala da Lia"
+
+      summary = Games.get_game_summary(game.id)
+      assert map_size(summary.players) == 1
+      assert summary.players[0].player.id == owner.id
+
+      assert_receive {:game_list_updated, payload}
+      assert payload.id == game.id
+      assert payload.player_count == 1
+      assert payload.language == "pt"
+      assert payload.category_names == ["Animais"]
+    end
+
+    test "EDGE-02: create_game/2 rejects unsupported language, malformed UUIDs, and cross-language categories even with padded language" do
+      owner = insert(:player)
+      en_cat = insert(:category, name: "Animals", language: "en")
+      stale_id = Ecto.UUID.generate()
+
+      assert {:error, %Ecto.Changeset{} = cs_lang} =
+               Games.create_game(owner.id, %{
+                 name: "Sala ES",
+                 max_players: 4,
+                 word_options: %{language: "es", category_ids: []}
+               })
+
+      assert errors_on(cs_lang).word_options.language
+
+      assert {:error, %Ecto.Changeset{} = cs_malformed} =
+               Games.create_game(owner.id, %{
+                 name: "Sala UUID Ruim",
+                 max_players: 4,
+                 word_options: %{language: "pt", category_ids: ["not-a-uuid"]}
+               })
+
+      assert "contém categorias indisponíveis para o idioma selecionado" in errors_on(
+               cs_malformed
+             ).word_options.category_ids
+
+      # Padded uppercase language normalizes to "pt" and still rejects EN + stale category IDs
+      assert {:error, %Ecto.Changeset{} = cs_cat} =
+               Games.create_game(owner.id, %{
+                 name: "Sala Mista",
+                 max_players: 4,
+                 word_options: %{language: " PT ", category_ids: [en_cat.id, stale_id]}
+               })
+
+      assert "contém categorias indisponíveis para o idioma selecionado" in errors_on(cs_cat).word_options.category_ids
+    end
   end
 
-  describe "update_settings/2" do
+  describe "update_settings/3 and scoped update_room_settings/3" do
     setup do
       owner = insert(:player)
       {:ok, game} = Games.create_game(owner.id, %{name: "Test Game", max_players: 4})
-      %{game: game}
+      %{game: game, owner: owner, owner_scope: Forka.Scope.for_player(owner)}
     end
 
-    test "updates game settings in lobby state", %{game: game} do
-      settings = %{name: "New Name", max_players: 6}
-      assert :ok = Games.update_settings(game.id, settings)
-      # Get the updated game to verify changes
+    test "AC-04: updates game settings in lobby state for owner via scope", %{
+      game: game,
+      owner_scope: owner_scope
+    } do
+      cat_pt = insert(:category, name: "Filmes", language: "pt")
+
+      settings = %{
+        name: "New Name",
+        max_players: 6,
+        word_options: %{language: "pt", category_ids: [cat_pt.id]}
+      }
+
+      assert :ok = Games.update_room_settings(owner_scope, game.id, settings)
       updated_game = Games.get_game_summary(game.id)
       assert updated_game.name == "New Name"
       assert updated_game.max_players == 6
+      assert updated_game.word_options.language == "pt"
+      assert updated_game.word_options.category_ids == [cat_pt.id]
     end
 
-    test "returns error when game not in lobby", %{game: game} do
-      # Add players and a word to start the game
+    test "AC-04: returns {:error, :unauthorized} for non-owner scope", %{game: game} do
+      other = insert(:player)
+      other_scope = Forka.Scope.for_player(other)
+
+      assert {:error, :unauthorized} =
+               Games.update_room_settings(other_scope, game.id, %{name: "Nope"})
+
+      assert Games.get_game_summary(game.id).name == "Test Game"
+    end
+
+    test "EDGE-01: rejects max_players below current live occupancy", %{
+      game: game,
+      owner_scope: owner_scope
+    } do
+      p2 = insert(:player)
+      p3 = insert(:player)
+      :ok = Games.join_game(game.id, p2.id)
+      :ok = Games.join_game(game.id, p3.id)
+
+      assert {:error, %Ecto.Changeset{} = cs} =
+               Games.update_room_settings(owner_scope, game.id, %{max_players: 2})
+
+      assert errors_on(cs).max_players == [
+               "não pode ser menor que o número atual de jogadores (3)"
+             ]
+    end
+
+    test "EDGE-02: validates language-only and category-only partial updates inside serialized state",
+         %{game: game, owner_scope: owner_scope} do
+      pt_cat = insert(:category, name: "Filmes", language: "pt")
+      en_cat = insert(:category, name: "Movies", language: "en")
+
+      # Category-only patch against current EN language accepts EN category and rejects PT category
+      assert :ok =
+               Games.update_room_settings(owner_scope, game.id, %{
+                 word_options: %{category_ids: [en_cat.id]}
+               })
+
+      assert {:error, %Ecto.Changeset{} = cs_wrong_cat} =
+               Games.update_room_settings(owner_scope, game.id, %{
+                 word_options: %{category_ids: [pt_cat.id]}
+               })
+
+      assert "contém categorias indisponíveis para o idioma selecionado" in errors_on(
+               cs_wrong_cat
+             ).word_options.category_ids
+
+      # Language-only patch to PT while en_cat is still selected rejects stale EN category
+      assert {:error, %Ecto.Changeset{} = cs_lang_only} =
+               Games.update_room_settings(owner_scope, game.id, %{
+                 word_options: %{language: " PT "}
+               })
+
+      assert "contém categorias indisponíveis para o idioma selecionado" in errors_on(
+               cs_lang_only
+             ).word_options.category_ids
+
+      # Switching language while clearing categories succeeds
+      assert :ok =
+               Games.update_room_settings(owner_scope, game.id, %{
+                 word_options: %{language: " PT ", category_ids: []}
+               })
+
+      assert Games.get_game_summary(game.id).word_options.language == "pt"
+
+      # Top-level name-only patch still validates effective word_options if a selected category was deleted
+      assert :ok =
+               Games.update_room_settings(owner_scope, game.id, %{
+                 word_options: %{language: "pt", category_ids: [pt_cat.id]}
+               })
+
+      Forka.Repo.delete!(pt_cat)
+
+      assert {:error, %Ecto.Changeset{} = cs_stale_on_name} =
+               Games.update_room_settings(owner_scope, game.id, %{name: "Renomeada"})
+
+      assert "contém categorias indisponíveis para o idioma selecionado" in errors_on(
+               cs_stale_on_name
+             ).word_options.category_ids
+    end
+
+    test "AC-04: returns {:error, :game_not_in_lobby} when game not in lobby", %{
+      game: game,
+      owner_scope: owner_scope
+    } do
       player1 = insert(:player)
-      player2 = insert(:player)
       :ok = Games.join_game(game.id, player1.id)
-      :ok = Games.join_game(game.id, player2.id)
-
-      # Insert a word for the game
       insert(:word, %{text: "hangman"})
-
-      # Start the game
       :ok = Games.start_game(game.id)
 
-      settings = %{name: "New Name"}
-      assert {:error, :game_not_in_lobby} = Games.update_settings(game.id, settings)
+      assert {:error, :game_not_in_lobby} =
+               Games.update_room_settings(owner_scope, game.id, %{name: "New Name"})
+    end
+
+    test "AC-04: legacy room with non-PT/EN language still persists unrelated state changes" do
+      owner = insert(:player)
+      guest = insert(:player)
+
+      legacy_game =
+        insert(:game,
+          owner: owner,
+          word_options: %Forka.Games.Schemas.WordOptions{language: "es", category_ids: []}
+        )
+
+      assert :ok = Games.join_game(legacy_game.id, guest.id)
+      assert Games.get_game_summary(legacy_game.id).word_options.language == "es"
     end
   end
 
@@ -570,10 +733,16 @@ defmodule Forka.GamesTest do
 
       :ok = Games.start_game(game.id)
 
-      %{game: game, player1: player1, player2: player2, word: word}
+      %{game: game, owner: owner, player1: player1, player2: player2, word: word}
     end
 
-    test "game over when all players give up", %{game: game, player1: player1, player2: player2} do
+    test "game over when all players give up", %{
+      game: game,
+      owner: owner,
+      player1: player1,
+      player2: player2
+    } do
+      :ok = Games.give_up_game(game.id, owner.id)
       :ok = Games.give_up_game(game.id, player1.id)
       :ok = Games.give_up_game(game.id, player2.id)
 
@@ -618,7 +787,7 @@ defmodule Forka.GamesTest do
       :ok = Games.join_game(game.id, player.id)
 
       assert_receive {:game_updated, game_summary}
-      assert game_summary.players[0].player.id == player.id
+      assert game_summary.players[1].player.id == player.id
     end
 
     test "subscribers receive game state changes", %{game: game} do
@@ -657,7 +826,7 @@ defmodule Forka.GamesTest do
       assert game_list_data.id == game.id
       assert game_list_data.action == :created
       assert game_list_data.status == :lobby
-      assert game_list_data.player_count == 0
+      assert game_list_data.player_count == 1
       assert game_list_data.owner.id == owner.id
     end
 
@@ -675,7 +844,7 @@ defmodule Forka.GamesTest do
       assert_receive {:game_list_updated, game_list_data}
       assert game_list_data.id == game.id
       assert game_list_data.action == :updated
-      assert game_list_data.player_count == 1
+      assert game_list_data.player_count == 2
     end
 
     test "subscribers receive updates when game status changes" do
@@ -754,7 +923,7 @@ defmodule Forka.GamesTest do
       assert created_item.category_names == ["Cinema"]
 
       :ok =
-        Games.update_settings(game.id, %{
+        Games.update_settings(game.id, owner.id, %{
           word_options: %{language: "pt", category_ids: [cat_sports.id, cat_cinema.id]}
         })
 
@@ -763,6 +932,52 @@ defmodule Forka.GamesTest do
       assert updated_data.action == :updated
       assert updated_data.language == "pt"
       assert updated_data.category_names == ["Cinema", "Esportes"]
+    end
+  end
+
+  describe "scoped room lobby and authorization" do
+    test "AC-05: rejects empty or nil scope on all scoped room APIs" do
+      owner = insert(:player)
+      {:ok, game} = Games.create_game(owner.id, %{name: "Sala Segura", max_players: 4})
+      empty_scope = %Forka.Scope{player: nil}
+
+      for bad_scope <- [empty_scope, nil] do
+        assert {:error, :unauthorized} =
+                 Games.create_room(bad_scope, %{name: "X", max_players: 4})
+
+        assert {:error, :unauthorized} = Games.get_room_lobby(bad_scope, game.id)
+        assert {:error, :unauthorized} = Games.subscribe_to_room_lobby(bad_scope, game.id)
+        assert {:error, :unauthorized} = Games.get_room_settings_for_edit(bad_scope, game.id)
+
+        assert {:error, :unauthorized} =
+                 Games.update_room_settings(bad_scope, game.id, %{name: "Y"})
+      end
+    end
+
+    test "AC-05: lobby subscription delivers only lobby-safe fields to a signed-in non-member" do
+      owner = insert(:player, username: "lia")
+      viewer = insert(:player, username: "bruno")
+      owner_scope = Forka.Scope.for_player(owner)
+      viewer_scope = Forka.Scope.for_player(viewer)
+
+      {:ok, game} = Games.create_game(owner.id, %{name: "Sala Aberta", max_players: 4})
+      assert :ok = Games.subscribe_to_room_lobby(viewer_scope, game.id)
+
+      assert :ok = Games.update_room_settings(owner_scope, game.id, %{name: "Sala Atualizada"})
+
+      assert_receive {:room_lobby_updated, payload}
+      assert payload.id == game.id
+      assert payload.name == "Sala Atualizada"
+      assert payload.owner_username == "lia"
+      assert payload.players == [%{id: owner.id, username: "lia"}]
+      refute Map.has_key?(payload, :guesses)
+      refute Map.has_key?(payload, :current_word_summary)
+      refute Map.has_key?(payload, :current_word_letters)
+      refute Map.has_key?(payload, :last_events)
+      refute Enum.any?(payload.players, &Map.has_key?(&1, :email))
+
+      assert {:ok, lobby} = Games.room_lobby_from_payload(viewer_scope, payload)
+      assert lobby.can_edit_settings? == false
     end
   end
 end

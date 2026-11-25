@@ -491,84 +491,127 @@ defmodule Forka.Games.CoreTest do
     end
   end
 
-  describe "update_settings/2" do
+  describe "update_settings/4" do
     setup %{owner: owner} do
       game = Core.new(owner, "Test Game", 4)
       {:ok, game: game}
     end
 
-    test "updates game settings successfully when in lobby state", %{game: game} do
+    test "AC-04: updates settings when called by owner in lobby (including Core.new keyword word_options)",
+         %{game: game, owner: owner} do
+      cat_1 = Ecto.UUID.generate()
+      cat_2 = Ecto.UUID.generate()
+
       settings = %{
-        name: "New Game Name",
+        name: "  New Game Name  ",
         max_players: 6,
-        word_options: %{language: "pt", category_ids: ["uuid1", "uuid2"]}
+        word_options: %{language: " PT ", category_ids: [cat_1, cat_2]}
       }
 
-      {:ok, updated_game} = Core.update_settings(game, settings)
+      assert {:ok, updated_game} =
+               Core.update_settings(game, owner.id, settings,
+                 allowed_category_ids: [cat_1, cat_2]
+               )
 
       assert updated_game.name == "New Game Name"
       assert updated_game.max_players == 6
       assert updated_game.word_options.language == "pt"
-      assert updated_game.word_options.category_ids == ["uuid1", "uuid2"]
-
+      assert updated_game.word_options.category_ids == [cat_1, cat_2]
       assert updated_game.tick == game.tick + 1
-
-      assert_last_events(updated_game, [%{type: :settings_updated, payload: settings}])
+      assert_last_events(updated_game, [%{type: :settings_updated}])
     end
 
-    test "updates name only", %{game: game} do
-      settings = %{name: "New Game Name"}
-      {:ok, updated_game} = Core.update_settings(game, settings)
+    test "AC-04: returns {:error, :unauthorized} when called by a non-owner", %{game: game} do
+      other = build_games_player("Other")
 
-      assert updated_game.name == "New Game Name"
+      assert {:error, :unauthorized} =
+               Core.update_settings(game, other.id, %{name: "Hijacked"})
     end
 
-    test "ignores empty names", %{game: game} do
-      # Test with empty string
-      settings = %{name: ""}
-      {:ok, updated_game} = Core.update_settings(game, settings)
-      # Name unchanged
-      assert updated_game.name == "Test Game"
+    test "AC-04: returns changeset error for blank or whitespace-only name", %{
+      game: game,
+      owner: owner
+    } do
+      assert {:error, %Ecto.Changeset{} = cs} =
+               Core.update_settings(game, owner.id, %{name: "   "})
 
-      # Test with whitespace only
-      settings = %{name: "   "}
-      {:ok, updated_game} = Core.update_settings(game, settings)
-      # Name unchanged
-      assert updated_game.name == "Test Game"
+      assert cs.errors[:name]
     end
 
-    test "updates max_players only within allowed range", %{game: game} do
-      settings = %{max_players: 6}
-      {:ok, updated_game} = Core.update_settings(game, settings)
+    test "AC-04: returns changeset error for max_players outside 2..6", %{
+      game: game,
+      owner: owner
+    } do
+      assert {:error, %Ecto.Changeset{} = cs} =
+               Core.update_settings(game, owner.id, %{max_players: 10})
 
-      assert updated_game.max_players == 6
+      assert cs.errors[:max_players]
     end
 
-    test "ignores max_players outside allowed range", %{game: game} do
-      settings = %{max_players: 10}
-      {:ok, updated_game} = Core.update_settings(game, settings)
+    test "EDGE-01: returns changeset error when max_players is below current occupancy", %{
+      game: game,
+      owner: owner
+    } do
+      p1 = build_games_player("P1")
+      p2 = build_games_player("P2")
+      p3 = build_games_player("P3")
 
-      # Unchanged
-      assert updated_game.max_players == 4
+      {:ok, game} = Core.join_game(game, owner)
+      {:ok, game} = Core.join_game(game, p1)
+      {:ok, game} = Core.join_game(game, p2)
+      {:ok, game} = Core.join_game(game, p3)
+
+      assert {:error, %Ecto.Changeset{} = cs} =
+               Core.update_settings(game, owner.id, %{max_players: 3})
+
+      assert {"não pode ser menor que o número atual de jogadores (%{count})", opts} =
+               cs.errors[:max_players]
+
+      assert opts[:count] == 4
     end
 
-    test "updates word_options only", %{game: game} do
-      settings = %{word_options: %{language: "es"}}
-      {:ok, updated_game} = Core.update_settings(game, settings)
+    test "EDGE-02: rejects unsupported language, disallowed categories, and language-only patch with stale categories",
+         %{game: game, owner: owner} do
+      pt_cat = Ecto.UUID.generate()
 
-      assert updated_game.word_options.language == "es"
+      assert {:error, %Ecto.Changeset{} = cs_lang} =
+               Core.update_settings(game, owner.id, %{word_options: %{language: "es"}},
+                 allowed_category_ids: []
+               )
+
+      assert Ecto.Changeset.get_change(cs_lang, :word_options).errors[:language]
+
+      # Set PT category first
+      {:ok, pt_game} =
+        Core.update_settings(
+          game,
+          owner.id,
+          %{word_options: %{language: "pt", category_ids: [pt_cat]}},
+          allowed_category_ids: [pt_cat]
+        )
+
+      # Language-only patch to EN keeps pt_cat, which is not in EN's allowed_category_ids
+      assert {:error, %Ecto.Changeset{} = cs_lang_only} =
+               Core.update_settings(pt_game, owner.id, %{word_options: %{language: "en"}},
+                 allowed_category_ids: []
+               )
+
+      assert Ecto.Changeset.get_change(cs_lang_only, :word_options).errors[:category_ids]
     end
 
-    test "returns error when not in lobby state", %{game: game} do
-      # Test in playing state
+    test "AC-04: returns {:error, :game_not_in_lobby} when not in lobby state", %{
+      game: game,
+      owner: owner
+    } do
       game_playing = %{game | status: :playing}
 
       assert {:error, :game_not_in_lobby} =
-               Core.update_settings(game_playing, %{name: "New Name"})
+               Core.update_settings(game_playing, owner.id, %{name: "New Name"})
 
-      # Test in archived state
       game_archived = %{game | status: :archived}
-      assert {:error, :game_not_in_lobby} = Core.update_settings(game_archived, %{max_players: 6})
+
+      assert {:error, :game_not_in_lobby} =
+               Core.update_settings(game_archived, owner.id, %{max_players: 6})
     end
   end
 
