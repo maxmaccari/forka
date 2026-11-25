@@ -29,6 +29,31 @@ defmodule Forka.WordsTest do
       assert Enum.map(result, & &1.id) == [games.id, music.id]
       assert Enum.map(result, & &1.name) == ["Jogos", "Música"]
     end
+
+    test "AC-01: list_categories/1 orders results alphabetically by name" do
+      z = insert(:category, name: "Zoologia", language: "pt")
+      a = insert(:category, name: "Animais", language: "pt")
+      m = insert(:category, name: "Música", language: "pt")
+      _en = insert(:category, name: "Animals", language: "en")
+
+      result = Words.list_categories(language: "pt")
+      assert Enum.map(result, & &1.id) == [a.id, m.id, z.id]
+    end
+
+    test "AC-01: list_category_ids_for_language/2 returns only existing IDs belonging to that language" do
+      pt_a = insert(:category, name: "Animais", language: "pt")
+      pt_b = insert(:category, name: "Filmes", language: "pt")
+      en_a = insert(:category, name: "Animals", language: "en")
+      stale_id = Ecto.UUID.generate()
+
+      assert Words.list_category_ids_for_language("pt", []) == []
+
+      assert MapSet.new(
+               Words.list_category_ids_for_language("pt", [pt_a.id, pt_b.id, en_a.id, stale_id])
+             ) == MapSet.new([pt_a.id, pt_b.id])
+
+      assert Words.list_category_ids_for_language("en", [pt_a.id, en_a.id]) == [en_a.id]
+    end
   end
 
   describe "import_words/1" do

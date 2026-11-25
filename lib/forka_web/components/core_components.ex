@@ -775,6 +775,8 @@ defmodule ForkaWeb.CoreComponents do
 
   @doc """
   Renders a segmented radiogroup control.
+
+  Selecting an option pushes `%{"option" => value}` to the `on_select` event.
   """
   attr :id, :string, required: true
   attr :label, :string, required: true
@@ -812,7 +814,7 @@ defmodule ForkaWeb.CoreComponents do
         aria-checked={to_string(@value == opt_value)}
         tabindex={if(@value == opt_value or (!@has_selected? and idx == 0), do: "0", else: "-1")}
         phx-click={@on_select}
-        phx-value-value={opt_value}
+        phx-value-option={opt_value}
         class={[
           "min-h-11 rounded-sm px-3 font-display text-sm font-bold transition",
           if(@value == opt_value,

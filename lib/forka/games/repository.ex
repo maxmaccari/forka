@@ -125,11 +125,13 @@ defmodule Forka.Games.Repository do
   - `{:ok, game}` with the inserted game if successful
   - `{:error, changeset}` with the changeset containing errors if unsuccessful
   """
-  @spec insert_game(Ecto.UUID.t(), map()) ::
+  @spec insert_game(Ecto.UUID.t(), map(), keyword()) ::
           {:ok, Game.t()} | {:error, Ecto.Changeset.t(Game.t())}
-  def insert_game(owner_id, params) when is_binary(owner_id) and is_map(params) do
+  def insert_game(owner_id, params, opts \\ []) when is_binary(owner_id) and is_map(params) do
+    opts = Keyword.put_new(opts, :auto_join_owner, true)
+
     %Game{owner_id: owner_id}
-    |> Game.insert_changeset(params)
+    |> Game.insert_changeset(params, opts)
     |> Repo.insert()
     |> case do
       {:ok, game} ->

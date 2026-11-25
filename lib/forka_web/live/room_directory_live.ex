@@ -157,7 +157,7 @@ defmodule ForkaWeb.RoomDirectoryLive do
   end
 
   def handle_event("create_room", _params, socket) do
-    {:noreply, put_flash(socket, :info, "A criação de salas estará disponível em breve.")}
+    {:noreply, push_navigate(socket, to: ~p"/rooms/new")}
   end
 
   def handle_event("join_room", _params, %{assigns: %{current_player: nil}} = socket) do

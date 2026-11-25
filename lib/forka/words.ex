@@ -123,9 +123,28 @@ defmodule Forka.Words do
     language = Keyword.get(opts, :language)
 
     case language do
-      nil -> Repo.all(Category)
-      lang -> Repo.all(from c in Category, where: c.language == ^lang)
+      nil -> Repo.all(from c in Category, order_by: [asc: c.name])
+      lang -> Repo.all(from c in Category, where: c.language == ^lang, order_by: [asc: c.name])
     end
+  end
+
+  @doc """
+  Returns the subset of `ids` that exist as categories for the given `language`.
+
+  Returns an empty list without querying the database when given an empty list.
+  """
+  @spec list_category_ids_for_language(String.t(), [Ecto.UUID.t()]) :: [Ecto.UUID.t()]
+  def list_category_ids_for_language(_language, []), do: []
+
+  def list_category_ids_for_language(language, ids)
+      when is_binary(language) and is_list(ids) do
+    ids = Enum.uniq(ids)
+
+    Repo.all(
+      from c in Category,
+        where: c.language == ^language and c.id in ^ids,
+        select: c.id
+    )
   end
 
   @doc """

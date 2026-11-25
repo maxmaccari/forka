@@ -91,10 +91,36 @@ defmodule Forka.Games.Schemas.Game do
 
   @doc false
   @spec insert_changeset(t(), map(), keyword()) :: Ecto.Changeset.t(t())
-  def insert_changeset(game, attrs, _opts \\ []) do
-    game
-    |> cast(attrs, [:name, :max_players, :tick])
-    |> common_changeset()
+  def insert_changeset(game, attrs, opts \\ []) do
+    wo_opts = Keyword.take(opts, [:allowed_category_ids])
+
+    changeset =
+      game
+      |> cast(attrs, [:name, :max_players, :tick])
+      |> update_change(:name, fn
+        nil -> nil
+        name when is_binary(name) -> String.trim(name)
+      end)
+      |> validate_required([:owner_id, :name, :max_players])
+      |> validate_length(:name, max: 60)
+      |> validate_number(:max_players,
+        greater_than_or_equal_to: min_players_allowed(),
+        less_than_or_equal_to: max_players_allowed(),
+        message: "must be between #{min_players_allowed()} and #{max_players_allowed()} players"
+      )
+      |> foreign_key_constraint(:owner_id)
+      |> cast_embed(:word_options,
+        with: fn wo, wo_attrs ->
+          WordOptions.settings_changeset(wo, wo_attrs, wo_opts)
+        end
+      )
+      |> validate_number(:tick, greater_than_or_equal_to: 0)
+
+    if Keyword.get(opts, :auto_join_owner, false) do
+      put_assoc(changeset, :game_players, [%GamePlayer{player_id: game.owner_id, position: 0}])
+    else
+      changeset
+    end
   end
 
   @doc "Builds the changeset for game updates from the back office."
@@ -131,7 +157,7 @@ defmodule Forka.Games.Schemas.Game do
     |> validate_status_update(game.status)
   end
 
-  defp common_changeset(changeset, player_changeset \\ &GamePlayer.changeset/2) do
+  defp common_changeset(changeset, player_changeset) do
     changeset
     |> validate_required([:owner_id])
     |> validate_settings()

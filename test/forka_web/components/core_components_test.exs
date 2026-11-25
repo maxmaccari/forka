@@ -252,6 +252,8 @@ defmodule ForkaWeb.CoreComponentsTest do
       assert LazyHTML.attribute(radios, "aria-checked") == ["true", "false"]
       assert LazyHTML.attribute(radios, "tabindex") == ["0", "-1"]
       assert LazyHTML.attribute(radios, "phx-click") == ["set_lang", "set_lang"]
+      assert LazyHTML.attribute(radios, "phx-value-option") == ["pt", "en"]
+      assert LazyHTML.attribute(radios, "phx-value-value") == []
 
       unmatched_html =
         render_component(&segmented_control/1, %{
