@@ -61,6 +61,9 @@ defmodule ForkaWeb.Router do
 
     live_session :require_authenticated_player,
       on_mount: [{ForkaWeb.PlayerAuth, :ensure_authenticated}] do
+      live "/salas/nova", RoomFormLive, :new
+      live "/salas/:id", RoomLive, :show
+      live "/salas/:id/configuracoes", RoomFormLive, :edit
       live "/players/settings", PlayerSettingsLive, :edit
       live "/players/settings/confirm_email/:token", PlayerSettingsLive, :confirm_email
     end

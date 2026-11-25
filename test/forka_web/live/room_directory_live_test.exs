@@ -213,10 +213,9 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
       assert has_element?(lv, "#rooms-#{game.id}")
       assert text =~ "Ao vivo · 1 sala"
       assert text =~ "Sala ao vivo"
-      assert text =~ "0/2 jogadores"
+      assert text =~ "1/2 jogadores"
       assert text =~ "Jogos"
 
-      :ok = Games.join_game(game.id, owner.id)
       assert lv |> render() |> visible_text() =~ "1/2 jogadores"
 
       :ok = Games.join_game(game.id, guest.id)
@@ -224,7 +223,7 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
       assert full_text =~ "2/2 jogadores"
       assert full_text =~ "Cheia"
 
-      :ok = Games.update_settings(game.id, %{name: "Sala renomeada"})
+      :ok = Games.update_settings(game.id, owner.id, %{name: "Sala renomeada"})
       assert render(lv) =~ "Sala renomeada"
 
       :ok = Games.start_game(game.id)
@@ -399,15 +398,15 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
       {:ok, lv, _html} = conn |> log_in_player(player) |> live(~p"/")
       _ = render_async(lv)
 
-      create_html = lv |> element("#create-room-desktop") |> render_click()
-      assert create_html =~ "A criação de salas estará disponível em breve."
-
       join_html =
         lv
         |> element(~s|#rooms-#{game.id} button[phx-click="join_room"]|)
         |> render_click()
 
       assert join_html =~ "A entrada na sala estará disponível em breve."
+
+      lv |> element("#create-room-desktop") |> render_click()
+      assert_redirect(lv, ~p"/salas/nova")
     end
 
     test "AC-11: header connects theme toggle and account links for both guests and signed-in players",
