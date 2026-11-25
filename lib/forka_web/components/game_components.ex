@@ -141,7 +141,7 @@ defmodule ForkaWeb.GameComponents do
       <span
         :if={@label}
         class={[
-          "font-display font-bold tabular-nums whitespace-nowrap",
+          "font-sans font-extrabold tabular-nums whitespace-nowrap",
           rope_label_size(@size),
           rope_label_color(@t, @on_dark)
         ]}

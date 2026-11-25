@@ -158,6 +158,57 @@ defmodule ForkaWeb.GameComponentsTest do
 
       assert LazyHTML.attribute(right_fibers, "stroke-width") == ["0.9"]
     end
+
+    test "R-04c: renders lg/md/sm dimensions, Nunito extrabold labels, danger and dark tones, and label: false" do
+      cases = [
+        {:lg, "240", "48", "text-lg", 4, "4 de 6", "text-ink-muted"},
+        {:md, "132", "26", "text-sm", 4, "4 de 6", "text-ink-muted"},
+        {:sm, "52", "13", "text-xs", 3, "3/6", "text-ink-muted"},
+        {:lg, "240", "48", "text-lg", 1, "1 de 6", "text-danger-ink"},
+        {:sm, "52", "13", "text-xs", 1, "1/6", "text-danger-ink"},
+        {:md, "132", "26", "text-sm", 0, "rompida", "text-danger-ink"},
+        {:sm, "52", "13", "text-xs", 0, "rompida", "text-danger-ink"}
+      ]
+
+      for {size, w, h, text_cls, tries, expected_label, color_cls} <- cases do
+        html = render_component(&rope/1, %{tries: tries, size: size})
+        doc = LazyHTML.from_fragment(html)
+        svg = LazyHTML.query(doc, "svg")
+        lbl = LazyHTML.query(doc, "span[role=img] > span")
+
+        assert LazyHTML.attribute(svg, "width") == [w]
+        assert LazyHTML.attribute(svg, "height") == [h]
+        assert String.trim(LazyHTML.text(lbl)) == expected_label
+
+        [lbl_class] = LazyHTML.attribute(lbl, "class")
+        assert lbl_class =~ "font-sans"
+        assert lbl_class =~ "font-extrabold"
+        refute lbl_class =~ "font-display"
+        assert lbl_class =~ "tabular-nums"
+        assert lbl_class =~ text_cls
+        assert lbl_class =~ color_cls
+      end
+
+      # Dark stage/sheet surface keeps readable hero ink even at critical/snapped tries
+      dark_doc =
+        LazyHTML.from_fragment(render_component(&rope/1, %{tries: 0, size: :md, on_dark: true}))
+
+      [dark_lbl_class] =
+        LazyHTML.attribute(LazyHTML.query(dark_doc, "span[role=img] > span"), "class")
+
+      assert dark_lbl_class =~ "text-hero-ink"
+      refute dark_lbl_class =~ "text-danger-ink"
+
+      # label: false hides visual counter while preserving aria-label (Eliminado / moment sheets)
+      hidden_doc =
+        LazyHTML.from_fragment(render_component(&rope/1, %{tries: 0, size: :lg, label: false}))
+
+      assert Enum.count(LazyHTML.query(hidden_doc, "span[role=img] > span")) == 0
+
+      assert LazyHTML.attribute(LazyHTML.query(hidden_doc, "span[role=img]"), "aria-label") == [
+               "Corda rompida: sem tentativas"
+             ]
+    end
   end
 
   describe "word_tiles/1" do
