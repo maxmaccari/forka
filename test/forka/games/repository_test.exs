@@ -33,7 +33,7 @@ defmodule Forka.Games.RepositoryTest do
       %{state | game_players: %{0 => player_two_state, 1 => player_one_state}}
       |> Core.set_words([Word.new("cat", "Animals")])
 
-    {:ok, state} = Core.start_game(state)
+    {:ok, state} = Core.start_game(state, state.owner.id)
     assert {:ok, _state} = Repository.save_game_state(state)
     {:ok, reloaded} = Repository.get_game_state(game.id)
 
@@ -285,7 +285,7 @@ defmodule Forka.Games.RepositoryTest do
       game_state = Core.set_words(game_state, words)
 
       # Start the game
-      {:ok, game_state} = Core.start_game(game_state)
+      {:ok, game_state} = Core.start_game(game_state, owner.id)
 
       # Make some guesses
       {:ok, game_state} = Core.guess(game_state, player1.id, "a")
@@ -373,7 +373,7 @@ defmodule Forka.Games.RepositoryTest do
 
       # Transfer ownership to player2
       {:ok, updated_game_state} =
-        Core.transfer_ownership_to_player(game_state, player2.id)
+        Core.transfer_ownership_to_player(game_state, owner.id, player2.id)
 
       # Save the updated game state
       assert {:ok, saved_game_state} = Repository.save_game_state(updated_game_state)
@@ -392,11 +392,11 @@ defmodule Forka.Games.RepositoryTest do
           Word.new("banana", "fruits")
         ])
 
-      {:ok, playing_game_state} = Core.start_game(playing_game_state)
+      {:ok, playing_game_state} = Core.start_game(playing_game_state, player2.id)
 
       # Transfer ownership to player3 while game is in progress
       {:ok, updated_playing_state} =
-        Core.transfer_ownership_to_player(playing_game_state, player3.id)
+        Core.transfer_ownership_to_player(playing_game_state, player2.id, player3.id)
 
       assert {:ok, saved_playing_state} = Repository.save_game_state(updated_playing_state)
 

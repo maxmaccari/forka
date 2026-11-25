@@ -120,9 +120,9 @@ defmodule ForkaWeb.RoomFormLiveTest do
       owner = insert(:player)
       guest = insert(:player)
       {:ok, game} = Games.create_game(owner.id, %{name: "Em jogo", max_players: 4})
-      :ok = Games.join_game(game.id, guest.id)
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(guest), game.id)
       insert(:word, text: "forka")
-      :ok = Games.start_game(game.id)
+      :ok = Games.start_game(Forka.Scope.for_player(owner), game.id)
 
       assert {:error,
               {:live_redirect,
@@ -141,12 +141,12 @@ defmodule ForkaWeb.RoomFormLiveTest do
       owner = insert(:player)
       guest = insert(:player)
       {:ok, game} = Games.create_game(owner.id, %{name: "Corrida", max_players: 4})
-      :ok = Games.join_game(game.id, guest.id)
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(guest), game.id)
 
       conn = log_in_player(conn, owner)
       {:ok, lv, _html} = live(conn, ~p"/rooms/#{game.id}/settings")
 
-      :ok = Games.transfer_ownership(game.id, guest.id)
+      :ok = Games.transfer_ownership(Forka.Scope.for_player(owner), game.id, guest.id)
 
       {:ok, lobby_lv, lobby_html} =
         lv
@@ -169,7 +169,7 @@ defmodule ForkaWeb.RoomFormLiveTest do
 
       pid = GameServer.whereis(game.id)
       ref = Process.monitor(pid)
-      :ok = Games.archive_game(game.id)
+      :ok = Games.archive_game(Forka.Scope.for_player(owner), game.id)
       assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
 
       {:ok, _dir_lv, dir_html} =
@@ -256,8 +256,8 @@ defmodule ForkaWeb.RoomFormLiveTest do
       p3 = insert(:player)
 
       {:ok, game} = Games.create_game(owner.id, %{name: "Sala Cheia", max_players: 4})
-      :ok = Games.join_game(game.id, p2.id)
-      :ok = Games.join_game(game.id, p3.id)
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(p2), game.id)
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(p3), game.id)
 
       conn = log_in_player(conn, owner)
       {:ok, lv, _html} = live(conn, ~p"/rooms/#{game.id}/settings")

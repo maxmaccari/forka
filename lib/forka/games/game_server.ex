@@ -65,11 +65,6 @@ defmodule Forka.Games.GameServer do
   end
 
   @doc false
-  def join_game(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
-    GenServer.call(global_name(game_id), {:join_game, player_id})
-  end
-
-  @doc false
   def join_room(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
     GenServer.call(global_name(game_id), {:join_room, player_id})
   end
@@ -86,8 +81,8 @@ defmodule Forka.Games.GameServer do
   end
 
   @doc false
-  def start_game(game_id) when is_binary(game_id) do
-    GenServer.call(global_name(game_id), :start_game)
+  def start_game(game_id, actor_id) when is_binary(game_id) and is_binary(actor_id) do
+    GenServer.call(global_name(game_id), {:start_game, actor_id})
   end
 
   @doc false
@@ -102,18 +97,19 @@ defmodule Forka.Games.GameServer do
   end
 
   @doc false
-  def transfer_ownership(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
-    GenServer.call(global_name(game_id), {:transfer_ownership, player_id})
+  def transfer_ownership(game_id, actor_id, target_player_id)
+      when is_binary(game_id) and is_binary(actor_id) and is_binary(target_player_id) do
+    GenServer.call(global_name(game_id), {:transfer_ownership, actor_id, target_player_id})
   end
 
   @doc false
-  def restart_game(game_id) when is_binary(game_id) do
-    GenServer.call(global_name(game_id), :restart_game)
+  def restart_game(game_id, actor_id) when is_binary(game_id) and is_binary(actor_id) do
+    GenServer.call(global_name(game_id), {:restart_game, actor_id})
   end
 
   @doc false
-  def archive_game(game_id) when is_binary(game_id) do
-    GenServer.call(global_name(game_id), :archive_game)
+  def archive_game(game_id, actor_id) when is_binary(game_id) and is_binary(actor_id) do
+    GenServer.call(global_name(game_id), {:archive_game, actor_id})
   end
 
   @doc false
@@ -143,21 +139,28 @@ defmodule Forka.Games.GameServer do
   end
 
   @impl true
-  def handle_call({:join_game, player_id}, _from, game) do
-    run_join(game, player_id, &Core.join_game/2, fn _status -> :ok end)
-  end
-
-  @impl true
   def handle_call({:join_room, player_id}, _from, game) do
-    run_join(game, player_id, &Core.join_room/2, fn status -> {:ok, status} end)
+    with %Player{} = player <- Repository.get_player(player_id),
+         {:ok, status, new_game} <- Core.join_room(game, player) do
+      saved_game =
+        case status do
+          :joined -> save_and_publish!(game, new_game)
+          _existing -> game
+        end
+
+      {:reply, {:ok, status}, saved_game, @timeout_ms}
+    else
+      nil ->
+        {:reply, {:error, :player_not_found}, game, @timeout_ms}
+
+      {:error, error} ->
+        {:reply, {:error, error}, game, @timeout_ms}
+    end
   end
 
   @impl true
   def handle_call({:leave_game, player_id}, _from, game) do
     case Core.leave_game(game, player_id) do
-      {:ok, ^game} ->
-        {:reply, :ok, game, @timeout_ms}
-
       {:ok, new_game} ->
         saved_game = save_and_publish!(game, new_game)
 
@@ -182,15 +185,10 @@ defmodule Forka.Games.GameServer do
   end
 
   @impl true
-  def handle_call(:start_game, _from, game) do
-    words_count = map_size(game.game_players) * 2
-    words = Repository.get_random_words(words_count, game.word_options)
-    game_with_words = Core.set_words(game, words)
-
-    case game_with_words |> Core.shuffle_players() |> Core.start_game() do
+  def handle_call({:start_game, actor_id}, _from, game) do
+    case do_start_game(game, actor_id) do
       {:ok, new_game} ->
         saved_game = save_and_publish!(game, new_game)
-
         {:reply, :ok, saved_game, @timeout_ms}
 
       {:error, error} ->
@@ -225,11 +223,10 @@ defmodule Forka.Games.GameServer do
   end
 
   @impl true
-  def handle_call({:transfer_ownership, player_id}, _from, game) do
-    case Core.transfer_ownership_to_player(game, player_id) do
+  def handle_call({:transfer_ownership, actor_id, target_player_id}, _from, game) do
+    case Core.transfer_ownership_to_player(game, actor_id, target_player_id) do
       {:ok, new_game} ->
         saved_game = save_and_publish!(game, new_game)
-
         {:reply, :ok, saved_game, @timeout_ms}
 
       {:error, error} ->
@@ -238,11 +235,10 @@ defmodule Forka.Games.GameServer do
   end
 
   @impl true
-  def handle_call(:restart_game, _from, game) do
-    case Core.restart_game(game) do
+  def handle_call({:restart_game, actor_id}, _from, game) do
+    case Core.restart_game(game, actor_id) do
       {:ok, new_game} ->
         saved_game = save_and_publish!(game, new_game)
-
         {:reply, :ok, saved_game, @timeout_ms}
 
       {:error, error} ->
@@ -251,11 +247,10 @@ defmodule Forka.Games.GameServer do
   end
 
   @impl true
-  def handle_call(:archive_game, _from, game) do
-    case Core.archive_game(game) do
+  def handle_call({:archive_game, actor_id}, _from, game) do
+    case Core.archive_game(game, actor_id) do
       {:ok, new_game} ->
         saved_game = save_and_publish!(game, new_game)
-        # Return the response and stop the GenServer with normal reason
         {:stop, :normal, :ok, saved_game}
 
       {:error, error} ->
@@ -332,26 +327,15 @@ defmodule Forka.Games.GameServer do
     saved
   end
 
-  defp run_join(game, player_id, join_fun, reply_fun) do
-    with %Player{} = player <- Repository.get_player(player_id),
-         {:ok, status, new_game} <- normalize_join_result(join_fun.(game, player)) do
-      saved_game =
-        case status do
-          :joined -> save_and_publish!(game, new_game)
-          _existing -> game
-        end
+  defp do_start_game(game, actor_id) do
+    with :ok <- Core.authorize_start(game, actor_id) do
+      words_count = map_size(game.game_players) * 2
+      words = Repository.get_random_words(words_count, game.word_options)
 
-      {:reply, reply_fun.(status), saved_game, @timeout_ms}
-    else
-      nil ->
-        {:reply, {:error, :player_not_found}, game, @timeout_ms}
-
-      {:error, error} ->
-        {:reply, {:error, error}, game, @timeout_ms}
+      game
+      |> Core.set_words(words)
+      |> Core.shuffle_players()
+      |> Core.start_game(actor_id)
     end
   end
-
-  defp normalize_join_result({:ok, new_game}), do: {:ok, :joined, new_game}
-  defp normalize_join_result({:ok, status, new_game}), do: {:ok, status, new_game}
-  defp normalize_join_result({:error, _reason} = error), do: error
 end

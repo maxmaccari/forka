@@ -27,7 +27,7 @@ defmodule Forka.Games.GameSummaryTest do
     ]
 
     game_with_words = Core.set_words(game_with_players, words)
-    {:ok, initialized_game} = Core.start_game(game_with_words)
+    {:ok, initialized_game} = Core.start_game(game_with_words, owner.id)
 
     {:ok, lobby_game: game_with_words, initialized_game: initialized_game}
   end

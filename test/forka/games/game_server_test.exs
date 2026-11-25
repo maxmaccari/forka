@@ -3,7 +3,6 @@ defmodule Forka.Games.GameServerTest do
 
   alias Ecto.Adapters.SQL.Sandbox
   alias Forka.Games.Core
-  alias Forka.Games.Core
   alias Forka.Games.GameServer
   alias Forka.Games.Repository
   alias Forka.Games.Schemas.Game
@@ -33,7 +32,7 @@ defmodule Forka.Games.GameServerTest do
     on_exit(fn ->
       # Try to archive the game to properly shut down the process
       try do
-        GameServer.archive_game(game_state.id)
+        GameServer.archive_game(game_state.id, game_state.owner.id)
       catch
         :exit, _ -> :ok
       end
@@ -103,11 +102,11 @@ defmodule Forka.Games.GameServerTest do
     end
   end
 
-  describe "join_game/2" do
+  describe "join_room/2" do
     test "adds a player to the game and sends update via PubSub", %{game_state: game_state} do
       player = insert(:player)
 
-      assert :ok = GameServer.join_game(game_state.id, player.id)
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, player.id)
 
       # Verify we received the update message
       assert_receive {:game_updated, game_summary}
@@ -117,7 +116,7 @@ defmodule Forka.Games.GameServerTest do
     test "persists the game state after joining", %{game_state: game_state} do
       player = insert(:player)
 
-      assert :ok = GameServer.join_game(game_state.id, player.id)
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, player.id)
 
       # Verify the game state was persisted
       {:ok, persisted_game_state} = Repository.get_game_state(game_state.id)
@@ -132,14 +131,14 @@ defmodule Forka.Games.GameServerTest do
       # Fill the game with players up to the limit
       for _ <- 1..game_state.max_players do
         player = insert(:player)
-        GameServer.join_game(game_state.id, player.id)
+        GameServer.join_room(game_state.id, player.id)
       end
 
       flush_messages()
 
       # Try to add one more player
       extra_player = insert(:player)
-      assert {:error, :maximum_players} = GameServer.join_game(game_state.id, extra_player.id)
+      assert {:error, :maximum_players} = GameServer.join_room(game_state.id, extra_player.id)
 
       # Don't receive messages in case of errors
       refute_receive {:game_updated, _game_summary}
@@ -149,7 +148,7 @@ defmodule Forka.Games.GameServerTest do
   describe "leave_game/2" do
     test "removes a player from the game and sends update via PubSub", %{game_state: game_state} do
       player = insert(:player)
-      GameServer.join_game(game_state.id, player.id)
+      GameServer.join_room(game_state.id, player.id)
 
       # Clear message inbox
       flush_messages()
@@ -162,7 +161,7 @@ defmodule Forka.Games.GameServerTest do
 
     test "persists the game state after leaving", %{game_state: game_state} do
       player = insert(:player)
-      GameServer.join_game(game_state.id, player.id)
+      GameServer.join_room(game_state.id, player.id)
 
       assert :ok = GameServer.leave_game(game_state.id, player.id)
 
@@ -215,10 +214,10 @@ defmodule Forka.Games.GameServerTest do
     test "returns error when game is not in lobby state", %{game_state: game_state} do
       # Add players and start the game
       player1 = insert(:player)
-      GameServer.join_game(game_state.id, player1.id)
+      GameServer.join_room(game_state.id, player1.id)
       player2 = insert(:player)
-      GameServer.join_game(game_state.id, player2.id)
-      GameServer.start_game(game_state.id)
+      GameServer.join_room(game_state.id, player2.id)
+      GameServer.start_game(game_state.id, game_state.owner.id)
 
       flush_messages()
 
@@ -233,17 +232,17 @@ defmodule Forka.Games.GameServerTest do
     end
   end
 
-  describe "start_game/1" do
+  describe "start_game/2" do
     test "starts the game and sends update via PubSub", %{game_state: game_state} do
       # Add players to have at least 2 players
       player1 = insert(:player)
-      GameServer.join_game(game_state.id, player1.id)
+      GameServer.join_room(game_state.id, player1.id)
       player2 = insert(:player)
-      GameServer.join_game(game_state.id, player2.id)
+      GameServer.join_room(game_state.id, player2.id)
 
       flush_messages()
 
-      assert :ok = GameServer.start_game(game_state.id)
+      assert :ok = GameServer.start_game(game_state.id, game_state.owner.id)
 
       assert_receive {:game_updated, game_summary}
       assert game_summary.game_status == :playing
@@ -252,11 +251,11 @@ defmodule Forka.Games.GameServerTest do
     test "persists the game state after starting", %{game_state: game_state} do
       # Add players to have at least 2 players
       player1 = insert(:player)
-      GameServer.join_game(game_state.id, player1.id)
+      GameServer.join_room(game_state.id, player1.id)
       player2 = insert(:player)
-      GameServer.join_game(game_state.id, player2.id)
+      GameServer.join_room(game_state.id, player2.id)
 
-      assert :ok = GameServer.start_game(game_state.id)
+      assert :ok = GameServer.start_game(game_state.id, game_state.owner.id)
 
       # Verify the game state was persisted
       {:ok, persisted_game_state} = Repository.get_game_state(game_state.id)
@@ -267,9 +266,9 @@ defmodule Forka.Games.GameServerTest do
     test "filters words by language when starting a game", %{game_state: game_state} do
       # Add players to have at least 2 players
       player1 = insert(:player)
-      GameServer.join_game(game_state.id, player1.id)
+      GameServer.join_room(game_state.id, player1.id)
       player2 = insert(:player)
-      GameServer.join_game(game_state.id, player2.id)
+      GameServer.join_room(game_state.id, player2.id)
 
       # Insert a Portuguese word
       insert(:word,
@@ -286,7 +285,7 @@ defmodule Forka.Games.GameServerTest do
       flush_messages()
 
       # Start the game
-      assert :ok = GameServer.start_game(game_state.id)
+      assert :ok = GameServer.start_game(game_state.id, game_state.owner.id)
 
       assert_receive {:game_updated, game_summary}
       assert game_summary.game_status == :playing
@@ -310,9 +309,9 @@ defmodule Forka.Games.GameServerTest do
     test "filters words by categories when starting a game", %{game_state: game_state} do
       # Add players to have at least 2 players
       player1 = insert(:player)
-      GameServer.join_game(game_state.id, player1.id)
+      GameServer.join_room(game_state.id, player1.id)
       player2 = insert(:player)
-      GameServer.join_game(game_state.id, player2.id)
+      GameServer.join_room(game_state.id, player2.id)
 
       # Insert a Portuguese word
       category_1 = insert(:category)
@@ -332,7 +331,7 @@ defmodule Forka.Games.GameServerTest do
       flush_messages()
 
       # Start the game
-      assert :ok = GameServer.start_game(game_state.id)
+      assert :ok = GameServer.start_game(game_state.id, game_state.owner.id)
 
       assert_receive {:game_updated, game_summary}
       assert game_summary.game_status == :playing
@@ -357,12 +356,13 @@ defmodule Forka.Games.GameServerTest do
       game_state: game_state
     } do
       player = insert(:player)
-      GameServer.join_game(game_state.id, player.id)
+      GameServer.join_room(game_state.id, player.id)
 
       flush_messages()
 
       # Try to start the game with insufficient players
-      assert {:error, :game_not_ready} = GameServer.start_game(game_state.id)
+      assert {:error, :game_not_ready} =
+               GameServer.start_game(game_state.id, game_state.owner.id)
 
       # Verify game is still in lobby state
       game_summary = GameServer.get_game(game_state.id)
@@ -377,12 +377,12 @@ defmodule Forka.Games.GameServerTest do
     test "allows a player to give up and sends update via PubSub", %{game_state: game_state} do
       # Add players to have at least 2 players
       player1 = insert(:player)
-      GameServer.join_game(game_state.id, player1.id)
+      GameServer.join_room(game_state.id, player1.id)
       player2 = insert(:player)
-      GameServer.join_game(game_state.id, player2.id)
+      GameServer.join_room(game_state.id, player2.id)
 
       # Start the game
-      GameServer.start_game(game_state.id)
+      GameServer.start_game(game_state.id, game_state.owner.id)
 
       # Clear message inbox
       flush_messages()
@@ -403,12 +403,12 @@ defmodule Forka.Games.GameServerTest do
     test "persists the game state after player gives up", %{game_state: game_state} do
       # Add players to have at least 2 players
       player1 = insert(:player)
-      GameServer.join_game(game_state.id, player1.id)
+      GameServer.join_room(game_state.id, player1.id)
       player2 = insert(:player)
-      GameServer.join_game(game_state.id, player2.id)
+      GameServer.join_room(game_state.id, player2.id)
 
       # Start the game
-      GameServer.start_game(game_state.id)
+      GameServer.start_game(game_state.id, game_state.owner.id)
 
       assert :ok = GameServer.give_up_game(game_state.id, player2.id)
 
@@ -428,12 +428,12 @@ defmodule Forka.Games.GameServerTest do
     test "updates game to game_over when all players give up", %{game_state: game_state} do
       # Add players to the game
       player1 = insert(:player)
-      GameServer.join_game(game_state.id, player1.id)
+      GameServer.join_room(game_state.id, player1.id)
       player2 = insert(:player)
-      GameServer.join_game(game_state.id, player2.id)
+      GameServer.join_room(game_state.id, player2.id)
 
       # Start the game
-      :ok = GameServer.start_game(game_state.id)
+      :ok = GameServer.start_game(game_state.id, game_state.owner.id)
 
       # Clear message inbox
       flush_messages()
@@ -464,11 +464,11 @@ defmodule Forka.Games.GameServerTest do
     test "processes a guess attempt and sends update via PubSub", %{game_state: game_state} do
       # Add players and start the game
       player1 = insert(:player)
-      GameServer.join_game(game_state.id, player1.id)
+      GameServer.join_room(game_state.id, player1.id)
       player2 = insert(:player)
-      GameServer.join_game(game_state.id, player2.id)
+      GameServer.join_room(game_state.id, player2.id)
 
-      :ok = GameServer.start_game(game_state.id)
+      :ok = GameServer.start_game(game_state.id, game_state.owner.id)
 
       # Clear message inbox
       flush_messages()
@@ -486,11 +486,11 @@ defmodule Forka.Games.GameServerTest do
     test "persists the game state after a guess", %{game_state: game_state} do
       # Add players and start the game
       player1 = insert(:player)
-      GameServer.join_game(game_state.id, player1.id)
+      GameServer.join_room(game_state.id, player1.id)
       player2 = insert(:player)
-      GameServer.join_game(game_state.id, player2.id)
+      GameServer.join_room(game_state.id, player2.id)
 
-      :ok = GameServer.start_game(game_state.id)
+      :ok = GameServer.start_game(game_state.id, game_state.owner.id)
 
       # Get the game summary to know which player is active
       game_summary = GameServer.get_game(game_state.id)
@@ -514,11 +514,11 @@ defmodule Forka.Games.GameServerTest do
     test "returns error when it's not the player's turn", %{game_state: game_state} do
       # Add players and start the game
       player1 = insert(:player)
-      GameServer.join_game(game_state.id, player1.id)
+      GameServer.join_room(game_state.id, player1.id)
       player2 = insert(:player)
-      GameServer.join_game(game_state.id, player2.id)
+      GameServer.join_room(game_state.id, player2.id)
 
-      GameServer.start_game(game_state.id)
+      GameServer.start_game(game_state.id, game_state.owner.id)
 
       # Get the game summary to know which player is NOT active
       game_summary = GameServer.get_game(game_state.id)
@@ -535,16 +535,16 @@ defmodule Forka.Games.GameServerTest do
     end
   end
 
-  describe "transfer_ownership/2" do
+  describe "transfer_ownership/3" do
     test "transfers game ownership and sends update via PubSub", %{game_state: game_state} do
       # Add a player to transfer ownership to
       player = insert(:player)
-      GameServer.join_game(game_state.id, player.id)
+      GameServer.join_room(game_state.id, player.id)
 
       # Clear message inbox
       flush_messages()
 
-      assert :ok = GameServer.transfer_ownership(game_state.id, player.id)
+      assert :ok = GameServer.transfer_ownership(game_state.id, game_state.owner.id, player.id)
 
       assert_receive {:game_updated, game_summary}
       assert game_summary.owner.id == player.id
@@ -553,9 +553,9 @@ defmodule Forka.Games.GameServerTest do
     test "persists the game state after ownership transfer", %{game_state: game_state} do
       # Add a player to transfer ownership to
       player = insert(:player)
-      GameServer.join_game(game_state.id, player.id)
+      GameServer.join_room(game_state.id, player.id)
 
-      assert :ok = GameServer.transfer_ownership(game_state.id, player.id)
+      assert :ok = GameServer.transfer_ownership(game_state.id, game_state.owner.id, player.id)
 
       # Verify the game state was persisted with new owner
       {:ok, persisted_game_state} = Repository.get_game_state(game_state.id)
@@ -564,16 +564,16 @@ defmodule Forka.Games.GameServerTest do
     end
   end
 
-  describe "restart_game/1" do
+  describe "restart_game/2" do
     test "restarts the game and sends update via PubSub", %{game_state: game_state} do
       # Add players and start the game
       player1 = insert(:player)
-      GameServer.join_game(game_state.id, player1.id)
+      GameServer.join_room(game_state.id, player1.id)
 
       player2 = insert(:player)
-      GameServer.join_game(game_state.id, player2.id)
+      GameServer.join_room(game_state.id, player2.id)
 
-      GameServer.start_game(game_state.id)
+      GameServer.start_game(game_state.id, game_state.owner.id)
 
       # Give up players to get a game over
       GameServer.give_up_game(game_state.id, player1.id)
@@ -582,7 +582,7 @@ defmodule Forka.Games.GameServerTest do
       # Clear message inbox
       flush_messages()
 
-      assert :ok = GameServer.restart_game(game_state.id)
+      assert :ok = GameServer.restart_game(game_state.id, game_state.owner.id)
 
       assert_receive {:game_updated, game_summary}
       assert game_summary.game_status == :lobby
@@ -591,18 +591,18 @@ defmodule Forka.Games.GameServerTest do
     test "persists the game state after restart", %{game_state: game_state} do
       # Add players and start the game
       player1 = insert(:player)
-      GameServer.join_game(game_state.id, player1.id)
+      GameServer.join_room(game_state.id, player1.id)
 
       player2 = insert(:player)
-      GameServer.join_game(game_state.id, player2.id)
+      GameServer.join_room(game_state.id, player2.id)
 
-      GameServer.start_game(game_state.id)
+      GameServer.start_game(game_state.id, game_state.owner.id)
 
       # Give up players to get a game over
       GameServer.give_up_game(game_state.id, player1.id)
       GameServer.give_up_game(game_state.id, player2.id)
 
-      assert :ok = GameServer.restart_game(game_state.id)
+      assert :ok = GameServer.restart_game(game_state.id, game_state.owner.id)
 
       # Verify the game state was persisted with lobby status
       {:ok, persisted_game_state} = Repository.get_game_state(game_state.id)
@@ -614,29 +614,30 @@ defmodule Forka.Games.GameServerTest do
     test "cannot restart an ongoing game", %{game_state: game_state} do
       # Add players and start the game
       player1 = insert(:player)
-      GameServer.join_game(game_state.id, player1.id)
+      GameServer.join_room(game_state.id, player1.id)
 
       player2 = insert(:player)
-      GameServer.join_game(game_state.id, player2.id)
+      GameServer.join_room(game_state.id, player2.id)
 
-      GameServer.start_game(game_state.id)
+      GameServer.start_game(game_state.id, game_state.owner.id)
 
       # Clear message inbox
       flush_messages()
 
       # Try to restart an ongoing game
-      assert {:error, :game_in_progress} = GameServer.restart_game(game_state.id)
+      assert {:error, :game_in_progress} =
+               GameServer.restart_game(game_state.id, game_state.owner.id)
 
       # Verify no game update was sent
       refute_receive {:game_updated, _}
     end
   end
 
-  describe "archive_game/1" do
+  describe "archive_game/2" do
     test "archives the game, sends update via PubSub and terminates the server", %{
       game_state: game_state
     } do
-      assert :ok = GameServer.archive_game(game_state.id)
+      assert :ok = GameServer.archive_game(game_state.id, game_state.owner.id)
 
       assert_receive {:game_updated, game_summary}
       assert game_summary.game_status == :archived
@@ -648,7 +649,7 @@ defmodule Forka.Games.GameServerTest do
     end
 
     test "persists the game state after archiving", %{game_state: game_state} do
-      assert :ok = GameServer.archive_game(game_state.id)
+      assert :ok = GameServer.archive_game(game_state.id, game_state.owner.id)
 
       # Verify the game state was persisted with archived status
       {:ok, persisted_game_state} = Repository.get_game_state(game_state.id)
@@ -664,7 +665,7 @@ defmodule Forka.Games.GameServerTest do
 
       # Add a player, which should generate an update
       player = insert(:player)
-      GameServer.join_game(game_state.id, player.id)
+      GameServer.join_room(game_state.id, player.id)
 
       # We shouldn't receive the update after unsubscribing
       refute_receive {:game_updated, _}
@@ -696,7 +697,7 @@ defmodule Forka.Games.GameServerTest do
 
       # Make a change to the game
       player = insert(:player)
-      GameServer.join_game(game_state.id, player.id)
+      GameServer.join_room(game_state.id, player.id)
 
       # We should still receive updates without having to resubscribe
       assert_receive {:game_updated, _}
@@ -735,9 +736,9 @@ defmodule Forka.Games.GameServerTest do
       # We will put the game in playing state
       player1 = insert(:player)
       player2 = insert(:player)
-      :ok = GameServer.join_game(game_state.id, player1.id)
-      :ok = GameServer.join_game(game_state.id, player2.id)
-      :ok = GameServer.start_game(game_state.id)
+      {:ok, :joined} = GameServer.join_room(game_state.id, player1.id)
+      {:ok, :joined} = GameServer.join_room(game_state.id, player2.id)
+      :ok = GameServer.start_game(game_state.id, game_state.owner.id)
 
       # Clear message inbox from game start
       flush_messages()
@@ -793,13 +794,13 @@ defmodule Forka.Games.GameServerTest do
     } do
       # Add players and start the game
       player1 = insert(:player)
-      GameServer.join_game(game_state.id, player1.id)
+      GameServer.join_room(game_state.id, player1.id)
 
       player2 = insert(:player)
-      GameServer.join_game(game_state.id, player2.id)
+      GameServer.join_room(game_state.id, player2.id)
 
       # Start the game to put it in playing state
-      :ok = GameServer.start_game(game_state.id)
+      :ok = GameServer.start_game(game_state.id, game_state.owner.id)
 
       # Make a guess to ensure we have some game progress
       game_summary = GameServer.get_game(game_state.id)
@@ -839,6 +840,88 @@ defmodule Forka.Games.GameServerTest do
       # Verify the loaded state matches what was persisted
       loaded_summary = GameServer.get_game(game_state.id)
       assert loaded_summary.game_status == :playing
+    end
+  end
+
+  describe "REQ-03: command boundary authorization" do
+    test "REQ-03: rejects unauthorized owner commands without saving or broadcasting", %{
+      game_state: game_state
+    } do
+      player1 = insert(:player)
+      player2 = insert(:player)
+      outsider = insert(:player)
+
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, player1.id)
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, player2.id)
+      flush_messages()
+
+      assert {:error, :unauthorized} = GameServer.start_game(game_state.id, player1.id)
+      assert {:error, :unauthorized} = GameServer.start_game(game_state.id, outsider.id)
+
+      assert {:error, :unauthorized} =
+               GameServer.transfer_ownership(game_state.id, player1.id, player2.id)
+
+      assert {:error, :unauthorized} = GameServer.restart_game(game_state.id, player1.id)
+      assert {:error, :unauthorized} = GameServer.archive_game(game_state.id, player1.id)
+
+      refute_receive {:game_updated, _}
+      assert GameServer.exists?(game_state.id)
+      assert GameServer.get_game(game_state.id).game_status == :lobby
+      assert GameServer.get_game(game_state.id).owner.id == game_state.owner.id
+    end
+
+    test "REQ-03: rejects non-member leave, give_up, and guess without saving or broadcasting", %{
+      game_state: game_state
+    } do
+      player1 = insert(:player)
+      player2 = insert(:player)
+      outsider = insert(:player)
+
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, player1.id)
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, player2.id)
+      flush_messages()
+
+      assert {:error, :not_a_participant} = GameServer.leave_game(game_state.id, outsider.id)
+      assert {:error, :not_a_participant} = GameServer.give_up_game(game_state.id, outsider.id)
+      assert {:error, :not_a_participant} = GameServer.guess(game_state.id, outsider.id, "a")
+      refute_receive {:game_updated, _}
+
+      assert :ok = GameServer.start_game(game_state.id, game_state.owner.id)
+      flush_messages()
+
+      assert {:error, :not_a_participant} = GameServer.leave_game(game_state.id, outsider.id)
+      assert {:error, :not_a_participant} = GameServer.give_up_game(game_state.id, outsider.id)
+      assert {:error, :not_a_participant} = GameServer.guess(game_state.id, outsider.id, "a")
+      refute_receive {:game_updated, _}
+    end
+
+    test "REQ-03: rejects stale owner commands immediately after transfer_ownership/3", %{
+      game_state: game_state
+    } do
+      player1 = insert(:player)
+      player2 = insert(:player)
+      old_owner_id = game_state.owner.id
+
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, player1.id)
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, player2.id)
+
+      assert :ok = GameServer.transfer_ownership(game_state.id, old_owner_id, player1.id)
+      flush_messages()
+
+      assert {:error, :unauthorized} =
+               GameServer.update_settings(game_state.id, old_owner_id, %{name: "Stale"})
+
+      assert {:error, :unauthorized} = GameServer.start_game(game_state.id, old_owner_id)
+
+      assert {:error, :unauthorized} =
+               GameServer.transfer_ownership(game_state.id, old_owner_id, player2.id)
+
+      assert {:error, :unauthorized} = GameServer.restart_game(game_state.id, old_owner_id)
+      assert {:error, :unauthorized} = GameServer.archive_game(game_state.id, old_owner_id)
+      refute_receive {:game_updated, _}
+
+      assert :ok = GameServer.start_game(game_state.id, player1.id)
+      assert_receive {:game_updated, %{game_status: :playing}}
     end
   end
 end

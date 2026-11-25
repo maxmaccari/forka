@@ -46,8 +46,7 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
           word_options: %{language: "pt", category_ids: [cat_music.id]}
         })
 
-      :ok = Games.join_game(open_game.id, owner.id)
-      :ok = Games.join_game(open_game.id, guest.id)
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(guest), open_game.id)
 
       playing_game =
         insert(:game,
@@ -218,15 +217,19 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
 
       assert lv |> render() |> visible_text() =~ "1/2 jogadores"
 
-      :ok = Games.join_game(game.id, guest.id)
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(guest), game.id)
       full_text = lv |> render() |> visible_text()
       assert full_text =~ "2/2 jogadores"
       assert full_text =~ "Cheia"
 
-      :ok = Games.update_settings(game.id, owner.id, %{name: "Sala renomeada"})
+      :ok =
+        Games.update_room_settings(Forka.Scope.for_player(owner), game.id, %{
+          name: "Sala renomeada"
+        })
+
       assert render(lv) =~ "Sala renomeada"
 
-      :ok = Games.start_game(game.id)
+      :ok = Games.start_game(Forka.Scope.for_player(owner), game.id)
       playing_html = render(lv)
       assert playing_html =~ "Jogando"
       assert playing_html =~ "Em andamento"
@@ -245,7 +248,7 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
       assert has_element?(lv, "#rooms-#{game.id}")
       assert render(lv) =~ "Ao vivo · 1 sala"
 
-      :ok = Games.archive_game(game.id)
+      :ok = Games.archive_game(Forka.Scope.for_player(owner), game.id)
 
       html = render(lv)
       refute has_element?(lv, "#rooms-#{game.id}")
@@ -326,7 +329,7 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
                "Ao vivo · #{limit} salas · mostrando as #{limit} mais recentes"
 
       # An :updated broadcast for a room beyond the cap must not insert it or raise the count
-      :ok = Games.join_game(oldest_game.id, owner.id)
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(insert(:player)), oldest_game.id)
       after_update_text = lv |> render() |> visible_text()
       refute has_element?(lv, "#rooms-#{oldest_game.id}")
       assert after_update_text =~ "Ao vivo · #{limit} salas · mostrando as #{limit} mais recentes"
@@ -339,7 +342,7 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
       assert after_create_text =~ "Ao vivo · #{limit} salas · mostrando as #{limit} mais recentes"
 
       # Archiving a visible room keeps the capped notice because older rooms remain hidden
-      :ok = Games.archive_game(created_game.id)
+      :ok = Games.archive_game(Forka.Scope.for_player(owner), created_game.id)
       after_archive_text = lv |> render() |> visible_text()
       refute has_element?(lv, "#rooms-#{created_game.id}")
 
@@ -424,7 +427,7 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
       {:ok, lv, _html} = conn |> log_in_player(outsider) |> live(~p"/")
       _ = render_async(lv)
 
-      :ok = Games.join_game(game.id, p2.id)
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(p2), game.id)
 
       assert {:error, {:live_redirect, %{to: redirect_to}}} =
                render_hook(lv, "join_room", %{"id" => game.id})
@@ -487,8 +490,7 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
       guest = insert(:player, username: "bruno")
 
       {:ok, full_game} = Games.create_game(owner.id, %{name: "Sala cheia", max_players: 2})
-      :ok = Games.join_game(full_game.id, owner.id)
-      :ok = Games.join_game(full_game.id, guest.id)
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(guest), full_game.id)
 
       {:ok, lv, _html} = conn |> log_in_player(owner) |> live(~p"/")
       html = render_async(lv)
@@ -497,6 +499,29 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
       assert html =~ "Cheia"
       refute has_element?(lv, ~s|#rooms-#{full_game.id} button[phx-click="join_room"]|)
       refute has_element?(lv, ~s|#rooms-#{full_game.id} a[href="/players/log_in"]|)
+    end
+
+    test "REQ-06: crafted player_id in join_room event joins the authenticated actor, never another player",
+         %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      actor = insert(:player, username: "bruno")
+      victim = insert(:player, username: "vitima")
+
+      {:ok, game} =
+        Games.create_room(Forka.Scope.for_player(owner), %{name: "Sala Segura", max_players: 4})
+
+      {:ok, lv, _html} = conn |> log_in_player(actor) |> live(~p"/")
+      _ = render_async(lv)
+
+      assert {:error, {:live_redirect, %{to: redirect_to}}} =
+               render_hook(lv, "join_room", %{"id" => game.id, "player_id" => victim.id})
+
+      assert redirect_to == ~p"/rooms/#{game.id}"
+
+      summary = Games.get_game_summary(game.id)
+      player_ids = summary.players |> Map.values() |> Enum.map(& &1.player.id)
+      assert actor.id in player_ids
+      refute victim.id in player_ids
     end
   end
 end

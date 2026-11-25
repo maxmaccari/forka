@@ -73,9 +73,9 @@ defmodule ForkaWeb.RoomLiveTest do
       guest = insert(:player, username: "bruno")
 
       {:ok, game} = Games.create_game(owner.id, %{name: "Sala jogando", max_players: 4})
-      :ok = Games.join_game(game.id, guest.id)
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(guest), game.id)
       insert(:word, text: "forka")
-      :ok = Games.start_game(game.id)
+      :ok = Games.start_game(Forka.Scope.for_player(owner), game.id)
 
       {:ok, lv, _html} = conn |> log_in_player(owner) |> live(~p"/rooms/#{game.id}")
       refute has_element?(lv, "#edit-room-settings")
@@ -101,7 +101,7 @@ defmodule ForkaWeb.RoomLiveTest do
 
       pid = GameServer.whereis(game.id)
       ref = Process.monitor(pid)
-      :ok = Games.archive_game(game.id)
+      :ok = Games.archive_game(Forka.Scope.for_player(owner), game.id)
       assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
 
       assert {:error,

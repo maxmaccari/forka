@@ -74,7 +74,7 @@ defmodule Forka.Games.Core.GameLogicTest do
     {:ok, game_with_player1} = Core.join_game(game, player1)
     {:ok, game_with_players} = Core.join_game(game_with_player1, player2)
     game_with_words = Core.set_words(game_with_players, [word1, word2])
-    {:ok, initialized_game} = Core.start_game(game_with_words)
+    {:ok, initialized_game} = Core.start_game(game_with_words, owner.id)
 
     {:ok,
      game_state: initialized_game, player1: player1, player2: player2, word1: word1, word2: word2}
@@ -179,9 +179,21 @@ defmodule Forka.Games.Core.GameLogicTest do
       ])
     end
 
-    test "returns error when player not found", %{game_state: game} do
+    test "REQ-01: returns {:error, :not_a_participant} when non-member tries to give up in playing or lobby",
+         %{game_state: game} do
       unknown_player = build_games_player("Unknown")
-      assert {:error, :player_not_found} = GameLogic.give_up_game(game, unknown_player.id)
+      assert {:error, :not_a_participant} = GameLogic.give_up_game(game, unknown_player.id)
+
+      lobby_game = %{game | status: :lobby}
+      assert {:error, :not_a_participant} = GameLogic.give_up_game(lobby_game, unknown_player.id)
+    end
+
+    test "REQ-01: returns {:error, :game_not_playing} when seated member tries to give up outside playing",
+         %{game_state: game, player1: player1} do
+      for status <- [:lobby, :finished, :game_over] do
+        assert {:error, :game_not_playing} =
+                 GameLogic.give_up_game(%{game | status: status}, player1.id)
+      end
     end
 
     test "returns error when game is archived", %{game_state: game, player1: player1} do
@@ -197,6 +209,15 @@ defmodule Forka.Games.Core.GameLogicTest do
     test "returns error when not player's turn", %{game_state: game_state, player2: player2} do
       # Player 2 tries to guess but it's player 1's turn
       assert {:error, :not_player_turn} = GameLogic.guess(game_state, player2.id, "a")
+    end
+
+    test "REQ-01: returns {:error, :not_a_participant} when non-member tries to guess in playing or lobby",
+         %{game_state: game_state} do
+      outsider = build_games_player("Outsider")
+      assert {:error, :not_a_participant} = GameLogic.guess(game_state, outsider.id, "a")
+
+      lobby_game = %{game_state | status: :lobby}
+      assert {:error, :not_a_participant} = GameLogic.guess(lobby_game, outsider.id, "a")
     end
 
     test "processes correct guess successfully", %{game_state: game_state, player1: player1} do

@@ -265,31 +265,16 @@ defmodule Forka.Games do
     end
   end
 
-  @doc """
-  Updates the settings of a game if the actor is the owner and the game is in the lobby.
-  """
-  @spec update_settings(Ecto.UUID.t(), Ecto.UUID.t(), map()) ::
-          :ok
-          | {:error,
-             Ecto.Changeset.t() | :unauthorized | :game_not_in_lobby | :game_archived | :not_found}
-  def update_settings(game_id, actor_id, settings)
-      when is_binary(game_id) and is_binary(actor_id) and is_map(settings) do
-    ensure_game_server_available(game_id, fn ->
-      GameServer.update_settings(game_id, actor_id, settings)
-    end)
-  end
-
   @doc "Updates room settings for the scoped authenticated owner while the room is in lobby."
   @spec update_room_settings(Scope.t() | nil, Ecto.UUID.t(), map()) ::
           :ok
           | {:error,
              Ecto.Changeset.t() | :unauthorized | :game_not_in_lobby | :game_archived | :not_found}
-  def update_room_settings(%Scope{player: %AuthPlayer{id: actor_id}}, game_id, settings)
+  def update_room_settings(%Scope{player: %AuthPlayer{}} = scope, game_id, settings)
       when is_map(settings) do
-    case Ecto.UUID.cast(game_id) do
-      {:ok, valid_id} -> update_settings(valid_id, actor_id, settings)
-      :error -> {:error, :not_found}
-    end
+    with_scoped_game(scope, game_id, fn valid_id, actor_id ->
+      GameServer.update_settings(valid_id, actor_id, settings)
+    end)
   end
 
   def update_room_settings(_invalid_scope, _game_id, _settings), do: {:error, :unauthorized}
@@ -435,22 +420,6 @@ defmodule Forka.Games do
   def get_room_settings_for_edit(_invalid_scope, _game_id), do: {:error, :unauthorized}
 
   @doc """
-  Adds a player to the game.
-
-  ## Parameters
-    - game_id: The ID of the game.
-    - player_id: The ID of the player to join.
-
-  ## Returns
-    - `:ok` if the player successfully joined the game
-    - `{:error, reason}` if the player could not join
-  """
-  @spec join_game(Ecto.UUID.t(), Ecto.UUID.t()) :: :ok | {:error, term()}
-  def join_game(game_id, player_id) do
-    ensure_game_server_available(game_id, fn -> GameServer.join_game(game_id, player_id) end)
-  end
-
-  @doc """
   Joins a room for the scoped authenticated player, distinguishing new joins from returning participants.
   """
   @spec join_room(Scope.t() | nil, Ecto.UUID.t()) ::
@@ -463,124 +432,111 @@ defmodule Forka.Games do
              | :game_already_started
              | :game_ended
              | :player_not_found}
-  def join_room(%Scope{player: %AuthPlayer{id: player_id}}, game_id) do
-    case Ecto.UUID.cast(game_id) do
-      {:ok, valid_id} ->
-        ensure_game_server_available(valid_id, fn ->
-          GameServer.join_room(valid_id, player_id)
-        end)
-
-      :error ->
-        {:error, :not_found}
-    end
-  end
-
-  def join_room(_invalid_scope, _game_id), do: {:error, :unauthorized}
-
-  @doc """
-  Removes a player from the game.
-
-  ## Parameters
-    - game_id: The ID of the game.
-    - player_id: The ID of the player to leave.
-
-  ## Returns
-    - `:ok` if the player successfully left the game
-    - `{:error, reason}` if the player could not leave
-  """
-  @spec leave_game(Ecto.UUID.t(), Ecto.UUID.t()) :: :ok | {:error, term()}
-  def leave_game(game_id, player_id) do
-    ensure_game_server_available(game_id, fn -> GameServer.leave_game(game_id, player_id) end)
-  end
-
-  @doc """
-  Initializes the game.
-
-  ## Parameters
-    - game_id: The ID of the game.
-
-  ## Returns
-    See `Forka.Games.GameServer.start_game/1` for return values.
-  """
-  @spec start_game(Ecto.UUID.t()) :: :ok | {:error, term()}
-  def start_game(game_id) do
-    ensure_game_server_available(game_id, fn -> GameServer.start_game(game_id) end)
-  end
-
-  @doc """
-  Makes a player give up in the game.
-
-  ## Parameters
-    - game_id: The ID of the game.
-    - player_id: The ID of the player who is giving up.
-
-  ## Returns
-    See `Forka.Games.GameServer.give_up_game/2` for return values.
-  """
-  @spec give_up_game(Ecto.UUID.t(), Ecto.UUID.t()) :: :ok | {:error, term()}
-  def give_up_game(game_id, player_id) do
-    ensure_game_server_available(game_id, fn -> GameServer.give_up_game(game_id, player_id) end)
-  end
-
-  @doc """
-  Makes a guess for the current word in the game.
-
-  ## Parameters
-    - game_id: The ID of the game.
-    - player_id: The ID of the player making the guess.
-    - letter: The letter being guessed.
-
-  ## Returns
-    See `Forka.Games.GameServer.guess/3` for return values.
-  """
-  @spec guess(Ecto.UUID.t(), Ecto.UUID.t(), String.t()) :: :ok | {:error, term()}
-  def guess(game_id, player_id, letter) do
-    ensure_game_server_available(game_id, fn -> GameServer.guess(game_id, player_id, letter) end)
-  end
-
-  @doc """
-  Transfers ownership of the game to another player.
-
-  ## Parameters
-    - game_id: The ID of the game.
-    - player_id: The ID of the player who will become the new owner.
-
-  ## Returns
-    See `Forka.Games.GameServer.transfer_ownership/2` for return values.
-  """
-  @spec transfer_ownership(Ecto.UUID.t(), Ecto.UUID.t()) :: :ok | {:error, term()}
-  def transfer_ownership(game_id, player_id) do
-    ensure_game_server_available(game_id, fn ->
-      GameServer.transfer_ownership(game_id, player_id)
+  def join_room(scope, game_id) do
+    with_scoped_game(scope, game_id, fn valid_id, actor_id ->
+      GameServer.join_room(valid_id, actor_id)
     end)
   end
 
-  @doc """
-  Restarts the game, returning it to the lobby state.
-
-  ## Parameters
-    - game_id: The ID of the game.
-
-  ## Returns
-    See `Forka.Games.GameServer.restart_game/1` for return values.
-  """
-  @spec restart_game(Ecto.UUID.t()) :: :ok | {:error, term()}
-  def restart_game(game_id) do
-    ensure_game_server_available(game_id, fn -> GameServer.restart_game(game_id) end)
+  @doc "Removes the scoped authenticated participant from a lobby room."
+  @spec leave_game(Scope.t() | nil, Ecto.UUID.t()) ::
+          :ok
+          | {:error,
+             :unauthorized
+             | :not_found
+             | :game_archived
+             | :not_a_participant
+             | :game_already_started}
+  def leave_game(scope, game_id) do
+    with_scoped_game(scope, game_id, fn valid_id, actor_id ->
+      GameServer.leave_game(valid_id, actor_id)
+    end)
   end
 
-  @doc """
-  Archives the game, marking it as completed and no longer active.
+  @doc "Starts a lobby game for the scoped authenticated owner."
+  @spec start_game(Scope.t() | nil, Ecto.UUID.t()) ::
+          :ok
+          | {:error,
+             :unauthorized
+             | :not_found
+             | :game_archived
+             | :game_already_initialized
+             | :game_not_ready}
+  def start_game(scope, game_id) do
+    with_scoped_game(scope, game_id, fn valid_id, actor_id ->
+      GameServer.start_game(valid_id, actor_id)
+    end)
+  end
 
-  ## Parameters
-    - game_id: The ID of the game.
+  @doc "Marks the scoped authenticated participant as having given up in an active game."
+  @spec give_up_game(Scope.t() | nil, Ecto.UUID.t()) ::
+          :ok
+          | {:error,
+             :unauthorized
+             | :not_found
+             | :game_archived
+             | :not_a_participant
+             | :game_not_playing}
+  def give_up_game(scope, game_id) do
+    with_scoped_game(scope, game_id, fn valid_id, actor_id ->
+      GameServer.give_up_game(valid_id, actor_id)
+    end)
+  end
 
-  ## Returns
-    See `Forka.Games.GameServer.archive_game/1` for return values.
-  """
-  @spec archive_game(Ecto.UUID.t()) :: :ok | {:error, term()}
-  def archive_game(game_id) do
-    ensure_game_server_available(game_id, fn -> GameServer.archive_game(game_id) end)
+  @doc "Submits a letter guess for the scoped authenticated participant on their turn."
+  @spec guess(Scope.t() | nil, Ecto.UUID.t(), String.t()) ::
+          :ok
+          | {:error,
+             :unauthorized
+             | :not_found
+             | :game_archived
+             | :not_a_participant
+             | :game_not_playing
+             | :not_player_turn
+             | :letter_already_guessed}
+  def guess(%Scope{player: %AuthPlayer{}} = scope, game_id, letter) when is_binary(letter) do
+    with_scoped_game(scope, game_id, fn valid_id, actor_id ->
+      GameServer.guess(valid_id, actor_id, letter)
+    end)
+  end
+
+  def guess(_invalid_scope, _game_id, _letter), do: {:error, :unauthorized}
+
+  @doc "Transfers ownership of a non-archived game to a participating player for the scoped authenticated owner."
+  @spec transfer_ownership(Scope.t() | nil, Ecto.UUID.t(), Ecto.UUID.t()) ::
+          :ok
+          | {:error,
+             :unauthorized
+             | :not_found
+             | :game_archived
+             | :already_owner
+             | :player_not_found}
+  def transfer_ownership(%Scope{player: %AuthPlayer{}} = scope, game_id, target_player_id)
+      when is_binary(target_player_id) do
+    with_scoped_game(scope, game_id, fn valid_id, actor_id ->
+      GameServer.transfer_ownership(valid_id, actor_id, target_player_id)
+    end)
+  end
+
+  def transfer_ownership(_invalid_scope, _game_id, _target_player_id),
+    do: {:error, :unauthorized}
+
+  @doc "Restarts a non-playing, non-archived game back to lobby for the scoped authenticated owner."
+  @spec restart_game(Scope.t() | nil, Ecto.UUID.t()) ::
+          :ok | {:error, :unauthorized | :not_found | :game_archived | :game_in_progress}
+  def restart_game(scope, game_id) do
+    with_scoped_game(scope, game_id, fn valid_id, actor_id ->
+      GameServer.restart_game(valid_id, actor_id)
+    end)
+  end
+
+  @doc "Archives a non-playing, non-archived game for the scoped authenticated owner."
+  @spec archive_game(Scope.t() | nil, Ecto.UUID.t()) ::
+          :ok | {:error, :unauthorized | :not_found | :game_archived | :game_in_progress}
+  def archive_game(scope, game_id) do
+    with_scoped_game(scope, game_id, fn valid_id, actor_id ->
+      GameServer.archive_game(valid_id, actor_id)
+    end)
   end
 
   @doc """
@@ -658,6 +614,18 @@ defmodule Forka.Games do
       other -> other
     end
   end
+
+  defp with_scoped_game(%Scope{player: %AuthPlayer{id: actor_id}}, game_id, fun) do
+    case Ecto.UUID.cast(game_id) do
+      {:ok, valid_id} ->
+        ensure_game_server_available(valid_id, fn -> fun.(valid_id, actor_id) end)
+
+      :error ->
+        {:error, :not_found}
+    end
+  end
+
+  defp with_scoped_game(_invalid_scope, _game_id, _fun), do: {:error, :unauthorized}
 
   defp ensure_game_server_available(game_id, action) do
     if GameServer.exists?(game_id) do

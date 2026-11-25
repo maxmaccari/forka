@@ -40,57 +40,64 @@ defmodule Forka.Games.Core.GameLogic do
 
   @doc false
   @spec give_up_game(GameState.t(), Ecto.UUID.t()) ::
-          {:ok, GameState.t()} | {:error, :player_not_found | :game_archived | :game_not_playing}
-  def give_up_game(%GameState{status: :playing} = game_state, player_id)
-      when is_binary(player_id) do
-    case find_game_player_by_id(game_state, player_id) do
-      {idx, game_player} ->
-        updated_player = GamePlayer.give_up(game_player)
-
-        new_game_state =
-          %{
-            game_state
-            | game_players: Map.put(game_state.game_players, idx, updated_player)
-          }
-          |> increment_tick()
-          |> push_event(:player_gave_up, updated_player.player)
-
-        {:ok, ensure_current_or_next_alive_player(new_game_state)}
-
-      nil ->
-        {:error, :player_not_found}
-    end
-  end
-
-  @doc false
-  def give_up_game(%GameState{status: :archived}, _player_id),
+          {:ok, GameState.t()}
+          | {:error, :not_a_participant | :game_archived | :game_not_playing}
+  def give_up_game(%GameState{status: :archived}, player_id) when is_binary(player_id),
     do: {:error, :game_archived}
 
-  @doc false
-  def give_up_game(%GameState{}, player_id) when is_binary(player_id),
-    do: {:error, :game_not_playing}
+  def give_up_game(%GameState{} = game_state, player_id) when is_binary(player_id) do
+    case find_game_player_by_id(game_state, player_id) do
+      nil ->
+        {:error, :not_a_participant}
+
+      {idx, game_player} ->
+        if game_state.status == :playing do
+          updated_player = GamePlayer.give_up(game_player)
+
+          new_game_state =
+            %{
+              game_state
+              | game_players: Map.put(game_state.game_players, idx, updated_player)
+            }
+            |> increment_tick()
+            |> push_event(:player_gave_up, updated_player.player)
+
+          {:ok, ensure_current_or_next_alive_player(new_game_state)}
+        else
+          {:error, :game_not_playing}
+        end
+    end
+  end
 
   @doc false
   @spec guess(GameState.t(), Ecto.UUID.t(), String.t()) ::
           {:ok, GameState.t()}
           | {:error,
-             :not_player_turn | :game_archived | :game_not_playing | :letter_already_guessed}
-  def guess(%GameState{status: :playing} = game_state, player_id, letter)
-      when is_binary(letter) and is_binary(player_id) do
-    if current_player?(game_state, player_id) do
-      process_guess(game_state, player_id, letter)
-    else
-      {:error, :not_player_turn}
+             :not_a_participant
+             | :not_player_turn
+             | :game_archived
+             | :game_not_playing
+             | :letter_already_guessed}
+  def guess(%GameState{status: :archived}, player_id, letter)
+      when is_binary(player_id) and is_binary(letter),
+      do: {:error, :game_archived}
+
+  def guess(%GameState{} = game_state, player_id, letter)
+      when is_binary(player_id) and is_binary(letter) do
+    cond do
+      not participant?(game_state, player_id) ->
+        {:error, :not_a_participant}
+
+      game_state.status != :playing ->
+        {:error, :game_not_playing}
+
+      not current_player?(game_state, player_id) ->
+        {:error, :not_player_turn}
+
+      true ->
+        process_guess(game_state, player_id, letter)
     end
   end
-
-  @doc false
-  def guess(%GameState{status: :archived}, _player_id, _letter),
-    do: {:error, :game_archived}
-
-  @doc false
-  def guess(%GameState{}, player_id, letter) when is_binary(letter) and is_binary(player_id),
-    do: {:error, :game_not_playing}
 
   defp current_player?(game, player_id) do
     case get_current_player(game) do

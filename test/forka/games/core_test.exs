@@ -127,9 +127,13 @@ defmodule Forka.Games.CoreTest do
       assert %{1 => %{player: %{username: "Player 3"}}} = updated_game.game_players
     end
 
-    test "returns unchanged game when removing player that doesn't exist", %{game: game} do
+    test "REQ-01: returns {:error, :not_a_participant} when non-member tries to leave in lobby or playing",
+         %{game: game} do
       unknown_player = build_games_player("Unknown")
-      assert {:ok, ^game} = Core.leave_game(game, unknown_player.id)
+      assert {:error, :not_a_participant} = Core.leave_game(game, unknown_player.id)
+
+      playing_game = %{game | status: :playing}
+      assert {:error, :not_a_participant} = Core.leave_game(playing_game, unknown_player.id)
     end
 
     test "returns error when game already started", %{game: game, player: player} do
@@ -247,7 +251,7 @@ defmodule Forka.Games.CoreTest do
     end
   end
 
-  describe "start_game/1" do
+  describe "start_game/2" do
     setup %{owner: owner} do
       game = Core.new(owner, "Test Game", 4)
       player1 = build_games_player("Player 1")
@@ -262,7 +266,7 @@ defmodule Forka.Games.CoreTest do
     end
 
     test "initializes game successfully when ready", %{game: game} do
-      {:ok, initialized_game} = Core.start_game(game)
+      {:ok, initialized_game} = Core.start_game(game, game.owner.id)
 
       assert initialized_game.status == :playing
       assert initialized_game.current_game_word_index == 0
@@ -276,7 +280,9 @@ defmodule Forka.Games.CoreTest do
 
     test "returns error when game not in lobby", %{game: game} do
       game_started = %{game | status: :playing}
-      assert {:error, :game_already_initialized} = Core.start_game(game_started)
+
+      assert {:error, :game_already_initialized} =
+               Core.start_game(game_started, game_started.owner.id)
     end
 
     test "returns error when not enough players", %{owner: owner} do
@@ -284,16 +290,16 @@ defmodule Forka.Games.CoreTest do
       player = build_games_player("Player 1")
       {:ok, game_with_player} = Core.join_game(game, player)
 
-      assert {:error, :game_not_ready} = Core.start_game(game_with_player)
+      assert {:error, :game_not_ready} = Core.start_game(game_with_player, owner.id)
     end
 
     test "returns error when game is archived", %{game: game} do
       game_archived = %{game | status: :archived}
-      assert {:error, :game_archived} = Core.start_game(game_archived)
+      assert {:error, :game_archived} = Core.start_game(game_archived, game_archived.owner.id)
     end
   end
 
-  describe "restart_game/1" do
+  describe "restart_game/2" do
     setup %{owner: owner} do
       game = Core.new(owner, "Test Game", 4)
       player1 = build_games_player("Player 1")
@@ -304,7 +310,7 @@ defmodule Forka.Games.CoreTest do
       {:ok, game_with_players} = Core.join_game(game_with_player1, player2)
       game_with_words = Core.set_words(game_with_players, [word])
 
-      {:ok, initialized_game} = Core.start_game(game_with_words)
+      {:ok, initialized_game} = Core.start_game(game_with_words, owner.id)
 
       # Create a finished game with some player state changes
       finished_game = %{initialized_game | status: :finished}
@@ -326,7 +332,7 @@ defmodule Forka.Games.CoreTest do
     end
 
     test "restarts game successfully when in finished status", %{game_finished: game} do
-      assert {:ok, restarted_game} = Core.restart_game(game)
+      assert {:ok, restarted_game} = Core.restart_game(game, game.owner.id)
 
       # Check that game is back in lobby state
       assert restarted_game.status == :lobby
@@ -356,19 +362,19 @@ defmodule Forka.Games.CoreTest do
             |> Map.update!(1, &%{&1 | score: 30})
       }
 
-      assert {:ok, restarted} = Core.restart_game(game)
+      assert {:ok, restarted} = Core.restart_game(game, game.owner.id)
       assert restarted.status == :lobby
       assert %{score: 0, lives: 6, status: :alive} = restarted.game_players[0]
       assert %{score: 0, lives: 6, status: :alive} = restarted.game_players[1]
     end
 
     test "restarts game successfully when in lobby status", %{game_lobby: game} do
-      assert {:ok, restarted_game} = Core.restart_game(game)
+      assert {:ok, restarted_game} = Core.restart_game(game, game.owner.id)
       assert restarted_game.status == :lobby
     end
 
     test "returns error when game is in playing status", %{game_playing: game} do
-      assert {:error, :game_in_progress} = Core.restart_game(game)
+      assert {:error, :game_in_progress} = Core.restart_game(game, game.owner.id)
     end
 
     test "returns error when game is archived", %{game_finished: game} do
@@ -377,7 +383,7 @@ defmodule Forka.Games.CoreTest do
       assert archived_game.status == :archived
 
       # Then try to restart it
-      assert {:error, :game_archived} = Core.restart_game(archived_game)
+      assert {:error, :game_archived} = Core.restart_game(archived_game, archived_game.owner.id)
     end
   end
 
@@ -392,7 +398,7 @@ defmodule Forka.Games.CoreTest do
       {:ok, game_with_players} = Core.join_game(game_with_player1, player2)
       game_with_words = Core.set_words(game_with_players, [word])
 
-      {:ok, initialized_game} = Core.start_game(game_with_words)
+      {:ok, initialized_game} = Core.start_game(game_with_words, owner.id)
 
       # Create a finished game
       finished_game = %{initialized_game | status: :finished}
@@ -432,13 +438,13 @@ defmodule Forka.Games.CoreTest do
       assert {:error, :game_archived} = Core.leave_game(archived_game, "any_player_id")
       assert archived_game == Core.set_words(archived_game, [word])
       assert archived_game == Core.shuffle_players(archived_game)
-      assert {:error, :game_archived} = Core.start_game(archived_game)
+      assert {:error, :game_archived} = Core.start_game(archived_game, archived_game.owner.id)
       assert {:error, :game_archived} = Core.guess(archived_game, "any_player_id", "a")
       assert {:error, :game_archived} = Core.give_up_game(archived_game, "any_player_id")
     end
   end
 
-  describe "transfer_ownership_to_player/2" do
+  describe "transfer_ownership_to_player/3" do
     setup %{owner: owner} do
       game = Core.new(owner, "Test Game", 4)
       player1 = build_games_player("Player 1")
@@ -451,7 +457,7 @@ defmodule Forka.Games.CoreTest do
     end
 
     test "transfers ownership successfully", %{game: game, player1: player1} do
-      {:ok, updated_game} = Core.transfer_ownership_to_player(game, player1.id)
+      {:ok, updated_game} = Core.transfer_ownership_to_player(game, game.owner.id, player1.id)
 
       assert updated_game.owner.id == player1.id
       assert updated_game.owner.username == player1.username
@@ -469,28 +475,37 @@ defmodule Forka.Games.CoreTest do
     test "returns error when player is not in the game", %{game: game} do
       non_player = build_games_player("Non Player")
 
-      assert {:error, :player_not_found} = Core.transfer_ownership_to_player(game, non_player.id)
+      assert {:error, :player_not_found} =
+               Core.transfer_ownership_to_player(game, game.owner.id, non_player.id)
     end
 
     test "returns error when player is already the owner", %{game: game, owner: owner} do
       assert {:error, :already_owner} =
-               Core.transfer_ownership_to_player(game, owner.id)
+               Core.transfer_ownership_to_player(game, owner.id, owner.id)
     end
 
     test "works in any game state but archived", %{game: game, player2: player2} do
       # Test in playing state
       game_playing = %{game | status: :playing}
-      {:ok, updated_game} = Core.transfer_ownership_to_player(game_playing, player2.id)
+
+      {:ok, updated_game} =
+        Core.transfer_ownership_to_player(game_playing, game_playing.owner.id, player2.id)
+
       assert updated_game.owner.id == player2.id
 
       # Test in finished state
       game_finished = %{game | status: :finished}
-      {:ok, updated_game} = Core.transfer_ownership_to_player(game_finished, player2.id)
+
+      {:ok, updated_game} =
+        Core.transfer_ownership_to_player(game_finished, game_finished.owner.id, player2.id)
+
       assert updated_game.owner.id == player2.id
 
       # Test in archived state
       game_archived = %{game | status: :archived}
-      {:error, :game_archived} = Core.transfer_ownership_to_player(game_archived, player2.id)
+
+      {:error, :game_archived} =
+        Core.transfer_ownership_to_player(game_archived, game_archived.owner.id, player2.id)
     end
   end
 
@@ -739,6 +754,183 @@ defmodule Forka.Games.CoreTest do
         assert returned.game_players == state.game_players
         assert returned.tick == state.tick
         assert returned.events == []
+      end
+    end
+  end
+
+  describe "REQ-02: owner and phase authorization" do
+    setup %{owner: owner} do
+      game = Core.new(owner, "Sala Segura", 4)
+      player1 = build_games_player("Player 1")
+      player2 = build_games_player("Player 2")
+      outsider = build_games_player("Outsider")
+      word = Word.new("cat", "Animals", "Meows")
+
+      {:ok, g1} = Core.join_game(game, owner)
+      {:ok, g2} = Core.join_game(g1, player1)
+      {:ok, g3} = Core.join_game(g2, player2)
+      lobby_ready = Core.set_words(g3, [word])
+
+      %{
+        owner: owner,
+        player1: player1,
+        player2: player2,
+        outsider: outsider,
+        lobby_ready: lobby_ready
+      }
+    end
+
+    test "REQ-02: authorize_start/2 and start_game/2 enforce owner, lobby phase, and readiness",
+         %{
+           owner: owner,
+           player1: player1,
+           outsider: outsider,
+           lobby_ready: lobby_ready
+         } do
+      assert :ok = Core.authorize_start(lobby_ready, owner.id)
+      assert {:error, :unauthorized} = Core.authorize_start(lobby_ready, player1.id)
+      assert {:error, :unauthorized} = Core.authorize_start(lobby_ready, outsider.id)
+      assert {:error, :unauthorized} = Core.authorize_start(%{lobby_ready | owner: nil}, owner.id)
+
+      assert {:error, :game_already_initialized} =
+               Core.authorize_start(%{lobby_ready | status: :playing}, owner.id)
+
+      assert {:error, :unauthorized} =
+               Core.authorize_start(%{lobby_ready | status: :playing}, player1.id)
+
+      assert {:error, :game_archived} =
+               Core.authorize_start(%{lobby_ready | status: :archived}, owner.id)
+
+      assert {:error, :unauthorized} = Core.start_game(lobby_ready, player1.id)
+      assert {:error, :unauthorized} = Core.start_game(lobby_ready, outsider.id)
+
+      assert {:ok, playing} = Core.start_game(lobby_ready, owner.id)
+      assert playing.status == :playing
+      assert playing.current_game_word_index == 0
+      assert playing.current_game_player_index == 0
+
+      assert {:error, :game_already_initialized} = Core.start_game(playing, owner.id)
+      assert {:error, :unauthorized} = Core.start_game(playing, player1.id)
+      assert {:error, :game_archived} = Core.start_game(%{playing | status: :archived}, owner.id)
+
+      not_ready = Core.new(owner, "Sozinho", 4)
+      {:ok, one_player} = Core.join_game(not_ready, owner)
+      assert {:error, :game_not_ready} = Core.start_game(one_player, owner.id)
+    end
+
+    test "REQ-02: restart_game/2 enforces owner only and allows any non-playing, non-archived phase",
+         %{
+           owner: owner,
+           player1: player1,
+           outsider: outsider,
+           lobby_ready: lobby_ready
+         } do
+      {:ok, playing} = Core.start_game(lobby_ready, owner.id)
+
+      for status <- [:lobby, :playing, :finished, :game_over] do
+        state = %{playing | status: status}
+        assert {:error, :unauthorized} = Core.restart_game(state, player1.id)
+        assert {:error, :unauthorized} = Core.restart_game(state, outsider.id)
+        assert {:error, :unauthorized} = Core.restart_game(%{state | owner: nil}, owner.id)
+      end
+
+      assert {:error, :game_in_progress} = Core.restart_game(playing, owner.id)
+
+      assert {:error, :game_archived} =
+               Core.restart_game(%{playing | status: :archived}, owner.id)
+
+      for status <- [:lobby, :finished, :game_over] do
+        state = %{playing | status: status}
+        assert {:ok, restarted} = Core.restart_game(state, owner.id)
+        assert restarted.status == :lobby
+        assert restarted.game_words == %{}
+        assert restarted.current_game_player_index == nil
+        assert restarted.current_game_word_index == nil
+      end
+    end
+
+    test "REQ-02: transfer_ownership_to_player/3 enforces owner in any non-archived phase and participant target",
+         %{
+           owner: owner,
+           player1: player1,
+           player2: player2,
+           outsider: outsider,
+           lobby_ready: lobby_ready
+         } do
+      for status <- [:lobby, :playing, :finished, :game_over] do
+        state = %{lobby_ready | status: status}
+
+        assert {:error, :unauthorized} =
+                 Core.transfer_ownership_to_player(state, player1.id, player2.id)
+
+        assert {:error, :unauthorized} =
+                 Core.transfer_ownership_to_player(state, outsider.id, player1.id)
+
+        assert {:error, :unauthorized} =
+                 Core.transfer_ownership_to_player(%{state | owner: nil}, owner.id, player1.id)
+
+        assert {:ok, transferred} = Core.transfer_ownership_to_player(state, owner.id, player1.id)
+        assert transferred.owner.id == player1.id
+      end
+
+      assert {:error, :already_owner} =
+               Core.transfer_ownership_to_player(lobby_ready, owner.id, owner.id)
+
+      assert {:error, :player_not_found} =
+               Core.transfer_ownership_to_player(lobby_ready, owner.id, outsider.id)
+
+      assert {:error, :game_archived} =
+               Core.transfer_ownership_to_player(
+                 %{lobby_ready | status: :archived},
+                 owner.id,
+                 player1.id
+               )
+    end
+
+    test "REQ-02: archive_game/2 enforces owner and non-playing while archive_game/1 remains for system timeout",
+         %{
+           owner: owner,
+           player1: player1,
+           lobby_ready: lobby_ready
+         } do
+      assert {:error, :unauthorized} = Core.archive_game(lobby_ready, player1.id)
+      assert {:error, :unauthorized} = Core.archive_game(%{lobby_ready | owner: nil}, owner.id)
+
+      {:ok, playing} = Core.start_game(lobby_ready, owner.id)
+      assert {:error, :unauthorized} = Core.archive_game(playing, player1.id)
+      assert {:error, :game_in_progress} = Core.archive_game(playing, owner.id)
+
+      assert {:ok, archived} = Core.archive_game(lobby_ready, owner.id)
+      assert archived.status == :archived
+      assert {:error, :game_archived} = Core.archive_game(archived, owner.id)
+
+      assert {:ok, sys_archived} = Core.archive_game(%{playing | status: :finished})
+      assert sys_archived.status == :archived
+    end
+
+    property "REQ-02: non-owners are always rejected with {:error, :unauthorized} on all owner commands in any non-archived phase" do
+      check all(status <- StreamData.member_of([:lobby, :playing, :finished, :game_over])) do
+        owner = build_games_player("Owner")
+        seated = build_games_player("Seated")
+        outsider = build_games_player("Outsider")
+        word = Word.new("cat", "Animals", "Meows")
+
+        game = Core.new(owner, "Prop Room", 4)
+        {:ok, g1} = Core.join_game(game, owner)
+        {:ok, g2} = Core.join_game(g1, seated)
+        state = %{Core.set_words(g2, [word]) | status: status}
+        settings = %RoomSettings{name: "Hijack", max_players: 4, word_options: %WordOptions{}}
+
+        for actor <- [seated, outsider] do
+          assert {:error, :unauthorized} = Core.start_game(state, actor.id)
+          assert {:error, :unauthorized} = Core.restart_game(state, actor.id)
+
+          assert {:error, :unauthorized} =
+                   Core.transfer_ownership_to_player(state, actor.id, seated.id)
+
+          assert {:error, :unauthorized} = Core.archive_game(state, actor.id)
+          assert {:error, :unauthorized} = Core.update_settings(state, actor.id, settings)
+        end
       end
     end
   end

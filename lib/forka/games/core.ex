@@ -9,7 +9,15 @@ defmodule Forka.Games.Core do
   alias Forka.Games.Schemas.GameWord
   alias Forka.Games.Schemas.{Player, Word, WordOptions}
 
-  import Forka.Games.Core.Helpers, only: [increment_tick: 1, push_event: 2, push_event: 3]
+  import Forka.Games.Core.Helpers,
+    only: [
+      authorize_owner: 2,
+      find_game_player_by_id: 2,
+      increment_tick: 1,
+      participant?: 2,
+      push_event: 2,
+      push_event: 3
+    ]
 
   @min_players_allowed 2
   @max_players_allowed 6
@@ -125,10 +133,10 @@ defmodule Forka.Games.Core do
   def join_room(%GameState{status: :archived}, %Player{}), do: {:error, :game_archived}
 
   def join_room(
-        %GameState{game_players: game_players, status: :lobby} = game_state,
+        %GameState{status: :lobby} = game_state,
         %Player{} = player
       ) do
-    if participant?(game_players, player.id) do
+    if participant?(game_state, player.id) do
       {:ok, :already_joined, game_state}
     else
       case join_game(game_state, player) do
@@ -139,11 +147,11 @@ defmodule Forka.Games.Core do
   end
 
   def join_room(
-        %GameState{game_players: game_players, status: status} = game_state,
+        %GameState{status: status} = game_state,
         %Player{} = player
       )
       when status in [:playing, :finished, :game_over] do
-    if participant?(game_players, player.id) do
+    if participant?(game_state, player.id) do
       {:ok, :returning_participant, game_state}
     else
       case status do
@@ -153,10 +161,6 @@ defmodule Forka.Games.Core do
     end
   end
 
-  defp participant?(game_players, player_id) do
-    Enum.any?(game_players, fn {_pos, gp} -> gp.player.id == player_id end)
-  end
-
   defp add_game_player_to_map(%{} = game_players, %Player{} = player) do
     (Map.values(game_players) ++ [GamePlayer.new(player)])
     |> Enum.uniq_by(& &1.player.id)
@@ -164,52 +168,48 @@ defmodule Forka.Games.Core do
   end
 
   @doc """
-  Removes a player from the game state while in lobby state.
+  Removes a participating player from the game state while in lobby state.
 
   ## Parameters
     - game_state: The GameState struct
-    - player_id: The ID of the player to be removed
+    - player_id: The ID of the participating player to remove
 
   ## Returns
-    - `{:ok, game_state}` if player was successfully removed
-    - `{:error, :game_already_started}` if game state is not in lobby state
-    - `{:error, :game_archived}` if game state is archived
-
-  Players are reindexed after removal to maintain sequential ordering.
-  If the player is not found in the game, returns the unchanged game state.
+    - `{:ok, game_state}` if the player was successfully removed
+    - `{:error, :game_archived}` if the game state is archived
+    - `{:error, :not_a_participant}` if the player is not seated in the game
+    - `{:error, :game_already_started}` if the game state is not in lobby state
   """
   @spec leave_game(GameState.t(), Ecto.UUID.t()) ::
-          {:ok, GameState.t()} | {:error, :game_archived | :game_already_started}
-  def leave_game(%GameState{status: :lobby, game_players: game_players} = game_state, player_id)
-      when is_binary(player_id) do
-    left_player =
-      Enum.find_value(game_players, fn {_, game_player} ->
-        if game_player.player.id == player_id, do: game_player.player
-      end)
-
-    if left_player do
-      new_game_players =
-        game_players
-        |> Map.values()
-        |> Enum.reject(&(&1.player.id == player_id))
-        |> indexed_map()
-
-      new_game_state =
-        %{game_state | game_players: new_game_players}
-        |> increment_tick()
-        |> push_event(:player_left, left_player)
-
-      {:ok, new_game_state}
-    else
-      {:ok, game_state}
-    end
-  end
-
+          {:ok, GameState.t()}
+          | {:error, :game_archived | :not_a_participant | :game_already_started}
   def leave_game(%GameState{status: :archived}, player_id) when is_binary(player_id),
     do: {:error, :game_archived}
 
-  def leave_game(%GameState{}, player_id) when is_binary(player_id),
-    do: {:error, :game_already_started}
+  def leave_game(%GameState{} = game_state, player_id) when is_binary(player_id) do
+    case find_game_player_by_id(game_state, player_id) do
+      nil ->
+        {:error, :not_a_participant}
+
+      {_idx, %{player: left_player}} ->
+        if game_state.status == :lobby do
+          new_game_players =
+            game_state.game_players
+            |> Map.values()
+            |> Enum.reject(&(&1.player.id == player_id))
+            |> indexed_map()
+
+          new_game_state =
+            %{game_state | game_players: new_game_players}
+            |> increment_tick()
+            |> push_event(:player_left, left_player)
+
+          {:ok, new_game_state}
+        else
+          {:error, :game_already_started}
+        end
+    end
+  end
 
   @doc """
   Sets the words for the game state.
@@ -271,48 +271,45 @@ defmodule Forka.Games.Core do
   def shuffle_players(%GameState{} = game_state),
     do: game_state
 
-  @doc """
-  Initializes a game by transitioning it from lobby state to playing state.
+  @doc "Checks whether `actor_id` is allowed to start `game_state`."
+  @spec authorize_start(GameState.t(), Ecto.UUID.t()) ::
+          :ok | {:error, :game_archived | :unauthorized | :game_already_initialized}
+  def authorize_start(%GameState{status: :archived}, actor_id) when is_binary(actor_id),
+    do: {:error, :game_archived}
 
-  ## Parameters
-    - game_state: The GameState struct to initialize
-
-  ## Returns
-    - `{:ok, game_state}` with updated status if the game can be started
-    - `{:error, :game_not_ready}` if there are not enough players or words
-    - `{:error, :game_already_initialized}` if the game is not in lobby status
-    - `{:error, :game_archived}` if the game is archived
-
-  ## Examples
-      iex> game_state = %GameState{status: :lobby, game_players: %{0 => player1, 1 => player2}, game_words: %{0 => word1}}
-      iex> {:ok, updated_game} = Game.start_game(game_state)
-      iex> updated_game.status
-      :playing
-  """
-  @spec start_game(GameState.t()) ::
-          {:ok, GameState.t()}
-          | {:error, :game_not_ready | :game_archived | :game_already_initialized}
-  def start_game(%GameState{status: :lobby} = game_state) do
-    if can_start?(game_state) do
-      new_game_state =
-        %{
-          game_state
-          | current_game_word_index: 0,
-            current_game_player_index: 0,
-            status: :playing
-        }
-        |> increment_tick()
-        |> push_event(:game_started)
-
-      {:ok, new_game_state}
-    else
-      {:error, :game_not_ready}
+  def authorize_start(%GameState{} = game_state, actor_id) when is_binary(actor_id) do
+    with :ok <- authorize_owner(game_state, actor_id) do
+      if game_state.status == :lobby do
+        :ok
+      else
+        {:error, :game_already_initialized}
+      end
     end
   end
 
-  def start_game(%GameState{status: :archived}), do: {:error, :game_archived}
+  @doc "Initializes a lobby game for `actor_id` if they are the owner and the game is ready."
+  @spec start_game(GameState.t(), Ecto.UUID.t()) ::
+          {:ok, GameState.t()}
+          | {:error, :game_archived | :unauthorized | :game_already_initialized | :game_not_ready}
+  def start_game(%GameState{} = game_state, actor_id) when is_binary(actor_id) do
+    with :ok <- authorize_start(game_state, actor_id) do
+      if can_start?(game_state) do
+        new_game_state =
+          %{
+            game_state
+            | current_game_word_index: 0,
+              current_game_player_index: 0,
+              status: :playing
+          }
+          |> increment_tick()
+          |> push_event(:game_started)
 
-  def start_game(%GameState{}), do: {:error, :game_already_initialized}
+        {:ok, new_game_state}
+      else
+        {:error, :game_not_ready}
+      end
+    end
+  end
 
   defp can_start?(%GameState{game_players: game_players, game_words: game_words}) do
     map_size(game_players) >= 2 and map_size(game_words) >= 1
@@ -339,6 +336,7 @@ defmodule Forka.Games.Core do
   ## Returns
     - `{:ok, updated_game}`: If the guess is processed successfully
     - `{:error, reason}`: If the guess cannot be processed. Possible reasons:
+      - `:not_a_participant`: The player attempting to guess is not seated in the game
       - `:not_player_turn`: The player attempting to guess is not the current player
       - `:game_not_playing`: The game is not in playing state
       - `:letter_already_guessed`: The letter has already been guessed for this word
@@ -347,7 +345,11 @@ defmodule Forka.Games.Core do
   @spec guess(GameState.t(), Ecto.UUID.t(), String.t()) ::
           {:ok, GameState.t()}
           | {:error,
-             :not_player_turn | :game_archived | :game_not_playing | :letter_already_guessed}
+             :not_a_participant
+             | :not_player_turn
+             | :game_archived
+             | :game_not_playing
+             | :letter_already_guessed}
   defdelegate guess(game_state, player_id, letter), to: GameLogic
 
   @doc """
@@ -359,12 +361,12 @@ defmodule Forka.Games.Core do
 
   ## Returns
     - `{:ok, updated_game_state}` if player successfully gave up
-    - `{:error, :player_not_found}` if player is not in the game state
+    - `{:error, :not_a_participant}` if player is not seated in the game state
     - `{:error, :game_not_playing}` if the game is not in playing state
     - `{:error, :game_archived}` if the game is archived and cannot be modified
   """
   @spec give_up_game(GameState.t(), Ecto.UUID.t()) ::
-          {:ok, GameState.t()} | {:error, :player_not_found | :game_archived | :game_not_playing}
+          {:ok, GameState.t()} | {:error, :not_a_participant | :game_archived | :game_not_playing}
   defdelegate give_up_game(game_state, player_id), to: GameLogic
 
   @doc """
@@ -427,32 +429,33 @@ defmodule Forka.Games.Core do
     {:ok, new_game_state}
   end
 
-  @doc """
-  Restarts a game, returning it to the lobby state.
+  @doc "Archives a non-playing, non-archived game when requested by its owner."
+  @spec archive_game(GameState.t(), Ecto.UUID.t()) ::
+          {:ok, GameState.t()} | {:error, :game_archived | :unauthorized | :game_in_progress}
+  def archive_game(%GameState{status: :archived}, actor_id) when is_binary(actor_id),
+    do: {:error, :game_archived}
 
-  This function resets the game to its lobby state, allowing players to start a new round.
-  It maintains the same players and game settings, but clears all game progress including
-  guesses, word selections, and player statuses.
-
-  ## Parameters
-    - game_state: The current GameState struct to restart
-
-  ## Returns
-    - {:ok, updated_game_state} if the game was successfully restarted
-    - {:error, :game_in_progress} if the game is still in playing status
-    - {:error, :game_archived} if the game is archived
-  """
-  @spec restart_game(GameState.t()) ::
-          {:ok, GameState.t()} | {:error, :game_in_progress | :game_archived}
-  def restart_game(%GameState{status: :playing} = _game_state) do
-    {:error, :game_in_progress}
+  def archive_game(%GameState{} = game_state, actor_id) when is_binary(actor_id) do
+    with :ok <- authorize_owner(game_state, actor_id) do
+      archive_game(game_state)
+    end
   end
 
-  def restart_game(%GameState{status: :archived} = _game_state) do
-    {:error, :game_archived}
+  @doc "Restarts a non-playing, non-archived game back to lobby when requested by its owner."
+  @spec restart_game(GameState.t(), Ecto.UUID.t()) ::
+          {:ok, GameState.t()} | {:error, :game_archived | :unauthorized | :game_in_progress}
+  def restart_game(%GameState{status: :archived}, actor_id) when is_binary(actor_id),
+    do: {:error, :game_archived}
+
+  def restart_game(%GameState{} = game_state, actor_id) when is_binary(actor_id) do
+    with :ok <- authorize_owner(game_state, actor_id) do
+      do_restart_game(game_state)
+    end
   end
 
-  def restart_game(%GameState{} = game_state) do
+  defp do_restart_game(%GameState{status: :playing}), do: {:error, :game_in_progress}
+
+  defp do_restart_game(%GameState{} = game_state) do
     # Reset player lives and status
     updated_players =
       game_state.game_players
@@ -477,55 +480,31 @@ defmodule Forka.Games.Core do
     {:ok, new_game_state}
   end
 
-  @doc """
-  Transfers ownership of the game to another player.
+  @doc "Transfers ownership to a participating player in any non-archived phase when requested by the current owner."
+  @spec transfer_ownership_to_player(GameState.t(), Ecto.UUID.t(), Ecto.UUID.t()) ::
+          {:ok, GameState.t()}
+          | {:error, :game_archived | :unauthorized | :already_owner | :player_not_found}
+  def transfer_ownership_to_player(%GameState{status: :archived}, actor_id, target_player_id)
+      when is_binary(actor_id) and is_binary(target_player_id),
+      do: {:error, :game_archived}
 
-  This function changes the owner of the game to a different player who is already
-  participating in the game.
-
-  ## Parameters
-    - game_state: The current GameState struct
-    - player_id: The ID of the player who will become the new owner
-
-  ## Returns
-    - {:ok, updated_game_state} if ownership was successfully transferred
-    - {:error, :player_not_found} if the specified player is not in the game
-    - {:error, :already_owner} if the specified player is already the owner
-    - {:error, :game_archived} if the game is in archived status
-  """
-  @spec transfer_ownership_to_player(GameState.t(), Ecto.UUID.t()) ::
-          {:ok, GameState.t()} | {:error, :game_archived | :already_owner | :player_not_found}
-  def transfer_ownership_to_player(%GameState{status: :archived} = _game_state, player_id)
-      when is_binary(player_id) do
-    {:error, :game_archived}
+  def transfer_ownership_to_player(%GameState{} = game_state, actor_id, target_player_id)
+      when is_binary(actor_id) and is_binary(target_player_id) do
+    with :ok <- authorize_owner(game_state, actor_id) do
+      do_transfer_ownership(game_state, target_player_id)
+    end
   end
 
-  def transfer_ownership_to_player(%GameState{} = game_state, player_id)
-      when is_binary(player_id) do
-    # Check if player exists in the game
-    player_exists =
-      game_state.game_players
-      |> Map.values()
-      |> Enum.any?(fn game_player -> game_player.player.id == player_id end)
+  defp do_transfer_ownership(%GameState{owner: %{id: owner_id}}, target_player_id)
+       when owner_id == target_player_id,
+       do: {:error, :already_owner}
 
-    cond do
-      # If player is already the owner
-      game_state.owner.id == player_id ->
-        {:error, :already_owner}
-
-      # If player doesn't exist in the game
-      not player_exists ->
+  defp do_transfer_ownership(%GameState{} = game_state, target_player_id) do
+    case find_game_player_by_id(game_state, target_player_id) do
+      nil ->
         {:error, :player_not_found}
 
-      # Transfer ownership
-      true ->
-        # Find the player struct from game_players map
-        new_owner =
-          game_state.game_players
-          |> Map.values()
-          |> Enum.find(fn game_player -> game_player.player.id == player_id end)
-          |> Map.get(:player)
-
+      {_idx, %{player: new_owner}} ->
         new_game_state =
           %GameState{game_state | owner: new_owner}
           |> increment_tick()
