@@ -89,7 +89,7 @@ defmodule ForkaWeb.RoomComponentsTest do
       assert LazyHTML.text(doc) =~ "EN"
       assert LazyHTML.text(doc) =~ "Todas as categorias"
 
-      link = LazyHTML.query(doc, ~s|#rooms-room-2 a[href="/players/log_in"]|)
+      link = LazyHTML.query(doc, ~s|#rooms-room-2 a[href="/rooms/room-2/join"]|)
       assert Enum.count(link) == 1
       assert LazyHTML.attribute(link, "aria-label") == ["Entrar na sala Friday words"]
     end

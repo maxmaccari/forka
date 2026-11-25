@@ -160,12 +160,19 @@ defmodule ForkaWeb.RoomDirectoryLive do
     {:noreply, push_navigate(socket, to: ~p"/rooms/new")}
   end
 
-  def handle_event("join_room", _params, %{assigns: %{current_player: nil}} = socket) do
-    {:noreply, push_navigate(socket, to: ~p"/players/log_in")}
+  def handle_event("join_room", %{"id" => game_id}, %{assigns: %{current_player: nil}} = socket) do
+    return_to = ~p"/rooms/#{game_id}/join"
+    {:noreply, push_navigate(socket, to: ~p"/players/log_in?return_to=#{return_to}")}
   end
 
-  def handle_event("join_room", _params, socket) do
-    {:noreply, put_flash(socket, :info, "A entrada na sala estará disponível em breve.")}
+  def handle_event("join_room", %{"id" => game_id}, socket) do
+    case Games.join_room(socket.assigns.current_scope, game_id) do
+      {:ok, _status} ->
+        {:noreply, push_navigate(socket, to: ~p"/rooms/#{game_id}")}
+
+      {:error, _reason} ->
+        {:noreply, push_navigate(socket, to: ~p"/rooms/#{game_id}/join")}
+    end
   end
 
   @impl true

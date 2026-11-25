@@ -76,8 +76,8 @@ defmodule ForkaWeb.RoomLive do
       <.card id="room-lobby-card" padding="lg" bordered>
         <div class="space-y-6">
           <div class="flex flex-wrap items-center justify-between gap-3">
-            <.badge tone={status_tone(@lobby.status)}>
-              {status_label(@lobby.status)}
+            <.badge tone={ForkaWeb.RoomComponents.room_status_tone(@lobby.status)}>
+              {ForkaWeb.RoomComponents.room_status_label(@lobby.status)}
             </.badge>
             <span id="room-lobby-occupancy" class="text-sm font-semibold text-ink-muted tabular-nums">
               {@lobby.player_count}/{@lobby.max_players} jogadores
@@ -90,7 +90,7 @@ defmodule ForkaWeb.RoomLive do
                 Idioma das palavras
               </dt>
               <dd id="room-lobby-language" class="mt-1 text-base font-semibold text-ink">
-                {language_label(@lobby.language)}
+                {ForkaWeb.RoomComponents.room_language_label(@lobby.language)}
               </dd>
             </div>
             <div>
@@ -98,7 +98,7 @@ defmodule ForkaWeb.RoomLive do
                 Categorias
               </dt>
               <dd id="room-lobby-categories" class="mt-1 text-base font-semibold text-ink">
-                {categories_label(@lobby.category_names)}
+                {ForkaWeb.RoomComponents.room_categories_label(@lobby.category_names)}
               </dd>
             </div>
           </dl>
@@ -128,21 +128,4 @@ defmodule ForkaWeb.RoomLive do
     </div>
     """
   end
-
-  defp status_tone(:lobby), do: "success"
-  defp status_tone(:playing), do: "brand"
-  defp status_tone(_status), do: "neutral"
-
-  defp status_label(:lobby), do: "Aguardando jogadores"
-  defp status_label(:playing), do: "Em andamento"
-  defp status_label(:finished), do: "Finalizada"
-  defp status_label(:game_over), do: "Encerrada"
-  defp status_label(_status), do: "Arquivada"
-
-  defp language_label("pt"), do: "Português"
-  defp language_label("en"), do: "Inglês"
-  defp language_label(other), do: other
-
-  defp categories_label([]), do: "Todas as categorias"
-  defp categories_label(names), do: Enum.join(names, ", ")
 end

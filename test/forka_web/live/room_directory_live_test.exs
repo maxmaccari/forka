@@ -376,7 +376,7 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
 
       assert has_element?(lv, ~s|#create-room-desktop[href="/players/log_in"]|)
       assert has_element?(lv, ~s|#create-room-mobile[href="/players/log_in"]|)
-      assert has_element?(lv, ~s|#rooms-#{game.id} a[href="/players/log_in"]|, "Entrar")
+      assert has_element?(lv, ~s|#rooms-#{game.id} a[href="/rooms/#{game.id}/join"]|, "Entrar")
 
       # Security S2: forged socket events from an unauthenticated visitor redirect to login
       assert {:error, {:live_redirect, %{to: "/players/log_in"}}} =
@@ -385,8 +385,10 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
       {:ok, lv2, _html} = live(conn, ~p"/")
       _ = render_async(lv2)
 
-      assert {:error, {:live_redirect, %{to: "/players/log_in"}}} =
+      assert {:error, {:live_redirect, %{to: redirect_to}}} =
                render_hook(lv2, "join_room", %{"id" => game.id})
+
+      assert redirect_to == ~p"/players/log_in?return_to=#{~p"/rooms/#{game.id}/join"}"
     end
 
     test "AC-10: signed-in players trigger create and join entry points with pt-BR feedback", %{
@@ -398,15 +400,36 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
       {:ok, lv, _html} = conn |> log_in_player(player) |> live(~p"/")
       _ = render_async(lv)
 
-      join_html =
-        lv
-        |> element(~s|#rooms-#{game.id} button[phx-click="join_room"]|)
-        |> render_click()
+      lv
+      |> element(~s|#rooms-#{game.id} button[phx-click="join_room"]|)
+      |> render_click()
 
-      assert join_html =~ "A entrada na sala estará disponível em breve."
+      assert_redirect(lv, ~p"/rooms/#{game.id}")
 
-      lv |> element("#create-room-desktop") |> render_click()
-      assert_redirect(lv, ~p"/rooms/new")
+      {:ok, lv_create, _html} = conn |> log_in_player(player) |> live(~p"/")
+      _ = render_async(lv_create)
+      lv_create |> element("#create-room-desktop") |> render_click()
+      assert_redirect(lv_create, ~p"/rooms/new")
+    end
+
+    test "REQ-04: redirects authenticated player to /rooms/:id/join when room becomes full before click",
+         %{
+           conn: conn
+         } do
+      owner = insert(:player)
+      p2 = insert(:player)
+      outsider = insert(:player)
+      {:ok, game} = Games.create_game(owner.id, %{name: "Sala Quase Cheia", max_players: 2})
+
+      {:ok, lv, _html} = conn |> log_in_player(outsider) |> live(~p"/")
+      _ = render_async(lv)
+
+      :ok = Games.join_game(game.id, p2.id)
+
+      assert {:error, {:live_redirect, %{to: redirect_to}}} =
+               render_hook(lv, "join_room", %{"id" => game.id})
+
+      assert redirect_to == ~p"/rooms/#{game.id}/join"
     end
 
     test "AC-11: header connects theme toggle and account links for both guests and signed-in players",
