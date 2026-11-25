@@ -1058,4 +1058,107 @@ defmodule Forka.GamesTest do
       assert errors_on(update_cs).word_options.category_ids
     end
   end
+
+  describe "join_room/2" do
+    setup do
+      owner = insert(:player)
+      {:ok, game} = Games.create_game(owner.id, %{name: "Sala Convite", max_players: 2})
+      %{owner: owner, game: game}
+    end
+
+    test "REQ-05: returns {:ok, :joined} for new player, {:ok, :already_joined} without duplicate broadcast",
+         %{
+           game: game
+         } do
+      player = insert(:player)
+      scope = Forka.Scope.for_player(player)
+      :ok = Games.subscribe_to_room_lobby(scope, game.id)
+
+      assert {:ok, :joined} = Games.join_room(scope, game.id)
+      assert_receive {:room_lobby_updated, %{player_count: 2}}
+
+      assert {:ok, :already_joined} = Games.join_room(scope, game.id)
+      refute_receive {:room_lobby_updated, _}
+    end
+
+    test "REQ-04: returns {:error, :maximum_players} when full for non-participant", %{game: game} do
+      p2 = insert(:player)
+      p3 = insert(:player)
+      assert {:ok, :joined} = Games.join_room(Forka.Scope.for_player(p2), game.id)
+      assert {:error, :maximum_players} = Games.join_room(Forka.Scope.for_player(p3), game.id)
+    end
+
+    test "REQ-05: returns {:ok, :returning_participant} for participant in playing room and {:error, :game_already_started} for outsider",
+         %{
+           owner: owner,
+           game: game
+         } do
+      p2 = insert(:player)
+      outsider = insert(:player)
+      insert(:word)
+      assert {:ok, :joined} = Games.join_room(Forka.Scope.for_player(p2), game.id)
+      assert :ok = Games.start_game(game.id)
+
+      assert {:ok, :returning_participant} =
+               Games.join_room(Forka.Scope.for_player(owner), game.id)
+
+      assert {:ok, :returning_participant} = Games.join_room(Forka.Scope.for_player(p2), game.id)
+
+      assert {:error, :game_already_started} =
+               Games.join_room(Forka.Scope.for_player(outsider), game.id)
+    end
+
+    test "REQ-04: returns {:error, :unauthorized} for nil scope and {:error, :not_found} for invalid or missing game_id" do
+      player = insert(:player)
+      scope = Forka.Scope.for_player(player)
+
+      assert {:error, :unauthorized} = Games.join_room(nil, Ecto.UUID.generate())
+      assert {:error, :not_found} = Games.join_room(scope, "not-a-uuid")
+      assert {:error, :not_found} = Games.join_room(scope, Ecto.UUID.generate())
+    end
+  end
+
+  describe "get_room_invite/1" do
+    test "REQ-01: returns safe public room preview with availability_state, language, and categories" do
+      owner = insert(:player, username: "maria")
+      cat = insert(:category, name: "Animais", language: "pt")
+
+      {:ok, game} =
+        Games.create_game(owner.id, %{
+          name: "Sala de Convite",
+          max_players: 4,
+          word_options: %{language: "pt", category_ids: [cat.id]}
+        })
+
+      assert {:ok, %Forka.Games.RoomInvite{} = invite} = Games.get_room_invite(game.id)
+      assert invite.id == game.id
+      assert invite.name == "Sala de Convite"
+      assert invite.status == :lobby
+      assert invite.availability_state == :open
+      assert invite.max_players == 4
+      assert invite.player_count == 1
+      assert invite.language == "pt"
+      assert invite.category_names == ["Animais"]
+      assert invite.owner_username == "maria"
+    end
+
+    test "REQ-03: classifies full and playing states and returns :not_found or :game_archived" do
+      owner = insert(:player)
+      p2 = insert(:player)
+      insert(:word)
+      {:ok, full_game} = Games.create_game(owner.id, %{name: "Cheia", max_players: 2})
+      :ok = Games.join_game(full_game.id, p2.id)
+
+      assert {:ok, %{availability_state: :full}} = Games.get_room_invite(full_game.id)
+
+      :ok = Games.start_game(full_game.id)
+      assert {:ok, %{availability_state: :playing}} = Games.get_room_invite(full_game.id)
+
+      assert {:error, :not_found} = Games.get_room_invite("bad-id")
+      assert {:error, :not_found} = Games.get_room_invite(Ecto.UUID.generate())
+
+      archived = insert(:game, status: :archived)
+      assert {:error, :game_archived} = Games.get_room_invite(archived.id)
+    end
+  end
 end

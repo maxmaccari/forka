@@ -70,6 +70,11 @@ defmodule Forka.Games.GameServer do
   end
 
   @doc false
+  def join_room(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
+    GenServer.call(global_name(game_id), {:join_room, player_id})
+  end
+
+  @doc false
   def leave_game(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
     GenServer.call(global_name(game_id), {:leave_game, player_id})
   end
@@ -144,6 +149,26 @@ defmodule Forka.Games.GameServer do
       saved_game = save_and_publish!(game, new_game)
 
       {:reply, :ok, saved_game, @timeout_ms}
+    else
+      nil ->
+        {:reply, {:error, :player_not_found}, game, @timeout_ms}
+
+      {:error, error} ->
+        {:reply, {:error, error}, game, @timeout_ms}
+    end
+  end
+
+  @impl true
+  def handle_call({:join_room, player_id}, _from, game) do
+    with %Player{} = player <- Repository.get_player(player_id),
+         {:ok, status, new_game} <- Core.join_room(game, player) do
+      saved_game =
+        case status do
+          :joined -> save_and_publish!(game, new_game)
+          _existing -> game
+        end
+
+      {:reply, {:ok, status}, saved_game, @timeout_ms}
     else
       nil ->
         {:reply, {:error, :player_not_found}, game, @timeout_ms}
