@@ -183,6 +183,31 @@ defmodule Forka.Games.CoreTest do
       game_archived = %{game | status: :archived}
       assert ^game_archived = Core.set_words(game_archived, words)
     end
+
+    test "REQ-02 & EDGE-01: deduplicates case/accent variants across categories and drops unplayable words",
+         %{game: game} do
+      words = [
+        Word.new("Café", "Bebidas", "Quente"),
+        Word.new("cafe", "Comida", "Preto"),
+        Word.new("CAFÉ", "Outros", nil),
+        Word.new("", "Bebidas"),
+        Word.new("   ", "Bebidas"),
+        Word.new("1234", "Bebidas"),
+        Word.new("---", "Bebidas"),
+        Word.new("Gato", "Animais")
+      ]
+
+      updated_game = Core.set_words(game, words)
+      assert map_size(updated_game.game_words) == 2
+
+      keys =
+        updated_game.game_words
+        |> Map.values()
+        |> Enum.map(&Word.normalized_key(&1.word))
+        |> MapSet.new()
+
+      assert keys == MapSet.new(["cafe", "gato"])
+    end
   end
 
   describe "shuffle_players/1" do
@@ -252,11 +277,17 @@ defmodule Forka.Games.CoreTest do
       game = Core.new(owner, "Test Game", 4)
       player1 = build_games_player("Player 1")
       player2 = build_games_player("Player 2")
-      word = Word.new("cat", "Animals", "Meows")
+
+      words = [
+        Word.new("cat", "Animals", "Meows"),
+        Word.new("dog", "Animals", "Barks"),
+        Word.new("fox", "Animals", "Clever"),
+        Word.new("owl", "Animals", "Hoots")
+      ]
 
       {:ok, game_with_player1} = Core.join_game(game, player1)
       {:ok, game_with_players} = Core.join_game(game_with_player1, player2)
-      game_with_words = Core.set_words(game_with_players, [word])
+      game_with_words = Core.set_words(game_with_players, words)
 
       {:ok, game: game_with_words}
     end
@@ -268,7 +299,7 @@ defmodule Forka.Games.CoreTest do
       assert initialized_game.current_game_word_index == 0
       assert initialized_game.current_game_player_index == 0
       assert map_size(initialized_game.game_players) == 2
-      assert map_size(initialized_game.game_words) == 1
+      assert map_size(initialized_game.game_words) == 4
 
       assert initialized_game.tick == game.tick + 1
       assert_last_events(initialized_game, [%{type: :game_started}])
@@ -291,6 +322,80 @@ defmodule Forka.Games.CoreTest do
       game_archived = %{game | status: :archived}
       assert {:error, :game_archived} = Core.start_game(game_archived)
     end
+
+    test "REQ-02: requires two distinct playable words per player for 2-player and 6-player matches",
+         %{owner: owner} do
+      # 2 players need 4 distinct playable words
+      game_2 = Core.new(owner, "Sala 2", 2)
+      {:ok, game_2} = Core.join_game(game_2, build_games_player("P1"))
+      {:ok, game_2} = Core.join_game(game_2, build_games_player("P2"))
+
+      three_words = [
+        Word.new("gato", "Animais"),
+        Word.new("pato", "Animais"),
+        Word.new("lobo", "Animais"),
+        Word.new("GATO", "Pets")
+      ]
+
+      assert {:error, {:insufficient_words, %{available: 3, required: 4}}} =
+               game_2 |> Core.set_words(three_words) |> Core.start_game()
+
+      four_words = [
+        Word.new("gato", "Animais"),
+        Word.new("pato", "Animais"),
+        Word.new("lobo", "Animais"),
+        Word.new("urso", "Animais")
+      ]
+
+      assert {:ok, started_2} = game_2 |> Core.set_words(four_words) |> Core.start_game()
+      assert started_2.status == :playing
+      assert map_size(started_2.game_words) == 4
+
+      # 6 players need 12 distinct playable words
+      game_6 =
+        Enum.reduce(1..6, Core.new(owner, "Sala 6", 6), fn i, acc ->
+          {:ok, next} = Core.join_game(acc, build_games_player("P#{i}"))
+          next
+        end)
+
+      eleven_words =
+        ~w(alfa bravo charlie delta eco foxtrot golfe hotel india juliet kilo)
+        |> Enum.map(&Word.new(&1, "Alfabeto"))
+
+      assert {:error, {:insufficient_words, %{available: 11, required: 12}}} =
+               game_6 |> Core.set_words(eleven_words) |> Core.start_game()
+
+      twelve_words = eleven_words ++ [Word.new("lima", "Alfabeto")]
+      assert {:ok, started_6} = game_6 |> Core.set_words(twelve_words) |> Core.start_game()
+      assert started_6.status == :playing
+      assert map_size(started_6.game_words) == 12
+    end
+
+    test "REQ-03: rejects starting when roster exceeds 6-player limit or room max_players", %{
+      owner: owner
+    } do
+      game_7 =
+        Enum.reduce(1..7, Core.new(owner, "Sala 7", 10), fn i, acc ->
+          {:ok, next} = Core.join_game(acc, build_games_player("P#{i}"))
+          next
+        end)
+
+      words_14 =
+        ~w(um dois tres quatro cinco seis sete oito nove dez onze doze treze quatorze)
+        |> Enum.map(&Word.new(&1, "Numeros"))
+
+      assert {:error, :too_many_players} = Core.validate_start_roster(game_7)
+      assert {:error, :too_many_players} = game_7 |> Core.set_words(words_14) |> Core.start_game()
+    end
+
+    test "REQ-02: required_words_for_players/1 and words_per_player/0 enforce 2 words per player" do
+      assert Core.words_per_player() == 2
+      assert Core.required_words_for_players(0) == 4
+      assert Core.required_words_for_players(1) == 4
+      assert Core.required_words_for_players(2) == 4
+      assert Core.required_words_for_players(3) == 6
+      assert Core.required_words_for_players(6) == 12
+    end
   end
 
   describe "restart_game/1" do
@@ -298,11 +403,17 @@ defmodule Forka.Games.CoreTest do
       game = Core.new(owner, "Test Game", 4)
       player1 = build_games_player("Player 1")
       player2 = build_games_player("Player 2")
-      word = Word.new("cat", "Animals", "Meows")
+
+      words = [
+        Word.new("cat", "Animals", "Meows"),
+        Word.new("dog", "Animals", "Barks"),
+        Word.new("fox", "Animals", "Clever"),
+        Word.new("owl", "Animals", "Hoots")
+      ]
 
       {:ok, game_with_player1} = Core.join_game(game, player1)
       {:ok, game_with_players} = Core.join_game(game_with_player1, player2)
-      game_with_words = Core.set_words(game_with_players, [word])
+      game_with_words = Core.set_words(game_with_players, words)
 
       {:ok, initialized_game} = Core.start_game(game_with_words)
 
@@ -386,11 +497,17 @@ defmodule Forka.Games.CoreTest do
       game = Core.new(owner, "Test Game", 4)
       player1 = build_games_player("Player 1")
       player2 = build_games_player("Player 2")
-      word = Word.new("cat", "Animals", "Meows")
+
+      words = [
+        Word.new("cat", "Animals", "Meows"),
+        Word.new("dog", "Animals", "Barks"),
+        Word.new("fox", "Animals", "Clever"),
+        Word.new("owl", "Animals", "Hoots")
+      ]
 
       {:ok, game_with_player1} = Core.join_game(game, player1)
       {:ok, game_with_players} = Core.join_game(game_with_player1, player2)
-      game_with_words = Core.set_words(game_with_players, [word])
+      game_with_words = Core.set_words(game_with_players, words)
 
       {:ok, initialized_game} = Core.start_game(game_with_words)
 

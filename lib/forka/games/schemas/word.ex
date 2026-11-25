@@ -13,6 +13,8 @@ defmodule Forka.Games.Schemas.Word do
 
   use Ecto.Schema
 
+  alias Forka.WordText
+
   # This module is implemented as an embedded schema because it's designed to be stored
   # as a snapshot within `Forka.Games.Schemas.GameWord` entities. This approach ensures that any changes to the
   # original word in the database won't affect ongoing games where players are already
@@ -283,6 +285,19 @@ defmodule Forka.Games.Schemas.Word do
   """
   @spec language(t()) :: String.t() | nil
   def language(%__MODULE__{language: language}), do: language
+
+  @doc """
+  Returns true when the word contains at least one guessable letter after normalization.
+  """
+  @spec playable?(t() | nil) :: boolean()
+  def playable?(%__MODULE__{text: text}), do: WordText.playable_text?(text)
+  def playable?(nil), do: false
+
+  @doc """
+  Returns the normalized distinctness key (case and accents folded) for the word.
+  """
+  @spec normalized_key(t()) :: String.t()
+  def normalized_key(%__MODULE__{text: text}), do: WordText.normalize_text(text)
 
   # Helpers
 
