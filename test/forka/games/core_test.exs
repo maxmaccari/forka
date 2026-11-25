@@ -613,6 +613,16 @@ defmodule Forka.Games.CoreTest do
       assert {:error, :game_not_in_lobby} =
                Core.update_settings(game_archived, owner.id, %{max_players: 6})
     end
+
+    test "AC-04: rejects explicit nil word_options with a changeset error", %{
+      game: game,
+      owner: owner
+    } do
+      assert {:error, %Ecto.Changeset{} = cs} =
+               Core.update_settings(game, owner.id, %{name: "Sala", word_options: nil})
+
+      assert {"can't be blank", _} = cs.errors[:word_options]
+    end
   end
 
   describe "to_game_summary/1" do

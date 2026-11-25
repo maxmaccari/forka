@@ -5,6 +5,7 @@ defmodule Forka.GamesTest do
   alias Forka.Games.GameServer
   alias Forka.Games.Repository
   alias Forka.Games.Schemas.Event
+  alias Forka.Games.Schemas.WordOptions
 
   import Forka.TestHelpers
 
@@ -978,6 +979,83 @@ defmodule Forka.GamesTest do
 
       assert {:ok, lobby} = Games.room_lobby_from_payload(viewer_scope, payload)
       assert lobby.can_edit_settings? == false
+    end
+
+    test "AC-05: returns {:error, :game_archived} across scoped room APIs after archival" do
+      owner = insert(:player)
+      owner_scope = Forka.Scope.for_player(owner)
+      {:ok, game} = Games.create_game(owner.id, %{name: "Sala Arquivada", max_players: 4})
+
+      pid = GameServer.whereis(game.id)
+      ref = Process.monitor(pid)
+      assert :ok = Games.archive_game(game.id)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+
+      assert {:error, :game_archived} = Games.get_room_lobby(owner_scope, game.id)
+      assert {:error, :game_archived} = Games.subscribe_to_room_lobby(owner_scope, game.id)
+      assert {:error, :game_archived} = Games.get_room_settings_for_edit(owner_scope, game.id)
+
+      assert {:error, :game_archived} =
+               Games.update_room_settings(owner_scope, game.id, %{name: "Outro nome"})
+    end
+
+    test "AC-04: rejects explicit nil word_options without crashing GameServer" do
+      owner = insert(:player)
+      owner_scope = Forka.Scope.for_player(owner)
+      {:ok, game} = Games.create_game(owner.id, %{name: "Sala Segura", max_players: 4})
+
+      assert {:error, %Ecto.Changeset{} = cs} =
+               Games.update_room_settings(owner_scope, game.id, %{
+                 name: "Sala Segura",
+                 word_options: nil
+               })
+
+      assert errors_on(cs).word_options == ["can't be blank"]
+      assert {:ok, lobby} = Games.get_room_lobby(owner_scope, game.id)
+      assert lobby.name == "Sala Segura"
+    end
+
+    test "AC-04: rejects name-only update on a legacy room with an unsupported language" do
+      owner = insert(:player)
+      owner_scope = Forka.Scope.for_player(owner)
+
+      legacy_game =
+        insert(:game,
+          owner: owner,
+          name: "Sala Legado",
+          max_players: 4,
+          word_options: %Forka.Games.Schemas.WordOptions{language: "es", category_ids: []}
+        )
+
+      assert {:error, %Ecto.Changeset{} = cs} =
+               Games.update_room_settings(owner_scope, legacy_game.id, %{name: "Novo Nome"})
+
+      assert errors_on(cs).word_options.language
+    end
+
+    test "EDGE-02: rejects category_ids exceeding the max limit on create and update" do
+      owner = insert(:player)
+      owner_scope = Forka.Scope.for_player(owner)
+      limit = WordOptions.max_categories()
+      oversized = List.duplicate(Ecto.UUID.generate(), limit + 1)
+
+      assert {:error, %Ecto.Changeset{} = create_cs} =
+               Games.create_room(owner_scope, %{
+                 name: "Muitas categorias",
+                 max_players: 4,
+                 word_options: %{language: "pt", category_ids: oversized}
+               })
+
+      assert errors_on(create_cs).word_options.category_ids
+
+      {:ok, game} = Games.create_game(owner.id, %{name: "Sala Normal", max_players: 4})
+
+      assert {:error, %Ecto.Changeset{} = update_cs} =
+               Games.update_room_settings(owner_scope, game.id, %{
+                 word_options: %{language: "pt", category_ids: oversized}
+               })
+
+      assert errors_on(update_cs).word_options.category_ids
     end
   end
 end

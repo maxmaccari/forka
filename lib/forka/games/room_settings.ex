@@ -81,6 +81,7 @@ defmodule Forka.Games.RoomSettings do
     )
     |> validate_occupancy(Keyword.get(opts, :min_players))
     |> cast_embed(:word_options,
+      required: true,
       with: fn wo, wo_attrs ->
         WordOptions.settings_changeset(wo, wo_attrs, wo_opts)
       end
@@ -113,17 +114,23 @@ defmodule Forka.Games.RoomSettings do
   defp fetch_attr(_other, _str_key, _atom_key, default), do: default
 
   defp cast_valid_uuids(ids) when is_list(ids) do
-    ids
-    |> Enum.flat_map(fn id ->
-      case Ecto.UUID.cast(id) do
-        {:ok, canonical} -> [canonical]
-        :error -> []
-      end
-    end)
-    |> Enum.uniq()
+    if Enum.drop(ids, WordOptions.max_categories()) != [] do
+      []
+    else
+      ids
+      |> Enum.flat_map(&cast_single_uuid/1)
+      |> Enum.uniq()
+    end
   end
 
   defp cast_valid_uuids(_other), do: []
+
+  defp cast_single_uuid(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, canonical} -> [canonical]
+      :error -> []
+    end
+  end
 
   defp ensure_word_options_in_attrs(attrs, %WordOptions{} = current_wo) do
     if Map.has_key?(attrs, "word_options") or Map.has_key?(attrs, :word_options) do
@@ -146,16 +153,22 @@ defmodule Forka.Games.RoomSettings do
   end
 
   defp validate_occupancy(changeset, min_players) when is_integer(min_players) do
-    validate_change(changeset, :max_players, fn :max_players, val ->
-      if val < min_players do
-        [
-          max_players:
-            {"não pode ser menor que o número atual de jogadores (%{count})", count: min_players}
-        ]
-      else
-        []
+    if Keyword.has_key?(changeset.errors, :max_players) do
+      changeset
+    else
+      case get_field(changeset, :max_players) do
+        val when is_integer(val) and val < min_players ->
+          add_error(
+            changeset,
+            :max_players,
+            "não pode ser menor que o número atual de jogadores (%{count})",
+            count: min_players
+          )
+
+        _ ->
+          changeset
       end
-    end)
+    end
   end
 
   defp validate_occupancy(changeset, _min_players), do: changeset

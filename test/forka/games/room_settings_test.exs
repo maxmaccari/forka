@@ -1,5 +1,6 @@
 defmodule Forka.Games.RoomSettingsTest do
   use ExUnit.Case, async: true
+  use ExUnitProperties
 
   alias Forka.Games.RoomSettings
   alias Forka.Games.Schemas.WordOptions
@@ -185,6 +186,81 @@ defmodule Forka.Games.RoomSettingsTest do
         )
 
       assert changeset.valid?
+    end
+
+    test "AC-02: rejects explicit nil word_options" do
+      changeset =
+        RoomSettings.changeset(RoomSettings.new(), %{
+          name: "Sala",
+          max_players: 4,
+          word_options: nil
+        })
+
+      refute changeset.valid?
+      assert {"can't be blank", _} = changeset.errors[:word_options]
+    end
+
+    test "AC-04: rejects name-only edit when effective legacy language is unsupported" do
+      legacy = %RoomSettings{
+        name: "Sala ES",
+        max_players: 4,
+        word_options: %WordOptions{language: "es", category_ids: []}
+      }
+
+      cs_name_only = RoomSettings.changeset(legacy, %{name: "Sala Renomeada"})
+      refute cs_name_only.valid?
+      assert Ecto.Changeset.get_change(cs_name_only, :word_options).errors[:language]
+
+      cs_fixed_lang =
+        RoomSettings.changeset(legacy, %{
+          name: "Sala Renomeada",
+          word_options: %{language: "pt", category_ids: []}
+        })
+
+      assert cs_fixed_lang.valid?
+    end
+
+    test "EDGE-02: enforces max category count before normalization and lookup" do
+      limit = WordOptions.max_categories()
+      id = Ecto.UUID.generate()
+      oversized = List.duplicate(id, limit + 1)
+
+      assert {"pt", []} =
+               RoomSettings.extract_lookup_inputs(RoomSettings.new(), %{
+                 "word_options" => %{"language" => "pt", "category_ids" => oversized}
+               })
+
+      cs =
+        RoomSettings.changeset(
+          RoomSettings.new(),
+          %{
+            name: "Sala",
+            max_players: 4,
+            word_options: %{language: "pt", category_ids: oversized}
+          },
+          allowed_category_ids: [id]
+        )
+
+      refute cs.valid?
+      wo_cs = Ecto.Changeset.get_change(cs, :word_options)
+
+      assert {"deve ter no máximo %{count} categorias", opts} = wo_cs.errors[:category_ids]
+      assert opts[:count] == limit
+    end
+
+    property "EDGE-01: accepts max_players iff within 2..6 and >= live occupancy" do
+      check all max_players <- integer(-2..10),
+                occupancy <- integer(0..8) do
+        cs =
+          RoomSettings.changeset(
+            RoomSettings.new(),
+            %{name: "Sala", max_players: max_players},
+            min_players: occupancy
+          )
+
+        expected_valid? = max_players in 2..6 and max_players >= occupancy
+        assert cs.valid? == expected_valid?
+      end
     end
   end
 end

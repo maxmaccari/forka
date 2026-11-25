@@ -268,7 +268,8 @@ defmodule Forka.Games do
   """
   @spec update_settings(Ecto.UUID.t(), Ecto.UUID.t(), map()) ::
           :ok
-          | {:error, Ecto.Changeset.t() | :unauthorized | :game_not_in_lobby | :not_found}
+          | {:error,
+             Ecto.Changeset.t() | :unauthorized | :game_not_in_lobby | :game_archived | :not_found}
   def update_settings(game_id, actor_id, settings)
       when is_binary(game_id) and is_binary(actor_id) and is_map(settings) do
     ensure_game_server_available(game_id, fn ->
@@ -279,7 +280,8 @@ defmodule Forka.Games do
   @doc "Updates room settings for the scoped authenticated owner while the room is in lobby."
   @spec update_room_settings(Scope.t() | nil, Ecto.UUID.t(), map()) ::
           :ok
-          | {:error, Ecto.Changeset.t() | :unauthorized | :game_not_in_lobby | :not_found}
+          | {:error,
+             Ecto.Changeset.t() | :unauthorized | :game_not_in_lobby | :game_archived | :not_found}
   def update_room_settings(%Scope{player: %AuthPlayer{id: actor_id}}, game_id, settings)
       when is_map(settings) do
     case Ecto.UUID.cast(game_id) do
@@ -292,10 +294,10 @@ defmodule Forka.Games do
 
   @doc "Returns the lobby projection for an existing room scoped to an authenticated viewer."
   @spec get_room_lobby(Scope.t() | nil, Ecto.UUID.t()) ::
-          {:ok, RoomLobby.t()} | {:error, :not_found | :unauthorized}
+          {:ok, RoomLobby.t()} | {:error, :not_found | :unauthorized | :game_archived}
   def get_room_lobby(%Scope{player: %AuthPlayer{}} = scope, game_id) do
     with {:ok, valid_id} <- Ecto.UUID.cast(game_id),
-         %GameSummary{} = summary <- get_game_summary(valid_id) do
+         {:ok, %GameSummary{} = summary} <- fetch_game_summary(valid_id) do
       word_options = WordOptions.normalize(summary.word_options)
 
       category_names =
@@ -305,7 +307,9 @@ defmodule Forka.Games do
 
       {:ok, RoomLobby.from_game_summary(scope, valid_id, summary, category_names)}
     else
-      _ -> {:error, :not_found}
+      :error -> {:error, :not_found}
+      {:error, :game_archived} -> {:error, :game_archived}
+      {:error, _reason} -> {:error, :not_found}
     end
   end
 
@@ -313,13 +317,15 @@ defmodule Forka.Games do
 
   @doc "Subscribes an authenticated viewer to lobby-safe updates for a room."
   @spec subscribe_to_room_lobby(Scope.t() | nil, Ecto.UUID.t()) ::
-          :ok | {:error, :not_found | :unauthorized}
+          :ok | {:error, :not_found | :unauthorized | :game_archived}
   def subscribe_to_room_lobby(%Scope{player: %AuthPlayer{}}, game_id) do
     with {:ok, valid_id} <- Ecto.UUID.cast(game_id),
-         %GameSummary{} <- get_game_summary(valid_id) do
+         {:ok, %GameSummary{}} <- fetch_game_summary(valid_id) do
       GameServer.subscribe_lobby(valid_id)
     else
-      _ -> {:error, :not_found}
+      :error -> {:error, :not_found}
+      {:error, :game_archived} -> {:error, :game_archived}
+      {:error, _reason} -> {:error, :not_found}
     end
   end
 
@@ -338,10 +344,10 @@ defmodule Forka.Games do
   @doc "Loads room settings for editing, enforcing authenticated owner and `:lobby` state."
   @spec get_room_settings_for_edit(Scope.t() | nil, Ecto.UUID.t()) ::
           {:ok, %{settings: RoomSettings.t(), min_players: pos_integer()}}
-          | {:error, :not_found | :unauthorized | :game_not_in_lobby}
+          | {:error, :not_found | :unauthorized | :game_not_in_lobby | :game_archived}
   def get_room_settings_for_edit(%Scope{player: %AuthPlayer{id: actor_id}}, game_id) do
     with {:ok, valid_id} <- Ecto.UUID.cast(game_id),
-         %GameSummary{} = summary <- get_game_summary(valid_id) do
+         {:ok, %GameSummary{} = summary} <- fetch_game_summary(valid_id) do
       cond do
         summary.owner == nil or summary.owner.id != actor_id ->
           {:error, :unauthorized}
@@ -357,7 +363,9 @@ defmodule Forka.Games do
            }}
       end
     else
-      _ -> {:error, :not_found}
+      :error -> {:error, :not_found}
+      {:error, :game_archived} -> {:error, :game_archived}
+      {:error, _reason} -> {:error, :not_found}
     end
   end
 
@@ -554,14 +562,33 @@ defmodule Forka.Games do
     ensure_game_server_available(game_id, fn -> GameServer.unsubscribe(game_id) end)
   end
 
+  defp fetch_game_summary(game_id) do
+    case ensure_game_server_available(game_id, fn -> {:ok, GameServer.get_game(game_id)} end) do
+      {:ok, %GameSummary{game_status: :archived}} -> {:error, :game_archived}
+      other -> other
+    end
+  end
+
   defp ensure_game_server_available(game_id, action) do
     if GameServer.exists?(game_id) do
       action.()
     else
-      with {:ok, _game_state} <- Repository.get_game_state(game_id),
-           {:ok, _pid} <- start_supervised_game(game_id) do
-        action.()
-      end
+      start_and_run_game_server(game_id, action)
+    end
+  end
+
+  defp start_and_run_game_server(game_id, action) do
+    case Repository.get_game_state(game_id) do
+      {:ok, %{status: :archived}} ->
+        {:error, :game_archived}
+
+      {:ok, _game_state} ->
+        with {:ok, _pid} <- start_supervised_game(game_id) do
+          action.()
+        end
+
+      {:error, _reason} = error ->
+        error
     end
   end
 
