@@ -6,6 +6,7 @@ defmodule Forka.Games.RoomLobby do
   alias Forka.Games.Core.GameState
   alias Forka.Games.GameSummary
   alias Forka.Games.Schemas.WordOptions
+  alias Forka.Games.WordAvailability
   alias Forka.Players.Player, as: AuthPlayer
   alias Forka.Scope
 
@@ -21,7 +22,8 @@ defmodule Forka.Games.RoomLobby do
           category_names: [String.t()],
           owner_username: String.t(),
           players: [player_entry()],
-          can_edit_settings?: boolean()
+          can_edit_settings?: boolean(),
+          word_availability: WordAvailability.t() | nil
         }
 
   defstruct [
@@ -34,12 +36,14 @@ defmodule Forka.Games.RoomLobby do
     :category_names,
     :owner_username,
     :players,
-    :can_edit_settings?
+    :can_edit_settings?,
+    :word_availability
   ]
 
   @doc "Builds a lobby-safe PubSub payload from a `%GameState{}`."
-  @spec payload(GameState.t(), [String.t()]) :: map()
-  def payload(%GameState{} = state, category_names) when is_list(category_names) do
+  @spec payload(GameState.t(), [String.t()], non_neg_integer() | nil) :: map()
+  def payload(%GameState{} = state, category_names, available_words \\ nil)
+      when is_list(category_names) do
     word_options = WordOptions.normalize(state.word_options)
 
     %{
@@ -50,6 +54,8 @@ defmodule Forka.Games.RoomLobby do
       player_count: map_size(state.game_players),
       language: word_options.language,
       category_names: category_names,
+      has_category_filter?: word_options.category_ids != [],
+      available_words: available_words,
       owner_id: state.owner && state.owner.id,
       owner_username: (state.owner && state.owner.username) || "",
       players: players_from_map(state.game_players)
@@ -69,36 +75,82 @@ defmodule Forka.Games.RoomLobby do
       category_names: payload.category_names,
       owner_username: payload.owner_username,
       players: payload.players,
-      can_edit_settings?: payload.status == :lobby and payload.owner_id == viewer_id
+      can_edit_settings?: payload.status == :lobby and payload.owner_id == viewer_id,
+      word_availability:
+        build_word_availability(
+          payload.status,
+          Map.get(payload, :available_words),
+          payload.player_count,
+          payload.max_players,
+          payload.language,
+          Map.get(payload, :has_category_filter?, payload.category_names != [])
+        )
     }
   end
 
   @doc "Projects a `%RoomLobby{}` from a `%GameSummary{}` for the given viewer scope."
-  @spec from_game_summary(Scope.t(), Ecto.UUID.t(), GameSummary.t(), [String.t()]) :: t()
+  @spec from_game_summary(
+          Scope.t(),
+          Ecto.UUID.t(),
+          GameSummary.t(),
+          [String.t()],
+          non_neg_integer() | nil
+        ) :: t()
   def from_game_summary(
         %Scope{player: %AuthPlayer{id: viewer_id}},
         game_id,
         %GameSummary{} = summary,
-        category_names
+        category_names,
+        available_words \\ nil
       )
       when is_list(category_names) do
     word_options = WordOptions.normalize(summary.word_options)
+    player_count = map_size(summary.players)
 
     %__MODULE__{
       id: game_id,
       name: summary.name,
       status: summary.game_status,
       max_players: summary.max_players,
-      player_count: map_size(summary.players),
+      player_count: player_count,
       language: word_options.language,
       category_names: category_names,
       owner_username: (summary.owner && summary.owner.username) || "",
       players: players_from_map(summary.players),
       can_edit_settings?:
         summary.game_status == :lobby and not is_nil(summary.owner) and
-          summary.owner.id == viewer_id
+          summary.owner.id == viewer_id,
+      word_availability:
+        build_word_availability(
+          summary.game_status,
+          available_words,
+          player_count,
+          summary.max_players,
+          word_options.language,
+          word_options.category_ids != []
+        )
     }
   end
+
+  defp build_word_availability(
+         :lobby,
+         available_words,
+         player_count,
+         max_players,
+         language,
+         has_category_filter?
+       )
+       when is_integer(available_words) do
+    WordAvailability.evaluate(%{
+      available_words: available_words,
+      player_count: player_count,
+      max_players: max_players,
+      language: language,
+      has_category_filter?: has_category_filter?
+    })
+  end
+
+  defp build_word_availability(_status, _available, _players, _max, _lang, _filter), do: nil
 
   defp players_from_map(players_map) when is_map(players_map) do
     players_map

@@ -74,7 +74,7 @@ defmodule ForkaWeb.RoomLiveTest do
 
       {:ok, game} = Games.create_game(owner.id, %{name: "Sala jogando", max_players: 4})
       :ok = Games.join_game(game.id, guest.id)
-      insert(:word, text: "forka")
+      insert_list(4, :word)
       :ok = Games.start_game(game.id)
 
       {:ok, lv, _html} = conn |> log_in_player(owner) |> live(~p"/rooms/#{game.id}")

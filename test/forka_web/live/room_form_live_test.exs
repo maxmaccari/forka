@@ -121,7 +121,7 @@ defmodule ForkaWeb.RoomFormLiveTest do
       guest = insert(:player)
       {:ok, game} = Games.create_game(owner.id, %{name: "Em jogo", max_players: 4})
       :ok = Games.join_game(game.id, guest.id)
-      insert(:word, text: "forka")
+      insert_list(4, :word)
       :ok = Games.start_game(game.id)
 
       assert {:error,

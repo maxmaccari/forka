@@ -298,8 +298,10 @@ defmodule Forka.Games do
   @spec get_room_lobby(Scope.t() | nil, Ecto.UUID.t()) ::
           {:ok, RoomLobby.t()} | {:error, :not_found | :unauthorized | :game_archived}
   def get_room_lobby(%Scope{player: %AuthPlayer{}} = scope, game_id) do
-    with {:ok, valid_id, summary, category_names} <- fetch_room_summary_with_categories(game_id) do
-      {:ok, RoomLobby.from_game_summary(scope, valid_id, summary, category_names)}
+    with {:ok, valid_id, summary, category_names, available_words} <-
+           fetch_room_summary_with_categories(game_id) do
+      {:ok,
+       RoomLobby.from_game_summary(scope, valid_id, summary, category_names, available_words)}
     end
   end
 
@@ -370,7 +372,14 @@ defmodule Forka.Games do
         |> Words.list_categories_by_ids()
         |> Enum.map(& &1.name)
 
-      {:ok, valid_id, summary, category_names}
+      available_words =
+        if summary.game_status == :lobby do
+          Repository.count_available_words(word_options)
+        else
+          nil
+        end
+
+      {:ok, valid_id, summary, category_names, available_words}
     else
       :error -> {:error, :not_found}
       {:error, :game_archived} -> {:error, :game_archived}
