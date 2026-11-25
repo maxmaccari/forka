@@ -45,6 +45,64 @@ defmodule ForkaWeb.GameComponentsTest do
 
       refute LazyHTML.text(high_doc) =~ "6 de 6"
     end
+
+    test "R-04a: renders Corda.dc.html capsule body, diagonal twists, neck-anchored frays, and data-state for tries 6..1" do
+      expected_states = %{
+        6 => "intact",
+        5 => "frayed",
+        4 => "frayed",
+        3 => "frayed",
+        2 => "frayed",
+        1 => "critical"
+      }
+
+      for tries <- 6..1//-1 do
+        html = render_component(&rope/1, %{tries: tries, size: :md})
+        doc = LazyHTML.from_fragment(html)
+        root = LazyHTML.query(doc, "span[role=img]")
+
+        assert Enum.count(root) == 1
+        assert LazyHTML.attribute(root, "data-tries") == ["#{tries}"]
+        assert LazyHTML.attribute(root, "data-state") == [expected_states[tries]]
+        assert LazyHTML.attribute(root, "phx-hook") == []
+
+        body = LazyHTML.query(doc, "svg > path.fill-rope.stroke-rope-edge")
+        assert Enum.count(body) == 1
+        assert LazyHTML.attribute(body, "stroke-width") == ["1.1"]
+        [body_d] = LazyHTML.attribute(body, "d")
+        assert body_d =~ "M8 7 H50 C56 7 56 "
+        assert body_d =~ "H112 A5 5 0 0 1 112 17 H70"
+        assert body_d =~ "H8 A5 5 0 0 1 8 7 Z"
+
+        twist_group = LazyHTML.query(doc, "svg > g.stroke-rope-twist")
+        assert LazyHTML.attribute(twist_group, "stroke-width") == ["1.2"]
+        twist_lines = LazyHTML.query(doc, "svg > g.stroke-rope-twist > line")
+        assert Enum.count(twist_lines) == if(tries == 6, do: 20, else: 16)
+        assert LazyHTML.attribute(twist_lines, "y1") |> Enum.uniq() == ["16.2"]
+        assert LazyHTML.attribute(twist_lines, "y2") |> Enum.uniq() == ["7.8"]
+
+        fray_group = LazyHTML.query(doc, "svg > g.stroke-rope-edge")
+        assert LazyHTML.attribute(fray_group, "stroke-width") == ["0.9"]
+        frays = LazyHTML.query(doc, "path.forka-rope-fray")
+        assert Enum.count(frays) == (6 - tries) * 2
+      end
+
+      # Spot-check neck-anchored fray origin coordinates match Corda.dc.html at 5 and 1 tries
+      doc5 = LazyHTML.from_fragment(render_component(&rope/1, %{tries: 5}))
+
+      assert LazyHTML.attribute(LazyHTML.query(doc5, "path.forka-rope-fray"), "d") == [
+               "M53.0 7.8 q -0.8 -1.7 -1.6 -2.9",
+               "M60.0 16.2 q -0.8 2.4 -1.6 4.0"
+             ]
+
+      doc1 = LazyHTML.from_fragment(render_component(&rope/1, %{tries: 1}))
+      frays1 = LazyHTML.attribute(LazyHTML.query(doc1, "path.forka-rope-fray"), "d")
+
+      assert Enum.take(frays1, 2) == [
+               "M53.0 11.0 q -0.8 -2.3 -1.6 -3.9",
+               "M54.4 13.0 q -0.8 3.0 -1.6 5.0"
+             ]
+    end
   end
 
   describe "word_tiles/1" do
