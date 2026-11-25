@@ -551,9 +551,9 @@ defmodule Forka.Games.GameServerTest do
       pid = start_supervised!({GameServer, dedicated_game.id}, id: :sixth_miss_server)
       Sandbox.allow(Repo, self(), pid)
 
-      assert :ok = GameServer.join_game(dedicated_game.id, player1.id)
-      assert :ok = GameServer.join_game(dedicated_game.id, player2.id)
-      assert :ok = GameServer.start_game(dedicated_game.id)
+      assert {:ok, :joined} = GameServer.join_room(dedicated_game.id, player1.id)
+      assert {:ok, :joined} = GameServer.join_room(dedicated_game.id, player2.id)
+      assert :ok = GameServer.start_game(dedicated_game.id, owner.id)
 
       initial_summary = GameServer.get_game(dedicated_game.id)
       first_id = initial_summary.current_player_id
