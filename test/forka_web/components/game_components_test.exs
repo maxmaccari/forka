@@ -112,7 +112,7 @@ defmodule ForkaWeb.GameComponentsTest do
       assert LazyHTML.attribute(root, "data-tries") == ["0"]
       assert LazyHTML.attribute(root, "data-state") == ["snapped"]
       assert LazyHTML.attribute(root, "aria-label") == ["Corda rompida: sem tentativas"]
-      assert Enum.count(LazyHTML.query(doc, "path.forka-rope-fray")) == 0
+      assert Enum.empty?(LazyHTML.query(doc, "path.forka-rope-fray"))
 
       left_body = LazyHTML.query(doc, "g.forka-rope-snap-l > path.fill-rope.stroke-rope-edge")
 
@@ -203,7 +203,7 @@ defmodule ForkaWeb.GameComponentsTest do
       hidden_doc =
         LazyHTML.from_fragment(render_component(&rope/1, %{tries: 0, size: :lg, label: false}))
 
-      assert Enum.count(LazyHTML.query(hidden_doc, "span[role=img] > span")) == 0
+      assert Enum.empty?(LazyHTML.query(hidden_doc, "span[role=img] > span"))
 
       assert LazyHTML.attribute(LazyHTML.query(hidden_doc, "span[role=img]"), "aria-label") == [
                "Corda rompida: sem tentativas"
