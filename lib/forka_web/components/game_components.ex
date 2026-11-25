@@ -9,19 +9,6 @@ defmodule ForkaWeb.GameComponents do
   @alphabet Enum.map(?A..?Z, &<<&1>>)
   @neck_half_heights {0.0, 1.0, 1.8, 2.6, 3.4, 4.2, 5.0}
 
-  @fray_paths [
-    "M 56 8 Q 53 3 49 2",
-    "M 64 8 Q 67 3 71 2",
-    "M 56 16 Q 53 21 49 22",
-    "M 64 16 Q 67 21 71 22",
-    "M 58 9 Q 56 4 53 4",
-    "M 62 9 Q 64 4 67 4",
-    "M 58 15 Q 56 20 53 20",
-    "M 62 15 Q 64 20 67 20",
-    "M 60 9 Q 59 5 57 3",
-    "M 60 15 Q 61 19 63 21"
-  ]
-
   @doc """
   Renders the Forka twisted rope SVG that wears out over 6 tries and snaps at 0.
   """
@@ -35,6 +22,7 @@ defmodule ForkaWeb.GameComponents do
   def rope(assigns) do
     t = assigns.tries |> max(0) |> min(6)
     {svg_w, svg_h} = rope_dimensions(assigns.size)
+    neck_h = elem(@neck_half_heights, t)
 
     aria_label =
       if t == 0 do
@@ -46,74 +34,106 @@ defmodule ForkaWeb.GameComponents do
     assigns =
       assigns
       |> assign(:t, t)
+      |> assign(:state, rope_state(t))
       |> assign(:svg_w, svg_w)
       |> assign(:svg_h, svg_h)
       |> assign(:aria_label, aria_label)
-      |> assign(:neck_h, elem(@neck_half_heights, t))
-      |> assign(:frays, Enum.take(@fray_paths, (6 - t) * 2))
+      |> assign(:body_path, rope_body_path(neck_h))
+      |> assign(:twists, rope_twists(t))
+      |> assign(:frays, rope_frays(t, neck_h))
 
     ~H"""
-    <div
+    <span
       id={@id}
       role="img"
       aria-label={@aria_label}
       phx-hook={@id && "RopeFeedback"}
-      data-tries={@id && @t}
-      class={["inline-flex items-center gap-2", @class]}
+      data-tries={@t}
+      data-state={@state}
+      class={["inline-flex items-center gap-2 leading-none align-middle", @class]}
     >
       <svg
         viewBox="0 0 120 24"
         width={@svg_w}
         height={@svg_h}
-        class="shrink-0 overflow-visible"
+        class="block shrink-0 overflow-visible"
         aria-hidden="true"
       >
         <%= if @t > 0 do %>
           <path
-            d={rope_body_path(@neck_h)}
+            d={@body_path}
             class="fill-rope stroke-rope-edge"
-            stroke-width="1.5"
+            stroke-width="1.1"
             stroke-linejoin="round"
           />
-          <g class="stroke-rope-twist" stroke-width="1.4" stroke-linecap="round">
-            <%= for x <- [10, 18, 26, 34, 42, 50, 58, 66, 74, 82, 90, 98, 106, 112],
-                    @t == 6 or x < 54 or x > 66 do %>
-              <line x1={x} y1="8" x2={x + 4} y2="16" />
-            <% end %>
+          <g class="stroke-rope-twist" stroke-width="1.2" stroke-linecap="round">
+            <line
+              :for={x <- @twists}
+              :key={x}
+              x1={x}
+              y1="16.2"
+              x2={fmt_coord(x + 3.6)}
+              y2="7.8"
+            />
           </g>
-          <g class="stroke-rope-edge" fill="none" stroke-width="1.2" stroke-linecap="round">
-            <path :for={d <- @frays} d={d} class="forka-rope-fray" />
+          <g class="stroke-rope-edge" fill="none" stroke-width="0.9" stroke-linecap="round">
+            <path
+              :for={{d, idx} <- Enum.with_index(@frays)}
+              :key={idx}
+              d={d}
+              class="forka-rope-fray"
+            />
           </g>
         <% else %>
           <g class="forka-rope-snap-l">
             <path
-              d="M 4 7 L 44 7 L 54 10 L 50 13 L 55 17 L 4 17 Z"
+              d={snap_left_body()}
               class="fill-rope stroke-rope-edge"
-              stroke-width="1.5"
+              stroke-width="1.1"
               stroke-linejoin="round"
             />
-            <g class="stroke-rope-twist" stroke-width="1.4" stroke-linecap="round">
-              <line :for={x <- [10, 18, 26, 34, 42]} x1={x} y1="8" x2={x + 4} y2="16" />
+            <g class="stroke-rope-twist" stroke-width="1.2" stroke-linecap="round">
+              <line
+                :for={x <- snap_left_twists()}
+                :key={x}
+                x1={x}
+                y1="16.2"
+                x2={fmt_coord(x + 3.6)}
+                y2="7.8"
+              />
             </g>
-            <g class="stroke-rope-edge" fill="none" stroke-width="1.2" stroke-linecap="round">
-              <path d="M 54 10 L 59 7" />
-              <path d="M 55 17 L 60 19" />
-            </g>
+            <path
+              d={snap_left_fibers()}
+              class="stroke-rope-edge"
+              fill="none"
+              stroke-width="0.9"
+              stroke-linecap="round"
+            />
           </g>
           <g class="forka-rope-snap-r">
             <path
-              d="M 66 10 L 76 7 L 116 7 L 116 17 L 65 17 L 70 13 Z"
+              d={snap_right_body()}
               class="fill-rope stroke-rope-edge"
-              stroke-width="1.5"
+              stroke-width="1.1"
               stroke-linejoin="round"
             />
-            <g class="stroke-rope-twist" stroke-width="1.4" stroke-linecap="round">
-              <line :for={x <- [78, 86, 94, 102, 110]} x1={x} y1="8" x2={x + 4} y2="16" />
+            <g class="stroke-rope-twist" stroke-width="1.2" stroke-linecap="round">
+              <line
+                :for={x <- snap_right_twists()}
+                :key={x}
+                x1={x}
+                y1="16.2"
+                x2={fmt_coord(x + 3.6)}
+                y2="7.8"
+              />
             </g>
-            <g class="stroke-rope-edge" fill="none" stroke-width="1.2" stroke-linecap="round">
-              <path d="M 66 10 L 61 7" />
-              <path d="M 65 17 L 60 19" />
-            </g>
+            <path
+              d={snap_right_fibers()}
+              class="stroke-rope-edge"
+              fill="none"
+              stroke-width="0.9"
+              stroke-linecap="round"
+            />
           </g>
         <% end %>
       </svg>
@@ -121,14 +141,14 @@ defmodule ForkaWeb.GameComponents do
       <span
         :if={@label}
         class={[
-          "font-display font-bold tabular-nums whitespace-nowrap",
+          "font-sans font-extrabold tabular-nums whitespace-nowrap",
           rope_label_size(@size),
           rope_label_color(@t, @on_dark)
         ]}
       >
         {rope_label_text(@t, @size)}
       </span>
-    </div>
+    </span>
     """
   end
 
@@ -136,11 +156,67 @@ defmodule ForkaWeb.GameComponents do
   defp rope_dimensions(:md), do: {132, 26}
   defp rope_dimensions(:sm), do: {52, 13}
 
-  defp rope_body_path(h) do
-    top = 12 - h
-    bot = 12 + h
+  defp rope_state(6), do: "intact"
+  defp rope_state(1), do: "critical"
+  defp rope_state(0), do: "snapped"
+  defp rope_state(_t), do: "frayed"
 
-    "M 4 7 L 42 7 C 50 7 54 #{top} 60 #{top} C 66 #{top} 70 7 78 7 L 116 7 L 116 17 L 78 17 C 70 17 66 #{bot} 60 #{bot} C 54 #{bot} 50 17 42 17 L 4 17 Z"
+  defp rope_body_path(h) do
+    top = fmt_coord(12 - h)
+    bot = fmt_coord(12 + h)
+
+    "M8 7 H50 C56 7 56 #{top} 60 #{top} C64 #{top} 64 7 70 7 H112 A5 5 0 0 1 112 17 H70 C64 17 64 #{bot} 60 #{bot} C56 #{bot} 56 17 50 17 H8 A5 5 0 0 1 8 7 Z"
+  end
+
+  defp rope_twists(6), do: Enum.to_list(10..108//5)
+  defp rope_twists(t) when t > 0, do: for(x <- 10..108//5, x <= 46 or x >= 70, do: x)
+  defp rope_twists(_t), do: []
+
+  defp rope_frays(t, _h) when t <= 0 or t >= 6, do: []
+
+  defp rope_frays(t, h) do
+    count = (6 - t) * 2
+
+    for i <- 0..(count - 1) do
+      side = if rem(i, 2) == 1, do: 1, else: -1
+      x = 53 + i * 14 / count
+      y0 = 12 + side * h
+      len = 2.6 + rem(i, 3) * 1.1 + (6 - t) * 0.25
+      dx = if rem(i, 4) < 2, do: -1.6, else: 1.6
+
+      "M#{fmt_fixed(x)} #{fmt_fixed(y0)} q #{fmt_fixed(dx / 2)} #{fmt_fixed(side * len * 0.6)} #{fmt_fixed(dx)} #{fmt_fixed(side * len)}"
+    end
+  end
+
+  defp fmt_coord(val) do
+    rounded = Float.round(val * 1.0, 1)
+
+    if rounded == trunc(rounded) * 1.0 do
+      Integer.to_string(trunc(rounded))
+    else
+      :erlang.float_to_binary(rounded, decimals: 1)
+    end
+  end
+
+  defp fmt_fixed(val), do: :erlang.float_to_binary(val * 1.0, decimals: 1)
+
+  defp snap_left_body do
+    "M8 7 H54 L56.5 8.8 L54.5 10.4 L57 12 L54.5 13.6 L56.5 15.2 L54 17 H8 A5 5 0 0 1 8 7 Z"
+  end
+
+  defp snap_right_body do
+    "M66 7 L63.5 8.8 L65.5 10.4 L63 12 L65.5 13.6 L63.5 15.2 L66 17 H112 A5 5 0 0 0 112 7 Z"
+  end
+
+  defp snap_left_twists, do: Enum.to_list(10..48//5)
+  defp snap_right_twists, do: Enum.to_list(70..108//5)
+
+  defp snap_left_fibers do
+    "M56 9 L59.5 6.5 M57 12 L61 12.6 M56 15 L59 18 M55 10.5 L58 9.5"
+  end
+
+  defp snap_right_fibers do
+    "M64 9 L60.5 6.5 M63 12 L59 11.4 M64 15 L61 18 M65 13.5 L62 14.5"
   end
 
   defp rope_label_size(:lg), do: "text-lg"

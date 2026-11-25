@@ -241,6 +241,25 @@ defmodule Forka.Games.RepositoryTest do
       assert unchanged_game_state.max_players == game_state.max_players
     end
 
+    test "R-03: rejects saving a game state with an alive player at zero lives" do
+      owner = to_games_player(insert(:player))
+      player2 = to_games_player(insert(:player))
+      game = insert(:game, owner_id: owner.id)
+
+      {:ok, game_state} = Repository.get_game_state(game.id)
+      {:ok, game_state} = Core.join_game(game_state, owner)
+      {:ok, game_state} = Core.join_game(game_state, player2)
+      {:ok, saved_state} = Repository.save_game_state(game_state)
+
+      corrupt_players =
+        Map.update!(saved_state.game_players, 0, fn gp -> %{gp | status: :alive, lives: 0} end)
+
+      assert {:error, changeset} =
+               Repository.save_game_state(%{saved_state | game_players: corrupt_players})
+
+      assert %{lives: ["must be greater than 0 while player is alive"]} in errors_on(changeset).game_players
+    end
+
     test "saves a complete game state with players, words, and guesses in playing state" do
       # Create a game with an owner
       owner = to_games_player(insert(:player))
