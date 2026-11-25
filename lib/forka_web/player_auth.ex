@@ -95,7 +95,10 @@ defmodule ForkaWeb.PlayerAuth do
   def fetch_current_player(conn, _opts) do
     {player_token, conn} = ensure_player_token(conn)
     player = player_token && Players.get_player_by_session_token(player_token)
-    assign(conn, :current_player, player)
+
+    conn
+    |> assign(:current_player, player)
+    |> assign(:current_scope, Forka.Scope.for_player(player))
   end
 
   defp ensure_player_token(conn) do
@@ -179,10 +182,15 @@ defmodule ForkaWeb.PlayerAuth do
   defp mount_current_player(socket, session) do
     Gettext.put_locale(ForkaWeb.Gettext, "pt_BR")
 
-    Phoenix.Component.assign_new(socket, :current_player, fn ->
-      if player_token = session["player_token"] do
-        Players.get_player_by_session_token(player_token)
-      end
+    socket =
+      Phoenix.Component.assign_new(socket, :current_player, fn ->
+        if player_token = session["player_token"] do
+          Players.get_player_by_session_token(player_token)
+        end
+      end)
+
+    Phoenix.Component.assign_new(socket, :current_scope, fn ->
+      Forka.Scope.for_player(socket.assigns.current_player)
     end)
   end
 
