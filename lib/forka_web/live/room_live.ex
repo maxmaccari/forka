@@ -66,7 +66,7 @@ defmodule ForkaWeb.RoomLive do
             id="edit-room-settings"
             variant="secondary"
             size="sm"
-            navigate={~p"/salas/#{@lobby.id}/configuracoes"}
+            navigate={~p"/rooms/#{@lobby.id}/settings"}
           >
             Configurações
           </.button>

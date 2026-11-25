@@ -406,7 +406,7 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
       assert join_html =~ "A entrada na sala estará disponível em breve."
 
       lv |> element("#create-room-desktop") |> render_click()
-      assert_redirect(lv, ~p"/salas/nova")
+      assert_redirect(lv, ~p"/rooms/new")
     end
 
     test "AC-11: header connects theme toggle and account links for both guests and signed-in players",

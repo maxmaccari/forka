@@ -6,9 +6,9 @@ defmodule ForkaWeb.RoomFormLiveTest do
   alias Forka.Games
   alias Forka.Games.GameServer
 
-  describe "GET /salas/nova (:new)" do
+  describe "GET /rooms/new (:new)" do
     test "AC-06: redirects unauthenticated visitor to login", %{conn: conn} do
-      assert {:error, {:redirect, %{to: "/players/log_in"}}} = live(conn, ~p"/salas/nova")
+      assert {:error, {:redirect, %{to: "/players/log_in"}}} = live(conn, ~p"/rooms/new")
     end
 
     test "AC-06: renders defaults (PT, 4 players, all categories), switches language, and creates a room",
@@ -19,7 +19,7 @@ defmodule ForkaWeb.RoomFormLiveTest do
       en_movies = insert(:category, name: "Movies", language: "en")
 
       conn = log_in_player(conn, player)
-      {:ok, lv, html} = live(conn, ~p"/salas/nova")
+      {:ok, lv, html} = live(conn, ~p"/rooms/new")
 
       assert page_title(lv) =~ "Criar sala"
       assert has_element?(lv, "#room-form")
@@ -60,7 +60,7 @@ defmodule ForkaWeb.RoomFormLiveTest do
     end
   end
 
-  describe "GET /salas/:id/configuracoes (:edit)" do
+  describe "GET /rooms/:id/settings (:edit)" do
     test "AC-07: prefills existing lobby settings, updates them, and returns to the lobby", %{
       conn: conn
     } do
@@ -76,7 +76,7 @@ defmodule ForkaWeb.RoomFormLiveTest do
         })
 
       conn = log_in_player(conn, owner)
-      {:ok, lv, _html} = live(conn, ~p"/salas/#{game.id}/configuracoes")
+      {:ok, lv, _html} = live(conn, ~p"/rooms/#{game.id}/settings")
 
       assert page_title(lv) =~ "Configurações da sala"
       assert has_element?(lv, ~s|#room-name[value="Sala Original"]|)
@@ -92,7 +92,7 @@ defmodule ForkaWeb.RoomFormLiveTest do
         lv
         |> form("#room-form", room_settings: %{name: "Sala Atualizada"})
         |> render_submit()
-        |> follow_redirect(conn, ~p"/salas/#{game.id}")
+        |> follow_redirect(conn, ~p"/rooms/#{game.id}")
 
       assert lobby_lv.module == ForkaWeb.RoomLive
       text = visible_text(lobby_html)
@@ -110,10 +110,10 @@ defmodule ForkaWeb.RoomFormLiveTest do
       assert {:error,
               {:live_redirect,
                %{
-                 to: "/salas/" <> _,
+                 to: "/rooms/" <> _,
                  flash: %{"error" => "Apenas quem criou a sala pode editar as configurações."}
                }}} =
-               conn |> log_in_player(other) |> live(~p"/salas/#{game.id}/configuracoes")
+               conn |> log_in_player(other) |> live(~p"/rooms/#{game.id}/settings")
     end
 
     test "AC-08: blocks editing once the game is no longer in lobby", %{conn: conn} do
@@ -127,12 +127,12 @@ defmodule ForkaWeb.RoomFormLiveTest do
       assert {:error,
               {:live_redirect,
                %{
-                 to: "/salas/" <> _,
+                 to: "/rooms/" <> _,
                  flash: %{
                    "error" => "As configurações só podem ser alteradas antes da partida começar."
                  }
                }}} =
-               conn |> log_in_player(owner) |> live(~p"/salas/#{game.id}/configuracoes")
+               conn |> log_in_player(owner) |> live(~p"/rooms/#{game.id}/settings")
     end
 
     test "AC-08: redirects with flash if room starts or ownership transfers before submit", %{
@@ -144,7 +144,7 @@ defmodule ForkaWeb.RoomFormLiveTest do
       :ok = Games.join_game(game.id, guest.id)
 
       conn = log_in_player(conn, owner)
-      {:ok, lv, _html} = live(conn, ~p"/salas/#{game.id}/configuracoes")
+      {:ok, lv, _html} = live(conn, ~p"/rooms/#{game.id}/settings")
 
       :ok = Games.transfer_ownership(game.id, guest.id)
 
@@ -152,7 +152,7 @@ defmodule ForkaWeb.RoomFormLiveTest do
         lv
         |> form("#room-form", room_settings: %{name: "Tarde demais"})
         |> render_submit()
-        |> follow_redirect(conn, ~p"/salas/#{game.id}")
+        |> follow_redirect(conn, ~p"/rooms/#{game.id}")
 
       assert lobby_lv.module == ForkaWeb.RoomLive
       assert lobby_html =~ "Apenas quem criou a sala pode editar as configurações."
@@ -165,7 +165,7 @@ defmodule ForkaWeb.RoomFormLiveTest do
       {:ok, game} = Games.create_game(owner.id, %{name: "Sala Arquivada", max_players: 4})
 
       conn = log_in_player(conn, owner)
-      {:ok, lv, _html} = live(conn, ~p"/salas/#{game.id}/configuracoes")
+      {:ok, lv, _html} = live(conn, ~p"/rooms/#{game.id}/settings")
 
       pid = GameServer.whereis(game.id)
       ref = Process.monitor(pid)
@@ -182,7 +182,7 @@ defmodule ForkaWeb.RoomFormLiveTest do
 
       assert {:error,
               {:live_redirect, %{to: "/", flash: %{"error" => "Esta sala foi arquivada."}}}} =
-               live(conn, ~p"/salas/#{game.id}/configuracoes")
+               live(conn, ~p"/rooms/#{game.id}/settings")
     end
   end
 
@@ -194,7 +194,7 @@ defmodule ForkaWeb.RoomFormLiveTest do
       pt_cat = insert(:category, name: "Jogos", language: "pt")
 
       conn = log_in_player(conn, player)
-      {:ok, lv, _html} = live(conn, ~p"/salas/nova")
+      {:ok, lv, _html} = live(conn, ~p"/rooms/new")
 
       lv |> element(~s|#room-max-players button[phx-value-option="5"]|) |> render_click()
       lv |> element("#category-chip-#{pt_cat.id}") |> render_click()
@@ -216,7 +216,7 @@ defmodule ForkaWeb.RoomFormLiveTest do
       deleted_cat = insert(:category, name: "Temporária", language: "pt")
 
       conn = log_in_player(conn, player)
-      {:ok, lv, _html} = live(conn, ~p"/salas/nova")
+      {:ok, lv, _html} = live(conn, ~p"/rooms/new")
 
       lv |> element(~s|#room-max-players button[phx-value-option="5"]|) |> render_click()
       lv |> element("#category-chip-#{keep_cat.id}") |> render_click()
@@ -260,7 +260,7 @@ defmodule ForkaWeb.RoomFormLiveTest do
       :ok = Games.join_game(game.id, p3.id)
 
       conn = log_in_player(conn, owner)
-      {:ok, lv, _html} = live(conn, ~p"/salas/#{game.id}/configuracoes")
+      {:ok, lv, _html} = live(conn, ~p"/rooms/#{game.id}/settings")
 
       lv |> element(~s|#room-max-players button[phx-value-option="2"]|) |> render_click()
 
@@ -283,7 +283,7 @@ defmodule ForkaWeb.RoomFormLiveTest do
       pt_cat = insert(:category, name: "Animais", language: "pt")
 
       conn = log_in_player(conn, player)
-      {:ok, lv, _html} = live(conn, ~p"/salas/nova")
+      {:ok, lv, _html} = live(conn, ~p"/rooms/new")
 
       lv |> element("#category-chip-#{pt_cat.id}") |> render_click()
       assert has_element?(lv, "#category-chip-#{pt_cat.id}[aria-pressed='true']")
@@ -306,7 +306,7 @@ defmodule ForkaWeb.RoomFormLiveTest do
         })
 
       conn = log_in_player(conn, owner)
-      {:ok, lv, _html} = live(conn, ~p"/salas/#{game.id}/configuracoes")
+      {:ok, lv, _html} = live(conn, ~p"/rooms/#{game.id}/settings")
 
       render_change(lv, "validate", %{"room_settings" => %{"name" => ["not", "a", "binary"]}})
       assert has_element?(lv, ~s|#room-name[value="Sala Robusta"]|)

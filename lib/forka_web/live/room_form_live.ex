@@ -53,13 +53,13 @@ defmodule ForkaWeb.RoomFormLive do
         {:ok,
          socket
          |> put_flash(:error, "Apenas quem criou a sala pode editar as configurações.")
-         |> push_navigate(to: ~p"/salas/#{game_id}")}
+         |> push_navigate(to: ~p"/rooms/#{game_id}")}
 
       {:error, :game_not_in_lobby} ->
         {:ok,
          socket
          |> put_flash(:error, "As configurações só podem ser alteradas antes da partida começar.")
-         |> push_navigate(to: ~p"/salas/#{game_id}")}
+         |> push_navigate(to: ~p"/rooms/#{game_id}")}
 
       {:error, :game_archived} ->
         {:ok,
@@ -150,7 +150,7 @@ defmodule ForkaWeb.RoomFormLive do
 
     case Games.create_room(socket.assigns.current_scope, submit_params) do
       {:ok, game} ->
-        {:noreply, push_navigate(socket, to: ~p"/salas/#{game.id}")}
+        {:noreply, push_navigate(socket, to: ~p"/rooms/#{game.id}")}
 
       {:error, %Ecto.Changeset{} = cs} ->
         handle_save_error(socket, params, cs)
@@ -167,19 +167,19 @@ defmodule ForkaWeb.RoomFormLive do
            submit_params
          ) do
       :ok ->
-        {:noreply, push_navigate(socket, to: ~p"/salas/#{socket.assigns.game_id}")}
+        {:noreply, push_navigate(socket, to: ~p"/rooms/#{socket.assigns.game_id}")}
 
       {:error, :unauthorized} ->
         {:noreply,
          socket
          |> put_flash(:error, "Apenas quem criou a sala pode editar as configurações.")
-         |> push_navigate(to: ~p"/salas/#{socket.assigns.game_id}")}
+         |> push_navigate(to: ~p"/rooms/#{socket.assigns.game_id}")}
 
       {:error, :game_not_in_lobby} ->
         {:noreply,
          socket
          |> put_flash(:error, "As configurações só podem ser alteradas antes da partida começar.")
-         |> push_navigate(to: ~p"/salas/#{socket.assigns.game_id}")}
+         |> push_navigate(to: ~p"/rooms/#{socket.assigns.game_id}")}
 
       {:error, :game_archived} ->
         {:noreply,
@@ -208,7 +208,7 @@ defmodule ForkaWeb.RoomFormLive do
     <div class="mx-auto max-w-2xl">
       <Layouts.subpage_header
         title={@page_title}
-        back_to={if(@mode == :edit, do: ~p"/salas/#{@game_id}", else: ~p"/")}
+        back_to={if(@mode == :edit, do: ~p"/rooms/#{@game_id}", else: ~p"/")}
         back_label="Voltar"
       />
 
@@ -303,7 +303,7 @@ defmodule ForkaWeb.RoomFormLive do
           <:actions>
             <.button
               variant="secondary"
-              navigate={if(@mode == :edit, do: ~p"/salas/#{@game_id}", else: ~p"/")}
+              navigate={if(@mode == :edit, do: ~p"/rooms/#{@game_id}", else: ~p"/")}
             >
               Cancelar
             </.button>

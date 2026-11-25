@@ -6,12 +6,12 @@ defmodule ForkaWeb.RoomLiveTest do
   alias Forka.Games
   alias Forka.Games.GameServer
 
-  describe "GET /salas/:id" do
+  describe "GET /rooms/:id" do
     test "AC-05: redirects unauthenticated visitor to login", %{conn: conn} do
       owner = insert(:player)
       {:ok, game} = Games.create_game(owner.id, %{name: "Sala Privada", max_players: 4})
 
-      assert {:error, {:redirect, %{to: "/players/log_in"}}} = live(conn, ~p"/salas/#{game.id}")
+      assert {:error, {:redirect, %{to: "/players/log_in"}}} = live(conn, ~p"/rooms/#{game.id}")
     end
 
     test "AC-05: renders room lobby details and owner settings link for owner in lobby", %{
@@ -27,7 +27,7 @@ defmodule ForkaWeb.RoomLiveTest do
           word_options: %{language: "pt", category_ids: [cat.id]}
         })
 
-      {:ok, lv, html} = conn |> log_in_player(owner) |> live(~p"/salas/#{game.id}")
+      {:ok, lv, html} = conn |> log_in_player(owner) |> live(~p"/rooms/#{game.id}")
       text = visible_text(html)
 
       assert page_title(lv) =~ "Noite de palavras"
@@ -36,14 +36,14 @@ defmodule ForkaWeb.RoomLiveTest do
       assert text =~ "Português"
       assert text =~ "Música"
       assert text =~ "lia"
-      assert has_element?(lv, ~s|#edit-room-settings[href="/salas/#{game.id}/configuracoes"]|)
+      assert has_element?(lv, ~s|#edit-room-settings[href="/rooms/#{game.id}/settings"]|)
     end
 
     test "AC-05: renders room created without word_options using safe defaults", %{conn: conn} do
       owner = insert(:player, username: "lia")
       {:ok, game} = Games.create_game(owner.id, %{name: "Sem opções", max_players: 4})
 
-      {:ok, _lv, html} = conn |> log_in_player(owner) |> live(~p"/salas/#{game.id}")
+      {:ok, _lv, html} = conn |> log_in_player(owner) |> live(~p"/rooms/#{game.id}")
       text = visible_text(html)
 
       assert text =~ "Sem opções"
@@ -63,7 +63,7 @@ defmodule ForkaWeb.RoomLiveTest do
           word_options: %{language: "pt", category_ids: []}
         })
 
-      {:ok, lv, html} = conn |> log_in_player(other) |> live(~p"/salas/#{game.id}")
+      {:ok, lv, html} = conn |> log_in_player(other) |> live(~p"/rooms/#{game.id}")
       assert visible_text(html) =~ "Todas as categorias"
       refute has_element?(lv, "#edit-room-settings")
     end
@@ -77,7 +77,7 @@ defmodule ForkaWeb.RoomLiveTest do
       insert(:word, text: "forka")
       :ok = Games.start_game(game.id)
 
-      {:ok, lv, _html} = conn |> log_in_player(owner) |> live(~p"/salas/#{game.id}")
+      {:ok, lv, _html} = conn |> log_in_player(owner) |> live(~p"/rooms/#{game.id}")
       refute has_element?(lv, "#edit-room-settings")
     end
 
@@ -87,10 +87,10 @@ defmodule ForkaWeb.RoomLiveTest do
       missing_id = Ecto.UUID.generate()
 
       assert {:error, {:live_redirect, %{to: "/", flash: %{"error" => "Sala não encontrada."}}}} =
-               conn |> log_in_player(player) |> live(~p"/salas/#{missing_id}")
+               conn |> log_in_player(player) |> live(~p"/rooms/#{missing_id}")
 
       assert {:error, {:live_redirect, %{to: "/", flash: %{"error" => "Sala não encontrada."}}}} =
-               conn |> log_in_player(player) |> live(~p"/salas/not-a-uuid")
+               conn |> log_in_player(player) |> live(~p"/rooms/not-a-uuid")
     end
 
     test "AC-05: redirects to directory with flash when reopening an archived room", %{
@@ -106,7 +106,7 @@ defmodule ForkaWeb.RoomLiveTest do
 
       assert {:error,
               {:live_redirect, %{to: "/", flash: %{"error" => "Esta sala foi arquivada."}}}} =
-               conn |> log_in_player(owner) |> live(~p"/salas/#{game.id}")
+               conn |> log_in_player(owner) |> live(~p"/rooms/#{game.id}")
     end
 
     test "AC-05: receives live room lobby updates after mounting", %{conn: conn} do
@@ -117,7 +117,7 @@ defmodule ForkaWeb.RoomLiveTest do
 
       {:ok, game} = Games.create_game(owner.id, %{name: "Sala Inicial", max_players: 4})
 
-      {:ok, lv, _html} = conn |> log_in_player(viewer) |> live(~p"/salas/#{game.id}")
+      {:ok, lv, _html} = conn |> log_in_player(viewer) |> live(~p"/rooms/#{game.id}")
 
       :ok =
         Games.update_room_settings(owner_scope, game.id, %{
