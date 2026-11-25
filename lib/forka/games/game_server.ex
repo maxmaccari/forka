@@ -171,21 +171,12 @@ defmodule Forka.Games.GameServer do
 
   @impl true
   def handle_call({:update_settings, actor_id, settings}, _from, game) do
-    current = RoomSettings.from_game_state(game)
-    {norm_lang, valid_uuids} = RoomSettings.extract_lookup_inputs(current, settings)
-
-    allowed_ids =
-      if norm_lang in WordOptions.supported_languages() do
-        Words.list_category_ids_for_language(norm_lang, valid_uuids)
-      else
-        []
-      end
-
-    case Core.update_settings(game, actor_id, settings, allowed_category_ids: allowed_ids) do
-      {:ok, new_game} ->
-        saved_game = save_and_publish!(game, new_game)
-        {:reply, :ok, saved_game, @timeout_ms}
-
+    with :ok <- Core.authorize_settings_update(game, actor_id),
+         {:ok, validated} <- validate_room_settings(game, settings),
+         {:ok, new_game} <- Core.update_settings(game, actor_id, validated) do
+      saved_game = save_and_publish!(game, new_game)
+      {:reply, :ok, saved_game, @timeout_ms}
+    else
       {:error, error} ->
         {:reply, {:error, error}, game, @timeout_ms}
     end
@@ -308,6 +299,30 @@ defmodule Forka.Games.GameServer do
 
     payload = RoomLobby.payload(game_state, category_names)
     PubSub.broadcast!(Forka.PubSub, lobby_topic(game_id), {:room_lobby_updated, payload})
+  end
+
+  defp validate_room_settings(game, settings) do
+    current = RoomSettings.from_game_state(game)
+    occupancy = max(Core.min_players_allowed(), map_size(game.game_players))
+    {norm_lang, valid_uuids} = RoomSettings.extract_lookup_inputs(current, settings)
+
+    allowed_ids =
+      if norm_lang in WordOptions.supported_languages() do
+        Words.list_category_ids_for_language(norm_lang, valid_uuids)
+      else
+        []
+      end
+
+    case RoomSettings.changeset(current, settings,
+           min_players: occupancy,
+           allowed_category_ids: allowed_ids
+         ) do
+      %Ecto.Changeset{valid?: true} = changeset ->
+        {:ok, Ecto.Changeset.apply_changes(changeset)}
+
+      %Ecto.Changeset{valid?: false} = changeset ->
+        {:error, changeset}
+    end
   end
 
   defp save_and_publish!(previous, updated) do

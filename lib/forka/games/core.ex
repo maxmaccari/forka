@@ -7,7 +7,7 @@ defmodule Forka.Games.Core do
   alias Forka.Games.RoomSettings
   alias Forka.Games.Schemas.GamePlayer
   alias Forka.Games.Schemas.GameWord
-  alias Forka.Games.Schemas.{Player, Word}
+  alias Forka.Games.Schemas.{Player, Word, WordOptions}
 
   import Forka.Games.Core.Helpers, only: [increment_tick: 1, push_event: 2, push_event: 3]
 
@@ -497,57 +497,98 @@ defmodule Forka.Games.Core do
     end
   end
 
-  @doc """
-  Updates the settings of a game if it is in the lobby state and called by the owner.
-  """
-  @spec update_settings(GameState.t(), Ecto.UUID.t(), map(), keyword()) ::
-          {:ok, GameState.t()}
-          | {:error, :unauthorized | :game_not_in_lobby | Ecto.Changeset.t()}
-  def update_settings(game_state, actor_id, settings, opts \\ [])
-
-  def update_settings(%GameState{owner: %{id: owner_id}}, actor_id, _settings, _opts)
+  @doc "Checks whether `actor_id` is allowed to update settings on `game_state`."
+  @spec authorize_settings_update(GameState.t(), Ecto.UUID.t()) ::
+          :ok | {:error, :unauthorized | :game_not_in_lobby}
+  def authorize_settings_update(%GameState{owner: %{id: owner_id}}, actor_id)
       when actor_id != owner_id,
       do: {:error, :unauthorized}
 
-  def update_settings(%GameState{owner: nil}, _actor_id, _settings, _opts),
+  def authorize_settings_update(%GameState{owner: nil}, _actor_id),
     do: {:error, :unauthorized}
 
-  def update_settings(%GameState{status: status}, _actor_id, _settings, _opts)
+  def authorize_settings_update(%GameState{status: status}, _actor_id)
       when status != :lobby,
       do: {:error, :game_not_in_lobby}
 
-  def update_settings(%GameState{status: :lobby} = game_state, _actor_id, settings, opts)
-      when is_map(settings) do
-    current = RoomSettings.from_game_state(game_state)
-    occupancy = max(@min_players_allowed, map_size(game_state.game_players))
-    cs_opts = Keyword.put(opts, :min_players, occupancy)
+  def authorize_settings_update(%GameState{status: :lobby}, _actor_id), do: :ok
 
-    case RoomSettings.changeset(current, settings, cs_opts) do
-      %Ecto.Changeset{valid?: true} = changeset ->
-        applied = Ecto.Changeset.apply_changes(changeset)
+  @doc "Applies validated room settings to a lobby game state owned by `actor_id`."
+  @spec update_settings(GameState.t(), Ecto.UUID.t(), RoomSettings.t()) ::
+          {:ok, GameState.t()}
+          | {:error,
+             :unauthorized
+             | :game_not_in_lobby
+             | :invalid_name
+             | :invalid_max_players
+             | :invalid_word_options}
+  def update_settings(%GameState{} = game_state, actor_id, %RoomSettings{} = settings)
+      when is_binary(actor_id) do
+    with :ok <- authorize_settings_update(game_state, actor_id),
+         :ok <- validate_settings_invariants(game_state, settings) do
+      updated_game_state =
+        game_state
+        |> put_name(settings.name)
+        |> put_max_players(settings.max_players)
+        |> put_word_options(settings.word_options)
+        |> increment_tick()
+        |> push_event(:settings_updated, settings_event_payload(settings))
 
-        updated_game_state =
-          %GameState{
-            game_state
-            | name: applied.name,
-              max_players: applied.max_players,
-              word_options: applied.word_options
-          }
-          |> increment_tick()
-          |> push_event(:settings_updated, %{
-            name: applied.name,
-            max_players: applied.max_players,
-            word_options: %{
-              language: applied.word_options.language,
-              category_ids: applied.word_options.category_ids
-            }
-          })
-
-        {:ok, updated_game_state}
-
-      %Ecto.Changeset{valid?: false} = changeset ->
-        {:error, changeset}
+      {:ok, updated_game_state}
     end
+  end
+
+  defp validate_settings_invariants(game_state, settings) do
+    with :ok <- validate_name(settings.name),
+         :ok <- validate_max_players(settings.max_players, game_state.game_players) do
+      validate_word_options(settings.word_options)
+    end
+  end
+
+  defp validate_name(name) when is_binary(name) do
+    trimmed_len = name |> String.trim() |> String.length()
+
+    if trimmed_len in 1..RoomSettings.max_name_length() do
+      :ok
+    else
+      {:error, :invalid_name}
+    end
+  end
+
+  defp validate_name(_name), do: {:error, :invalid_name}
+
+  defp validate_max_players(max_players, game_players)
+       when is_integer(max_players) and max_players in @min_players_allowed..@max_players_allowed do
+    if max_players >= map_size(game_players), do: :ok, else: {:error, :invalid_max_players}
+  end
+
+  defp validate_max_players(_max_players, _game_players), do: {:error, :invalid_max_players}
+
+  defp validate_word_options(%WordOptions{language: lang, category_ids: ids})
+       when is_list(ids) do
+    if lang in WordOptions.supported_languages(), do: :ok, else: {:error, :invalid_word_options}
+  end
+
+  defp validate_word_options(_word_options), do: {:error, :invalid_word_options}
+
+  defp put_name(%GameState{} = game_state, name),
+    do: %GameState{game_state | name: String.trim(name)}
+
+  defp put_max_players(%GameState{} = game_state, max_players),
+    do: %GameState{game_state | max_players: max_players}
+
+  defp put_word_options(%GameState{} = game_state, %WordOptions{} = word_options),
+    do: %GameState{game_state | word_options: word_options}
+
+  defp settings_event_payload(%RoomSettings{} = settings) do
+    %{
+      name: String.trim(settings.name),
+      max_players: settings.max_players,
+      word_options: %{
+        language: settings.word_options.language,
+        category_ids: settings.word_options.category_ids
+      }
+    }
   end
 
   @doc false

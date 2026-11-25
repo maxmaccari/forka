@@ -1,8 +1,10 @@
 defmodule Forka.Games.CoreTest do
   use ExUnit.Case, async: true
   alias Forka.Games.Core
+  alias Forka.Games.RoomSettings
   alias Forka.Games.Schemas.GameWord
   alias Forka.Games.Schemas.Word
+  alias Forka.Games.Schemas.WordOptions
 
   import Forka.TestHelpers
 
@@ -491,27 +493,43 @@ defmodule Forka.Games.CoreTest do
     end
   end
 
-  describe "update_settings/4" do
+  describe "authorize_settings_update/2 and update_settings/3" do
     setup %{owner: owner} do
       game = Core.new(owner, "Test Game", 4)
       {:ok, game: game}
     end
 
-    test "AC-04: updates settings when called by owner in lobby (including Core.new keyword word_options)",
+    test "AC-04: authorize_settings_update/2 enforces owner and lobby state", %{
+      game: game,
+      owner: owner
+    } do
+      other = build_games_player("Other")
+
+      assert :ok = Core.authorize_settings_update(game, owner.id)
+      assert {:error, :unauthorized} = Core.authorize_settings_update(game, other.id)
+
+      assert {:error, :unauthorized} =
+               Core.authorize_settings_update(%{game | owner: nil}, owner.id)
+
+      assert {:error, :game_not_in_lobby} =
+               Core.authorize_settings_update(%{game | status: :playing}, owner.id)
+
+      assert {:error, :game_not_in_lobby} =
+               Core.authorize_settings_update(%{game | status: :archived}, owner.id)
+    end
+
+    test "AC-04: updates settings when called by owner in lobby with validated RoomSettings",
          %{game: game, owner: owner} do
       cat_1 = Ecto.UUID.generate()
       cat_2 = Ecto.UUID.generate()
 
-      settings = %{
+      settings = %RoomSettings{
         name: "  New Game Name  ",
         max_players: 6,
-        word_options: %{language: " PT ", category_ids: [cat_1, cat_2]}
+        word_options: %WordOptions{language: "pt", category_ids: [cat_1, cat_2]}
       }
 
-      assert {:ok, updated_game} =
-               Core.update_settings(game, owner.id, settings,
-                 allowed_category_ids: [cat_1, cat_2]
-               )
+      assert {:ok, updated_game} = Core.update_settings(game, owner.id, settings)
 
       assert updated_game.name == "New Game Name"
       assert updated_game.max_players == 6
@@ -523,35 +541,36 @@ defmodule Forka.Games.CoreTest do
 
     test "AC-04: returns {:error, :unauthorized} when called by a non-owner", %{game: game} do
       other = build_games_player("Other")
+      settings = %RoomSettings{name: "Hijacked", max_players: 4, word_options: %WordOptions{}}
 
-      assert {:error, :unauthorized} =
-               Core.update_settings(game, other.id, %{name: "Hijacked"})
+      assert {:error, :unauthorized} = Core.update_settings(game, other.id, settings)
     end
 
-    test "AC-04: returns changeset error for blank or whitespace-only name", %{
+    test "AC-04: returns {:error, :invalid_name} for blank, whitespace-only, or over-60-char name",
+         %{game: game, owner: owner} do
+      base = %RoomSettings{name: "Sala", max_players: 4, word_options: %WordOptions{}}
+
+      assert {:error, :invalid_name} = Core.update_settings(game, owner.id, %{base | name: "   "})
+
+      assert {:error, :invalid_name} =
+               Core.update_settings(game, owner.id, %{base | name: String.duplicate("a", 61)})
+    end
+
+    test "AC-04: returns {:error, :invalid_max_players} for max_players outside 2..6", %{
       game: game,
       owner: owner
     } do
-      assert {:error, %Ecto.Changeset{} = cs} =
-               Core.update_settings(game, owner.id, %{name: "   "})
+      base = %RoomSettings{name: "Sala", max_players: 4, word_options: %WordOptions{}}
 
-      assert cs.errors[:name]
+      assert {:error, :invalid_max_players} =
+               Core.update_settings(game, owner.id, %{base | max_players: 1})
+
+      assert {:error, :invalid_max_players} =
+               Core.update_settings(game, owner.id, %{base | max_players: 10})
     end
 
-    test "AC-04: returns changeset error for max_players outside 2..6", %{
-      game: game,
-      owner: owner
-    } do
-      assert {:error, %Ecto.Changeset{} = cs} =
-               Core.update_settings(game, owner.id, %{max_players: 10})
-
-      assert cs.errors[:max_players]
-    end
-
-    test "EDGE-01: returns changeset error when max_players is below current occupancy", %{
-      game: game,
-      owner: owner
-    } do
+    test "EDGE-01: returns {:error, :invalid_max_players} when max_players is below current occupancy",
+         %{game: game, owner: owner} do
       p1 = build_games_player("P1")
       p2 = build_games_player("P2")
       p3 = build_games_player("P3")
@@ -561,67 +580,37 @@ defmodule Forka.Games.CoreTest do
       {:ok, game} = Core.join_game(game, p2)
       {:ok, game} = Core.join_game(game, p3)
 
-      assert {:error, %Ecto.Changeset{} = cs} =
-               Core.update_settings(game, owner.id, %{max_players: 3})
-
-      assert {"não pode ser menor que o número atual de jogadores (%{count})", opts} =
-               cs.errors[:max_players]
-
-      assert opts[:count] == 4
+      settings = %RoomSettings{name: "Sala", max_players: 3, word_options: %WordOptions{}}
+      assert {:error, :invalid_max_players} = Core.update_settings(game, owner.id, settings)
     end
 
-    test "EDGE-02: rejects unsupported language, disallowed categories, and language-only patch with stale categories",
-         %{game: game, owner: owner} do
-      pt_cat = Ecto.UUID.generate()
+    test "EDGE-02: rejects nil word_options or unsupported language", %{
+      game: game,
+      owner: owner
+    } do
+      nil_wo = %RoomSettings{name: "Sala", max_players: 4, word_options: nil}
+      assert {:error, :invalid_word_options} = Core.update_settings(game, owner.id, nil_wo)
 
-      assert {:error, %Ecto.Changeset{} = cs_lang} =
-               Core.update_settings(game, owner.id, %{word_options: %{language: "es"}},
-                 allowed_category_ids: []
-               )
+      bad_lang = %RoomSettings{
+        name: "Sala",
+        max_players: 4,
+        word_options: %WordOptions{language: "es", category_ids: []}
+      }
 
-      assert Ecto.Changeset.get_change(cs_lang, :word_options).errors[:language]
-
-      # Set PT category first
-      {:ok, pt_game} =
-        Core.update_settings(
-          game,
-          owner.id,
-          %{word_options: %{language: "pt", category_ids: [pt_cat]}},
-          allowed_category_ids: [pt_cat]
-        )
-
-      # Language-only patch to EN keeps pt_cat, which is not in EN's allowed_category_ids
-      assert {:error, %Ecto.Changeset{} = cs_lang_only} =
-               Core.update_settings(pt_game, owner.id, %{word_options: %{language: "en"}},
-                 allowed_category_ids: []
-               )
-
-      assert Ecto.Changeset.get_change(cs_lang_only, :word_options).errors[:category_ids]
+      assert {:error, :invalid_word_options} = Core.update_settings(game, owner.id, bad_lang)
     end
 
     test "AC-04: returns {:error, :game_not_in_lobby} when not in lobby state", %{
       game: game,
       owner: owner
     } do
-      game_playing = %{game | status: :playing}
+      settings = %RoomSettings{name: "New Name", max_players: 6, word_options: %WordOptions{}}
 
       assert {:error, :game_not_in_lobby} =
-               Core.update_settings(game_playing, owner.id, %{name: "New Name"})
-
-      game_archived = %{game | status: :archived}
+               Core.update_settings(%{game | status: :playing}, owner.id, settings)
 
       assert {:error, :game_not_in_lobby} =
-               Core.update_settings(game_archived, owner.id, %{max_players: 6})
-    end
-
-    test "AC-04: rejects explicit nil word_options with a changeset error", %{
-      game: game,
-      owner: owner
-    } do
-      assert {:error, %Ecto.Changeset{} = cs} =
-               Core.update_settings(game, owner.id, %{name: "Sala", word_options: nil})
-
-      assert {"can't be blank", _} = cs.errors[:word_options]
+               Core.update_settings(%{game | status: :archived}, owner.id, settings)
     end
   end
 
