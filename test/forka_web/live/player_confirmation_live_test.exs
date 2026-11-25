@@ -112,6 +112,25 @@ defmodule ForkaWeb.PlayerConfirmationLiveTest do
         |> follow_redirect(conn, return_to)
 
       assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Conta confirmada com sucesso!"
+
+      other_player = insert(:player)
+
+      other_token =
+        extract_token_from_email(fn url ->
+          Players.deliver_player_confirmation_instructions(other_player, url)
+        end)
+
+      {:ok, lv_unsafe, _html} =
+        live(conn, ~p"/players/confirm/#{other_token}?#{[return_to: "/rooms/foo\\bar"]}")
+
+      {:ok, unsafe_conn} =
+        lv_unsafe
+        |> form("#confirmation_form")
+        |> render_submit()
+        |> follow_redirect(conn, ~p"/")
+
+      assert Phoenix.Flash.get(unsafe_conn.assigns.flash, :info) ==
+               "Conta confirmada com sucesso!"
     end
   end
 end
