@@ -85,7 +85,7 @@ defmodule ForkaWeb.RoomComponents do
             <.button
               variant="secondary"
               size="sm"
-              navigate={~p"/players/log_in"}
+              navigate={~p"/rooms/#{@room.id}/join"}
               aria-label={"Entrar na sala #{@room.name}"}
             >
               Entrar
@@ -241,4 +241,25 @@ defmodule ForkaWeb.RoomComponents do
   defp closed_note(:playing), do: "Em andamento"
   defp closed_note(:ended), do: "Acabou"
   defp closed_note(:open), do: nil
+
+  @doc "Returns the badge tone for a room status."
+  def room_status_tone(:lobby), do: "success"
+  def room_status_tone(:playing), do: "brand"
+  def room_status_tone(_status), do: "neutral"
+
+  @doc "Returns the human-readable Portuguese label for a room status."
+  def room_status_label(:lobby), do: "Aguardando jogadores"
+  def room_status_label(:playing), do: "Em andamento"
+  def room_status_label(:finished), do: "Finalizada"
+  def room_status_label(:game_over), do: "Encerrada"
+  def room_status_label(_status), do: "Arquivada"
+
+  @doc "Returns the human-readable Portuguese label for a room language code."
+  def room_language_label("pt"), do: "Português"
+  def room_language_label("en"), do: "Inglês"
+  def room_language_label(other), do: other
+
+  @doc "Formats category names for room lobby and invite details."
+  def room_categories_label([]), do: "Todas as categorias"
+  def room_categories_label(names), do: Enum.join(names, ", ")
 end

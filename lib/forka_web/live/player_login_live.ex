@@ -10,7 +10,7 @@ defmodule ForkaWeb.PlayerLoginLive do
           <:subtitle>
             Ainda não tem conta?
             <.link
-              navigate={~p"/players/register"}
+              navigate={~p"/players/register?#{ForkaWeb.PlayerAuth.return_to_query(@return_to)}"}
               class="font-semibold text-brand-ink hover:underline"
             >
               Criar conta
@@ -18,7 +18,12 @@ defmodule ForkaWeb.PlayerLoginLive do
           </:subtitle>
         </.header>
 
-        <.simple_form for={@form} id="login_form" action={~p"/players/log_in"} phx-update="ignore">
+        <.simple_form
+          for={@form}
+          id="login_form"
+          action={~p"/players/log_in?#{ForkaWeb.PlayerAuth.return_to_query(@return_to)}"}
+          phx-update="ignore"
+        >
           <.input
             field={@form[:email_or_username]}
             type="text"
@@ -54,13 +59,14 @@ defmodule ForkaWeb.PlayerLoginLive do
     """
   end
 
-  def mount(_params, _session, socket) do
+  def mount(params, _session, socket) do
     email_or_username = Phoenix.Flash.get(socket.assigns.flash, :email_or_username)
     form = to_form(%{"email_or_username" => email_or_username}, as: "player")
 
     {:ok,
      socket
      |> assign(:page_title, "Entrar")
+     |> assign(:return_to, ForkaWeb.PlayerAuth.safe_return_to(params["return_to"]))
      |> assign(:form, form), temporary_assigns: [form: nil]}
   end
 end

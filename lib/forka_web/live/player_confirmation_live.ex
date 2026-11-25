@@ -21,14 +21,14 @@ defmodule ForkaWeb.PlayerConfirmationLive do
 
         <p class="mt-6 text-center text-sm text-ink-muted">
           <.link
-            navigate={~p"/players/register"}
+            navigate={~p"/players/register?#{ForkaWeb.PlayerAuth.return_to_query(@return_to)}"}
             class="font-semibold text-brand-ink hover:underline"
           >
             Criar conta
           </.link>
           <span aria-hidden="true" class="mx-2 text-ink-subtle">·</span>
           <.link
-            navigate={~p"/players/log_in"}
+            navigate={~p"/players/log_in?#{ForkaWeb.PlayerAuth.return_to_query(@return_to)}"}
             class="font-semibold text-brand-ink hover:underline"
           >
             Entrar
@@ -39,24 +39,27 @@ defmodule ForkaWeb.PlayerConfirmationLive do
     """
   end
 
-  def mount(%{"token" => token}, _session, socket) do
+  def mount(%{"token" => token} = params, _session, socket) do
     form = to_form(%{"token" => token}, as: "player")
 
     {:ok,
      socket
      |> assign(:page_title, "Confirmar conta")
+     |> assign(:return_to, ForkaWeb.PlayerAuth.safe_return_to(params["return_to"]))
      |> assign(:form, form), temporary_assigns: [form: nil]}
   end
 
   # Do not log in the player after confirmation to avoid a
   # leaked token giving the player access to the account.
   def handle_event("confirm_account", %{"player" => %{"token" => token}}, socket) do
+    redirect_to = socket.assigns.return_to || ~p"/"
+
     case Players.confirm_player(token) do
       {:ok, _} ->
         {:noreply,
          socket
          |> put_flash(:info, "Conta confirmada com sucesso!")
-         |> redirect(to: ~p"/")}
+         |> redirect(to: redirect_to)}
 
       :error ->
         # If there is a current player and the account was already confirmed,
@@ -65,13 +68,13 @@ defmodule ForkaWeb.PlayerConfirmationLive do
         # a warning message.
         case socket.assigns do
           %{current_player: %{confirmed_at: confirmed_at}} when not is_nil(confirmed_at) ->
-            {:noreply, redirect(socket, to: ~p"/")}
+            {:noreply, redirect(socket, to: redirect_to)}
 
           %{} ->
             {:noreply,
              socket
              |> put_flash(:error, "O link de confirmação é inválido ou expirou.")
-             |> redirect(to: ~p"/")}
+             |> redirect(to: redirect_to)}
         end
     end
   end

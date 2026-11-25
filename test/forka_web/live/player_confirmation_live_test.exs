@@ -91,5 +91,46 @@ defmodule ForkaWeb.PlayerConfirmationLiveTest do
 
       refute Players.get_player!(player.id).confirmed_at
     end
+
+    test "REQ-02: redirects to safe return_to after confirmation and ignores unsafe return_to", %{
+      conn: conn,
+      player: player
+    } do
+      return_to = "/rooms/#{Ecto.UUID.generate()}/join"
+
+      token =
+        extract_token_from_email(fn url ->
+          Players.deliver_player_confirmation_instructions(player, url)
+        end)
+
+      {:ok, lv, _html} = live(conn, ~p"/players/confirm/#{token}?return_to=#{return_to}")
+
+      {:ok, conn} =
+        lv
+        |> form("#confirmation_form")
+        |> render_submit()
+        |> follow_redirect(conn, return_to)
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Conta confirmada com sucesso!"
+
+      other_player = insert(:player)
+
+      other_token =
+        extract_token_from_email(fn url ->
+          Players.deliver_player_confirmation_instructions(other_player, url)
+        end)
+
+      {:ok, lv_unsafe, _html} =
+        live(conn, ~p"/players/confirm/#{other_token}?#{[return_to: "/rooms/foo\\bar"]}")
+
+      {:ok, unsafe_conn} =
+        lv_unsafe
+        |> form("#confirmation_form")
+        |> render_submit()
+        |> follow_redirect(conn, ~p"/")
+
+      assert Phoenix.Flash.get(unsafe_conn.assigns.flash, :info) ==
+               "Conta confirmada com sucesso!"
+    end
   end
 end

@@ -106,6 +106,31 @@ defmodule ForkaWeb.PlayerSessionControllerTest do
       assert Phoenix.Flash.get(conn.assigns.flash, :email_or_username) == "lia_jogadora"
       assert redirected_to(conn) == ~p"/players/log_in"
     end
+
+    test "REQ-02: logs the player in with return_to param and preserves it on invalid credentials",
+         %{
+           conn: conn,
+           player: player
+         } do
+      game_id = Ecto.UUID.generate()
+      return_to = "/rooms/#{game_id}/join"
+
+      bad_conn =
+        post(conn, ~p"/players/log_in", %{
+          "return_to" => return_to,
+          "player" => %{"email_or_username" => player.email, "password" => "wrong"}
+        })
+
+      assert redirected_to(bad_conn) == ~p"/players/log_in?return_to=#{return_to}"
+
+      ok_conn =
+        post(conn, ~p"/players/log_in", %{
+          "return_to" => return_to,
+          "player" => %{"email_or_username" => player.email, "password" => player.password}
+        })
+
+      assert redirected_to(ok_conn) == return_to
+    end
   end
 
   describe "DELETE /players/log_out" do

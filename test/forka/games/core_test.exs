@@ -1,5 +1,6 @@
 defmodule Forka.Games.CoreTest do
   use ExUnit.Case, async: true
+  use ExUnitProperties
   alias Forka.Games.Core
   alias Forka.Games.RoomSettings
   alias Forka.Games.Schemas.GameWord
@@ -626,6 +627,119 @@ defmodule Forka.Games.CoreTest do
       summary = Core.to_game_summary(game)
 
       assert %Forka.Games.GameSummary{} = summary
+    end
+  end
+
+  describe "join_room/2" do
+    setup %{owner: owner} do
+      game = Core.new(owner, "Sala de Teste", 2)
+      player1 = build_games_player("Player 1")
+      player2 = build_games_player("Player 2")
+      player3 = build_games_player("Player 3")
+      {:ok, game: game, player1: player1, player2: player2, player3: player3}
+    end
+
+    test "REQ-05: returns {:ok, :joined, state} for new player in lobby with open seat", %{
+      game: game,
+      player1: player1
+    } do
+      assert {:ok, :joined, updated} = Core.join_room(game, player1)
+      assert map_size(updated.game_players) == 1
+      assert updated.tick == game.tick + 1
+      assert_last_events(updated, [%{type: :player_joined, payload: %{player_id: player1.id}}])
+    end
+
+    test "REQ-05: returns {:ok, :already_joined, state} without duplicate event for existing lobby participant",
+         %{
+           game: game,
+           player1: player1
+         } do
+      {:ok, :joined, joined_game} = Core.join_room(game, player1)
+      joined_game = %{joined_game | events: []}
+
+      assert {:ok, :already_joined, returned} = Core.join_room(joined_game, player1)
+      assert returned.tick == joined_game.tick
+      assert returned.events == []
+      assert map_size(returned.game_players) == 1
+    end
+
+    test "REQ-04: returns {:error, :maximum_players} when lobby is full for a new player", %{
+      game: game,
+      player1: player1,
+      player2: player2,
+      player3: player3
+    } do
+      {:ok, :joined, g1} = Core.join_room(game, player1)
+      {:ok, :joined, g2} = Core.join_room(g1, player2)
+
+      assert {:error, :maximum_players} = Core.join_room(g2, player3)
+    end
+
+    test "REQ-05: returns {:ok, :returning_participant, state} for existing participant in playing or ended match",
+         %{
+           game: game,
+           player1: player1,
+           player2: player2
+         } do
+      {:ok, :joined, g1} = Core.join_room(game, player1)
+      {:ok, :joined, g2} = Core.join_room(g1, player2)
+
+      for status <- [:playing, :finished, :game_over] do
+        in_match = %{g2 | status: status, events: []}
+        assert {:ok, :returning_participant, returned} = Core.join_room(in_match, player1)
+        assert returned.tick == in_match.tick
+        assert returned.events == []
+      end
+    end
+
+    test "REQ-04: returns {:error, :game_already_started} or {:error, :game_ended} for non-participant",
+         %{
+           game: game,
+           player1: player1,
+           player2: player2,
+           player3: player3
+         } do
+      {:ok, :joined, g1} = Core.join_room(game, player1)
+      {:ok, :joined, g2} = Core.join_room(g1, player2)
+
+      assert {:error, :game_already_started} = Core.join_room(%{g2 | status: :playing}, player3)
+      assert {:error, :game_ended} = Core.join_room(%{g2 | status: :finished}, player3)
+      assert {:error, :game_ended} = Core.join_room(%{g2 | status: :game_over}, player3)
+    end
+
+    test "REQ-04: returns {:error, :game_archived} when game is archived", %{
+      game: game,
+      player1: player1
+    } do
+      assert {:error, :game_archived} = Core.join_room(%{game | status: :archived}, player1)
+    end
+
+    property "REQ-05: repeat join_room/2 leaves existing participant membership, events, and tick unchanged" do
+      check all(
+              max_players <- StreamData.integer(2..6),
+              roster_size <- StreamData.integer(1..max_players),
+              status <- StreamData.member_of([:lobby, :playing, :finished, :game_over]),
+              pick_index <- StreamData.integer(0..(roster_size - 1))
+            ) do
+        owner = build_games_player("Owner")
+        base = Core.new(owner, "Sala Propriedade", max_players)
+        players = Enum.map(1..roster_size, &build_games_player("P#{&1}"))
+
+        populated =
+          Enum.reduce(players, base, fn player, acc ->
+            {:ok, :joined, next} = Core.join_room(acc, player)
+            next
+          end)
+
+        state = %{populated | status: status, events: []}
+        existing = Enum.at(players, pick_index)
+        expected_outcome = if status == :lobby, do: :already_joined, else: :returning_participant
+
+        assert {:ok, ^expected_outcome, returned} = Core.join_room(state, existing)
+        assert returned.game_players == state.game_players
+        assert returned.tick == state.tick
+        assert returned.events == []
+      end
     end
   end
 end
