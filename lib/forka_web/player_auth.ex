@@ -29,13 +29,61 @@ defmodule ForkaWeb.PlayerAuth do
   """
   def log_in_player(conn, player, params \\ %{}) do
     token = Players.generate_player_session_token(player)
-    player_return_to = get_session(conn, :player_return_to)
+
+    player_return_to =
+      safe_session_return_to(get_session(conn, :player_return_to)) ||
+        safe_return_to(params["return_to"])
 
     conn
     |> renew_session()
     |> put_token_in_session(token)
     |> maybe_write_remember_me_cookie(token, params)
     |> redirect(to: player_return_to || signed_in_path(conn))
+  end
+
+  @doc """
+  Validates that a client-supplied return destination matches an allowlisted
+  canonical room invitation path (`/rooms/<uuid>/join`).
+  Returns `nil` for anything else (external URLs, backslashes, control chars, or non-allowlisted paths).
+  """
+  def safe_return_to(path) when is_binary(path) do
+    trimmed = String.trim(path)
+
+    with false <- String.contains?(trimmed, "\\"),
+         false <- String.match?(trimmed, ~r/[\x00-\x1f\x7f]/u),
+         %URI{scheme: nil, host: nil, query: nil, fragment: nil, path: uri_path}
+         when is_binary(uri_path) <- URI.parse(trimmed),
+         ["", "rooms", room_id, "join"] <- String.split(uri_path, "/"),
+         {:ok, valid_id} <- Ecto.UUID.cast(room_id) do
+      ~p"/rooms/#{valid_id}/join"
+    else
+      _ -> nil
+    end
+  end
+
+  def safe_return_to(_other), do: nil
+
+  defp safe_session_return_to(path) when is_binary(path) do
+    trimmed = String.trim(path)
+
+    with false <- String.contains?(trimmed, "\\"),
+         false <- String.match?(trimmed, ~r/[\x00-\x1f\x7f]/u),
+         true <- String.starts_with?(trimmed, "/") and not String.starts_with?(trimmed, "//"),
+         %URI{scheme: nil, host: nil} <- URI.parse(trimmed) do
+      trimmed
+    else
+      _ -> nil
+    end
+  end
+
+  defp safe_session_return_to(_other), do: nil
+
+  @doc "Returns a keyword query list for `~p` verified routes when `return_to` is safe."
+  def return_to_query(return_to) do
+    case safe_return_to(return_to) do
+      nil -> []
+      path -> [return_to: path]
+    end
   end
 
   defp maybe_write_remember_me_cookie(conn, token, %{"remember_me" => "true"}) do

@@ -26,10 +26,12 @@ defmodule Forka.Games do
   alias Forka.Games.GameServer
   alias Forka.Games.GameSummary
   alias Forka.Games.Repository
+  alias Forka.Games.RoomInvite
   alias Forka.Games.RoomListItem
   alias Forka.Games.RoomLobby
   alias Forka.Games.RoomSettings
   alias Forka.Games.Schemas.Game
+  alias Forka.Games.Schemas.GamePlayer
   alias Forka.Games.Schemas.WordOptions
   alias Forka.Players.Player, as: AuthPlayer
   alias Forka.Repo
@@ -296,6 +298,69 @@ defmodule Forka.Games do
   @spec get_room_lobby(Scope.t() | nil, Ecto.UUID.t()) ::
           {:ok, RoomLobby.t()} | {:error, :not_found | :unauthorized | :game_archived}
   def get_room_lobby(%Scope{player: %AuthPlayer{}} = scope, game_id) do
+    with {:ok, valid_id, summary, category_names} <- fetch_room_summary_with_categories(game_id) do
+      {:ok, RoomLobby.from_game_summary(scope, valid_id, summary, category_names)}
+    end
+  end
+
+  def get_room_lobby(_invalid_scope, _game_id), do: {:error, :unauthorized}
+
+  @doc "Returns the public invitation preview for an existing non-archived room without starting its GameServer."
+  @spec get_room_invite(Ecto.UUID.t()) ::
+          {:ok, RoomInvite.t()} | {:error, :not_found | :game_archived}
+  def get_room_invite(game_id) do
+    with {:ok, valid_id} <- Ecto.UUID.cast(game_id),
+         %{game: game, owner_username: owner_username, player_count: player_count} <-
+           fetch_persisted_room_invite_row(valid_id) do
+      if game.status == :archived do
+        {:error, :game_archived}
+      else
+        category_names =
+          game.word_options
+          |> extract_category_ids()
+          |> Words.list_categories_by_ids()
+          |> Enum.map(& &1.name)
+
+        {:ok, RoomInvite.from_game(game, player_count, owner_username, category_names)}
+      end
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
+  defp fetch_persisted_room_invite_row(game_id) do
+    from(g in Game,
+      left_join: gp in assoc(g, :game_players),
+      left_join: o in assoc(g, :owner),
+      where: g.id == ^game_id,
+      group_by: [g.id, o.id],
+      select: %{
+        game: g,
+        owner_username: o.username,
+        player_count: count(gp.id)
+      }
+    )
+    |> Repo.one()
+  end
+
+  @doc "Returns true when the scoped player is already a persisted participant in the room."
+  @spec room_participant?(Scope.t() | nil, Ecto.UUID.t()) :: boolean()
+  def room_participant?(%Scope{player: %AuthPlayer{id: player_id}}, game_id) do
+    case Ecto.UUID.cast(game_id) do
+      {:ok, valid_id} ->
+        from(gp in GamePlayer,
+          where: gp.game_id == ^valid_id and gp.player_id == ^player_id
+        )
+        |> Repo.exists?()
+
+      :error ->
+        false
+    end
+  end
+
+  def room_participant?(_invalid_scope, _game_id), do: false
+
+  defp fetch_room_summary_with_categories(game_id) do
     with {:ok, valid_id} <- Ecto.UUID.cast(game_id),
          {:ok, %GameSummary{} = summary} <- fetch_game_summary(valid_id) do
       word_options = WordOptions.normalize(summary.word_options)
@@ -305,15 +370,13 @@ defmodule Forka.Games do
         |> Words.list_categories_by_ids()
         |> Enum.map(& &1.name)
 
-      {:ok, RoomLobby.from_game_summary(scope, valid_id, summary, category_names)}
+      {:ok, valid_id, summary, category_names}
     else
       :error -> {:error, :not_found}
       {:error, :game_archived} -> {:error, :game_archived}
       {:error, _reason} -> {:error, :not_found}
     end
   end
-
-  def get_room_lobby(_invalid_scope, _game_id), do: {:error, :unauthorized}
 
   @doc "Subscribes an authenticated viewer to lobby-safe updates for a room."
   @spec subscribe_to_room_lobby(Scope.t() | nil, Ecto.UUID.t()) ::
@@ -386,6 +449,33 @@ defmodule Forka.Games do
   def join_game(game_id, player_id) do
     ensure_game_server_available(game_id, fn -> GameServer.join_game(game_id, player_id) end)
   end
+
+  @doc """
+  Joins a room for the scoped authenticated player, distinguishing new joins from returning participants.
+  """
+  @spec join_room(Scope.t() | nil, Ecto.UUID.t()) ::
+          {:ok, :joined | :already_joined | :returning_participant}
+          | {:error,
+             :unauthorized
+             | :not_found
+             | :game_archived
+             | :maximum_players
+             | :game_already_started
+             | :game_ended
+             | :player_not_found}
+  def join_room(%Scope{player: %AuthPlayer{id: player_id}}, game_id) do
+    case Ecto.UUID.cast(game_id) do
+      {:ok, valid_id} ->
+        ensure_game_server_available(valid_id, fn ->
+          GameServer.join_room(valid_id, player_id)
+        end)
+
+      :error ->
+        {:error, :not_found}
+    end
+  end
+
+  def join_room(_invalid_scope, _game_id), do: {:error, :unauthorized}
 
   @doc """
   Removes a player from the game.

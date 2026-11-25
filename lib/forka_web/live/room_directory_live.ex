@@ -160,12 +160,40 @@ defmodule ForkaWeb.RoomDirectoryLive do
     {:noreply, push_navigate(socket, to: ~p"/rooms/new")}
   end
 
+  def handle_event("join_room", %{"id" => game_id}, %{assigns: %{current_player: nil}} = socket)
+      when is_binary(game_id) do
+    case Ecto.UUID.cast(game_id) do
+      {:ok, valid_id} ->
+        return_to = ~p"/rooms/#{valid_id}/join"
+        {:noreply, push_navigate(socket, to: ~p"/players/log_in?return_to=#{return_to}")}
+
+      :error ->
+        {:noreply, push_navigate(socket, to: ~p"/players/log_in")}
+    end
+  end
+
   def handle_event("join_room", _params, %{assigns: %{current_player: nil}} = socket) do
     {:noreply, push_navigate(socket, to: ~p"/players/log_in")}
   end
 
+  def handle_event("join_room", %{"id" => game_id}, socket) when is_binary(game_id) do
+    case Ecto.UUID.cast(game_id) do
+      {:ok, valid_id} ->
+        case Games.join_room(socket.assigns.current_scope, valid_id) do
+          {:ok, _status} ->
+            {:noreply, push_navigate(socket, to: ~p"/rooms/#{valid_id}")}
+
+          {:error, _reason} ->
+            {:noreply, push_navigate(socket, to: ~p"/rooms/#{valid_id}/join")}
+        end
+
+      :error ->
+        {:noreply, put_flash(socket, :error, "Sala não encontrada.")}
+    end
+  end
+
   def handle_event("join_room", _params, socket) do
-    {:noreply, put_flash(socket, :info, "A entrada na sala estará disponível em breve.")}
+    {:noreply, put_flash(socket, :error, "Sala não encontrada.")}
   end
 
   @impl true

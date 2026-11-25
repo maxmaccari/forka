@@ -111,5 +111,27 @@ defmodule ForkaWeb.PlayerLoginLiveTest do
 
       assert has_element?(forgot_live, "#reset_password_form")
     end
+
+    test "REQ-02: carries safe return_to to login form action and register link, ignoring unsafe values",
+         %{
+           conn: conn
+         } do
+      return_to = "/rooms/#{Ecto.UUID.generate()}/join"
+      {:ok, lv, _html} = live(conn, ~p"/players/log_in?return_to=#{return_to}")
+
+      assert has_element?(
+               lv,
+               ~s|a[href="/players/register?return_to=#{URI.encode_www_form(return_to)}"]|
+             )
+
+      assert has_element?(
+               lv,
+               ~s|form#login_form[action="/players/log_in?return_to=#{URI.encode_www_form(return_to)}"]|
+             )
+
+      {:ok, lv_unsafe, _html} = live(conn, ~p"/players/log_in?return_to=//evil.com")
+      assert has_element?(lv_unsafe, ~s|a[href="/players/register"]|)
+      assert has_element?(lv_unsafe, ~s|form#login_form[action="/players/log_in"]|)
+    end
   end
 end

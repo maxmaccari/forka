@@ -331,4 +331,58 @@ defmodule ForkaWeb.PlayerAuthTest do
              ) == "deve ter no mínimo 12 caracteres"
     end
   end
+
+  describe "safe_return_to/1" do
+    test "REQ-02: accepts allowlisted room invite paths and rejects open redirects, backslashes, or non-allowlisted routes" do
+      valid_id = Ecto.UUID.generate()
+      assert PlayerAuth.safe_return_to("/rooms/#{valid_id}/join") == "/rooms/#{valid_id}/join"
+
+      assert PlayerAuth.safe_return_to(nil) == nil
+      assert PlayerAuth.safe_return_to("") == nil
+      assert PlayerAuth.safe_return_to("//evil.com") == nil
+      assert PlayerAuth.safe_return_to("https://evil.com/rooms/#{valid_id}/join") == nil
+      assert PlayerAuth.safe_return_to("/\\evil.com") == nil
+      assert PlayerAuth.safe_return_to("/rooms/#{valid_id}\\join") == nil
+      assert PlayerAuth.safe_return_to("/rooms/#{valid_id}/join\\evil") == nil
+      assert PlayerAuth.safe_return_to("/rooms/#{valid_id}/join?ref=copy") == nil
+      assert PlayerAuth.safe_return_to("/rooms/not-a-uuid/join") == nil
+      assert PlayerAuth.safe_return_to("/players/settings") == nil
+      assert PlayerAuth.safe_return_to("/rooms/#{valid_id}/join\r\nSet-Cookie: a=b") == nil
+      assert PlayerAuth.safe_return_to("rooms/#{valid_id}/join") == nil
+    end
+
+    test "REQ-02: log_in_player/3 prefers valid session :player_return_to, falls back to allowlisted params return_to, and ignores unsafe values",
+         %{
+           conn: conn,
+           player: player
+         } do
+      valid_id = Ecto.UUID.generate()
+      invite_path = "/rooms/#{valid_id}/join"
+
+      conn_param = PlayerAuth.log_in_player(conn, player, %{"return_to" => invite_path})
+      assert redirected_to(conn_param) == invite_path
+
+      conn_unsafe = PlayerAuth.log_in_player(conn, player, %{"return_to" => "https://evil.com"})
+      assert redirected_to(conn_unsafe) == ~p"/"
+
+      conn_backslash =
+        PlayerAuth.log_in_player(conn, player, %{"return_to" => "/rooms/#{valid_id}/join\\evil"})
+
+      assert redirected_to(conn_backslash) == ~p"/"
+
+      conn_session =
+        conn
+        |> put_session(:player_return_to, "/players/settings")
+        |> PlayerAuth.log_in_player(player, %{"return_to" => invite_path})
+
+      assert redirected_to(conn_session) == "/players/settings"
+
+      conn_bad_session =
+        conn
+        |> put_session(:player_return_to, "/players/settings\\evil")
+        |> PlayerAuth.log_in_player(player, %{})
+
+      assert redirected_to(conn_bad_session) == ~p"/"
+    end
+  end
 end

@@ -77,6 +77,7 @@ defmodule ForkaWeb.Router do
     live_session :current_player,
       on_mount: [{ForkaWeb.PlayerAuth, :mount_current_player}] do
       live "/", RoomDirectoryLive, :index
+      live "/rooms/:id/join", RoomInviteLive, :show
       live "/players/confirm/:token", PlayerConfirmationLive, :edit
       live "/players/confirm", PlayerConfirmationInstructionsLive, :new
     end

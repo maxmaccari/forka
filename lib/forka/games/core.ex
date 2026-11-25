@@ -116,6 +116,47 @@ defmodule Forka.Games.Core do
 
   def join_game(_game_state, %Player{}), do: {:error, :game_already_started}
 
+  @doc """
+  Evaluates joining a room for a player, distinguishing a new join from an existing participant.
+  """
+  @spec join_room(GameState.t(), Player.t()) ::
+          {:ok, :joined | :already_joined | :returning_participant, GameState.t()}
+          | {:error, :maximum_players | :game_already_started | :game_ended | :game_archived}
+  def join_room(%GameState{status: :archived}, %Player{}), do: {:error, :game_archived}
+
+  def join_room(
+        %GameState{game_players: game_players, status: :lobby} = game_state,
+        %Player{} = player
+      ) do
+    if participant?(game_players, player.id) do
+      {:ok, :already_joined, game_state}
+    else
+      case join_game(game_state, player) do
+        {:ok, updated} -> {:ok, :joined, updated}
+        {:error, reason} -> {:error, reason}
+      end
+    end
+  end
+
+  def join_room(
+        %GameState{game_players: game_players, status: status} = game_state,
+        %Player{} = player
+      )
+      when status in [:playing, :finished, :game_over] do
+    if participant?(game_players, player.id) do
+      {:ok, :returning_participant, game_state}
+    else
+      case status do
+        :playing -> {:error, :game_already_started}
+        _ended -> {:error, :game_ended}
+      end
+    end
+  end
+
+  defp participant?(game_players, player_id) do
+    Enum.any?(game_players, fn {_pos, gp} -> gp.player.id == player_id end)
+  end
+
   defp add_game_player_to_map(%{} = game_players, %Player{} = player) do
     (Map.values(game_players) ++ [GamePlayer.new(player)])
     |> Enum.uniq_by(& &1.player.id)

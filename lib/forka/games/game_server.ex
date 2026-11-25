@@ -70,6 +70,11 @@ defmodule Forka.Games.GameServer do
   end
 
   @doc false
+  def join_room(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
+    GenServer.call(global_name(game_id), {:join_room, player_id})
+  end
+
+  @doc false
   def leave_game(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
     GenServer.call(global_name(game_id), {:leave_game, player_id})
   end
@@ -139,18 +144,12 @@ defmodule Forka.Games.GameServer do
 
   @impl true
   def handle_call({:join_game, player_id}, _from, game) do
-    with %Player{} = player <- Repository.get_player(player_id),
-         {:ok, new_game} <- Core.join_game(game, player) do
-      saved_game = save_and_publish!(game, new_game)
+    run_join(game, player_id, &Core.join_game/2, fn _status -> :ok end)
+  end
 
-      {:reply, :ok, saved_game, @timeout_ms}
-    else
-      nil ->
-        {:reply, {:error, :player_not_found}, game, @timeout_ms}
-
-      {:error, error} ->
-        {:reply, {:error, error}, game, @timeout_ms}
-    end
+  @impl true
+  def handle_call({:join_room, player_id}, _from, game) do
+    run_join(game, player_id, &Core.join_room/2, fn status -> {:ok, status} end)
   end
 
   @impl true
@@ -332,4 +331,27 @@ defmodule Forka.Games.GameServer do
     :ok = GameListNotifier.broadcast_update_if_changed(previous, saved)
     saved
   end
+
+  defp run_join(game, player_id, join_fun, reply_fun) do
+    with %Player{} = player <- Repository.get_player(player_id),
+         {:ok, status, new_game} <- normalize_join_result(join_fun.(game, player)) do
+      saved_game =
+        case status do
+          :joined -> save_and_publish!(game, new_game)
+          _existing -> game
+        end
+
+      {:reply, reply_fun.(status), saved_game, @timeout_ms}
+    else
+      nil ->
+        {:reply, {:error, :player_not_found}, game, @timeout_ms}
+
+      {:error, error} ->
+        {:reply, {:error, error}, game, @timeout_ms}
+    end
+  end
+
+  defp normalize_join_result({:ok, new_game}), do: {:ok, :joined, new_game}
+  defp normalize_join_result({:ok, status, new_game}), do: {:ok, status, new_game}
+  defp normalize_join_result({:error, _reason} = error), do: error
 end

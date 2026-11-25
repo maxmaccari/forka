@@ -29,14 +29,14 @@ defmodule ForkaWeb.PlayerConfirmationInstructionsLive do
 
         <p class="mt-6 text-center text-sm text-ink-muted">
           <.link
-            navigate={~p"/players/register"}
+            navigate={~p"/players/register?#{ForkaWeb.PlayerAuth.return_to_query(@return_to)}"}
             class="font-semibold text-brand-ink hover:underline"
           >
             Criar conta
           </.link>
           <span aria-hidden="true" class="mx-2 text-ink-subtle">·</span>
           <.link
-            navigate={~p"/players/log_in"}
+            navigate={~p"/players/log_in?#{ForkaWeb.PlayerAuth.return_to_query(@return_to)}"}
             class="font-semibold text-brand-ink hover:underline"
           >
             Entrar
@@ -47,10 +47,11 @@ defmodule ForkaWeb.PlayerConfirmationInstructionsLive do
     """
   end
 
-  def mount(_params, _session, socket) do
+  def mount(params, _session, socket) do
     {:ok,
      socket
      |> assign(:page_title, "Reenviar confirmação")
+     |> assign(:return_to, ForkaWeb.PlayerAuth.safe_return_to(params["return_to"]))
      |> assign(:form, to_form(%{}, as: "player"))}
   end
 
@@ -58,7 +59,9 @@ defmodule ForkaWeb.PlayerConfirmationInstructionsLive do
     if player = Players.get_player_by_email(email) do
       Players.deliver_player_confirmation_instructions(
         player,
-        &url(~p"/players/confirm/#{&1}")
+        &url(
+          ~p"/players/confirm/#{&1}?#{ForkaWeb.PlayerAuth.return_to_query(socket.assigns.return_to)}"
+        )
       )
     end
 
@@ -68,6 +71,6 @@ defmodule ForkaWeb.PlayerConfirmationInstructionsLive do
     {:noreply,
      socket
      |> put_flash(:info, info)
-     |> redirect(to: ~p"/")}
+     |> redirect(to: socket.assigns.return_to || ~p"/")}
   end
 end
