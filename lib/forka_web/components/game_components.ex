@@ -87,33 +87,53 @@ defmodule ForkaWeb.GameComponents do
         <% else %>
           <g class="forka-rope-snap-l">
             <path
-              d="M 4 7 L 44 7 L 54 10 L 50 13 L 55 17 L 4 17 Z"
+              d={snap_left_body()}
               class="fill-rope stroke-rope-edge"
-              stroke-width="1.5"
+              stroke-width="1.1"
               stroke-linejoin="round"
             />
-            <g class="stroke-rope-twist" stroke-width="1.4" stroke-linecap="round">
-              <line :for={x <- [10, 18, 26, 34, 42]} x1={x} y1="8" x2={x + 4} y2="16" />
+            <g class="stroke-rope-twist" stroke-width="1.2" stroke-linecap="round">
+              <line
+                :for={x <- snap_left_twists()}
+                :key={x}
+                x1={x}
+                y1="16.2"
+                x2={fmt_coord(x + 3.6)}
+                y2="7.8"
+              />
             </g>
-            <g class="stroke-rope-edge" fill="none" stroke-width="1.2" stroke-linecap="round">
-              <path d="M 54 10 L 59 7" />
-              <path d="M 55 17 L 60 19" />
-            </g>
+            <path
+              d={snap_left_fibers()}
+              class="stroke-rope-edge"
+              fill="none"
+              stroke-width="0.9"
+              stroke-linecap="round"
+            />
           </g>
           <g class="forka-rope-snap-r">
             <path
-              d="M 66 10 L 76 7 L 116 7 L 116 17 L 65 17 L 70 13 Z"
+              d={snap_right_body()}
               class="fill-rope stroke-rope-edge"
-              stroke-width="1.5"
+              stroke-width="1.1"
               stroke-linejoin="round"
             />
-            <g class="stroke-rope-twist" stroke-width="1.4" stroke-linecap="round">
-              <line :for={x <- [78, 86, 94, 102, 110]} x1={x} y1="8" x2={x + 4} y2="16" />
+            <g class="stroke-rope-twist" stroke-width="1.2" stroke-linecap="round">
+              <line
+                :for={x <- snap_right_twists()}
+                :key={x}
+                x1={x}
+                y1="16.2"
+                x2={fmt_coord(x + 3.6)}
+                y2="7.8"
+              />
             </g>
-            <g class="stroke-rope-edge" fill="none" stroke-width="1.2" stroke-linecap="round">
-              <path d="M 66 10 L 61 7" />
-              <path d="M 65 17 L 60 19" />
-            </g>
+            <path
+              d={snap_right_fibers()}
+              class="stroke-rope-edge"
+              fill="none"
+              stroke-width="0.9"
+              stroke-linecap="round"
+            />
           </g>
         <% end %>
       </svg>
@@ -179,6 +199,25 @@ defmodule ForkaWeb.GameComponents do
   end
 
   defp fmt_fixed(val), do: :erlang.float_to_binary(val * 1.0, decimals: 1)
+
+  defp snap_left_body do
+    "M8 7 H54 L56.5 8.8 L54.5 10.4 L57 12 L54.5 13.6 L56.5 15.2 L54 17 H8 A5 5 0 0 1 8 7 Z"
+  end
+
+  defp snap_right_body do
+    "M66 7 L63.5 8.8 L65.5 10.4 L63 12 L65.5 13.6 L63.5 15.2 L66 17 H112 A5 5 0 0 0 112 7 Z"
+  end
+
+  defp snap_left_twists, do: Enum.to_list(10..48//5)
+  defp snap_right_twists, do: Enum.to_list(70..108//5)
+
+  defp snap_left_fibers do
+    "M56 9 L59.5 6.5 M57 12 L61 12.6 M56 15 L59 18 M55 10.5 L58 9.5"
+  end
+
+  defp snap_right_fibers do
+    "M64 9 L60.5 6.5 M63 12 L59 11.4 M64 15 L61 18 M65 13.5 L62 14.5"
+  end
 
   defp rope_label_size(:lg), do: "text-lg"
   defp rope_label_size(:md), do: "text-sm"

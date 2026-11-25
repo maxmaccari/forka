@@ -103,6 +103,61 @@ defmodule ForkaWeb.GameComponentsTest do
                "M54.4 13.0 q -0.8 3.0 -1.6 5.0"
              ]
     end
+
+    test "R-04b: renders Corda.dc.html jagged snapped halves, 8 twists per half, and 4 torn end fibers per side at 0 tries" do
+      html = render_component(&rope/1, %{tries: 0, size: :lg, label: false})
+      doc = LazyHTML.from_fragment(html)
+      root = LazyHTML.query(doc, "span[role=img]")
+
+      assert LazyHTML.attribute(root, "data-tries") == ["0"]
+      assert LazyHTML.attribute(root, "data-state") == ["snapped"]
+      assert LazyHTML.attribute(root, "aria-label") == ["Corda rompida: sem tentativas"]
+      assert Enum.count(LazyHTML.query(doc, "path.forka-rope-fray")) == 0
+
+      left_body = LazyHTML.query(doc, "g.forka-rope-snap-l > path.fill-rope.stroke-rope-edge")
+
+      assert LazyHTML.attribute(left_body, "d") == [
+               "M8 7 H54 L56.5 8.8 L54.5 10.4 L57 12 L54.5 13.6 L56.5 15.2 L54 17 H8 A5 5 0 0 1 8 7 Z"
+             ]
+
+      assert LazyHTML.attribute(left_body, "stroke-width") == ["1.1"]
+
+      left_twists = LazyHTML.query(doc, "g.forka-rope-snap-l > g.stroke-rope-twist > line")
+      assert Enum.count(left_twists) == 8
+      assert LazyHTML.attribute(left_twists, "x1") == ~w(10 15 20 25 30 35 40 45)
+      assert LazyHTML.attribute(left_twists, "y1") |> Enum.uniq() == ["16.2"]
+      assert LazyHTML.attribute(left_twists, "y2") |> Enum.uniq() == ["7.8"]
+
+      left_fibers = LazyHTML.query(doc, "g.forka-rope-snap-l > path.stroke-rope-edge[fill=none]")
+
+      assert LazyHTML.attribute(left_fibers, "d") == [
+               "M56 9 L59.5 6.5 M57 12 L61 12.6 M56 15 L59 18 M55 10.5 L58 9.5"
+             ]
+
+      assert LazyHTML.attribute(left_fibers, "stroke-width") == ["0.9"]
+
+      right_body = LazyHTML.query(doc, "g.forka-rope-snap-r > path.fill-rope.stroke-rope-edge")
+
+      assert LazyHTML.attribute(right_body, "d") == [
+               "M66 7 L63.5 8.8 L65.5 10.4 L63 12 L65.5 13.6 L63.5 15.2 L66 17 H112 A5 5 0 0 0 112 7 Z"
+             ]
+
+      assert LazyHTML.attribute(right_body, "stroke-width") == ["1.1"]
+
+      right_twists = LazyHTML.query(doc, "g.forka-rope-snap-r > g.stroke-rope-twist > line")
+      assert Enum.count(right_twists) == 8
+      assert LazyHTML.attribute(right_twists, "x1") == ~w(70 75 80 85 90 95 100 105)
+      assert LazyHTML.attribute(right_twists, "y1") |> Enum.uniq() == ["16.2"]
+      assert LazyHTML.attribute(right_twists, "y2") |> Enum.uniq() == ["7.8"]
+
+      right_fibers = LazyHTML.query(doc, "g.forka-rope-snap-r > path.stroke-rope-edge[fill=none]")
+
+      assert LazyHTML.attribute(right_fibers, "d") == [
+               "M64 9 L60.5 6.5 M63 12 L59 11.4 M64 15 L61 18 M65 13.5 L62 14.5"
+             ]
+
+      assert LazyHTML.attribute(right_fibers, "stroke-width") == ["0.9"]
+    end
   end
 
   describe "word_tiles/1" do
