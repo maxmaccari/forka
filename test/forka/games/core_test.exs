@@ -194,6 +194,8 @@ defmodule Forka.Games.CoreTest do
         Word.new("   ", "Bebidas"),
         Word.new("1234", "Bebidas"),
         Word.new("---", "Bebidas"),
+        Word.new("straße", "Bebidas"),
+        Word.new("øl", "Bebidas"),
         Word.new("Gato", "Animais")
       ]
 

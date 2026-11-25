@@ -123,6 +123,8 @@ defmodule Forka.Games.Schemas.WordTest do
     refute Word.playable?(Word.new("   ", "food"))
     refute Word.playable?(Word.new("12345", "food"))
     refute Word.playable?(Word.new("---", "food"))
+    refute Word.playable?(Word.new("straße", "food"))
+    refute Word.playable?(Word.new("øl", "food"))
     refute Word.playable?(%Word{text: nil, category: "food"})
     refute Word.playable?(nil)
 

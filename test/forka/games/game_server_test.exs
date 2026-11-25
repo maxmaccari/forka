@@ -400,6 +400,7 @@ defmodule Forka.Games.GameServerTest do
       insert(:word, text: "cafe", category: pt_cat)
       insert(:word, text: "gato", category: pt_cat)
       insert(:word, text: "pato", category: pt_cat)
+      insert(:word, text: "straße", category: pt_cat)
       Repo.insert!(%Forka.Words.Word{text: "   ", category_id: pt_cat.id})
 
       :ok =

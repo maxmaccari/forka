@@ -17,8 +17,29 @@ defmodule Forka.WordTextTest do
       assert WordText.normalize_text(nil) == ""
     end
 
-    test "EDGE-01: treats empty, whitespace, digits, punctuation, and hyphen-only text as unplayable" do
-      for unplayable <- [nil, "", "   ", "12345", "!!!", "---", " - - ", "123-456"] do
+    test "supported_letters/0 returns uppercase A-Z input letters" do
+      assert WordText.supported_letters() == Enum.map(?A..?Z, &<<&1>>)
+    end
+
+    test "EDGE-01: treats empty, whitespace, digits, punctuation, hyphen-only, and unsupported-letter text as unplayable" do
+      for unplayable <- [
+            nil,
+            "",
+            "   ",
+            "12345",
+            "!!!",
+            "---",
+            " - - ",
+            "123-456",
+            "straße",
+            "ß",
+            "aß",
+            "øl",
+            "łódź",
+            "œuf",
+            "αβγ",
+            "привет"
+          ] do
         refute WordText.playable_text?(unplayable),
                "expected #{inspect(unplayable)} to be unplayable"
       end
@@ -28,14 +49,21 @@ defmodule Forka.WordTextTest do
       end
     end
 
-    property "EDGE-04: normalize_text/1 is idempotent and matches downcase/accent folding" do
-      check all(text <- StreamData.string(:printable, max_length: 30)) do
+    property "EDGE-04: normalize_text/1 is idempotent and playable_text?/1 requires every normalized letter to be supported" do
+      supported = MapSet.new(WordText.supported_letters(), &String.downcase/1)
+
+      check all(text <- StreamData.string(:utf8, max_length: 30)) do
         normalized = WordText.normalize_text(text)
         assert WordText.normalize_text(normalized) == normalized
         assert normalized == String.downcase(normalized)
 
-        assert WordText.playable_text?(text) ==
-                 (String.replace(normalized, ~r/[\s\-]+/u, "") != "")
+        letters =
+          normalized
+          |> String.replace(~r/[\s\-]+/u, "")
+          |> String.graphemes()
+
+        expected_playable? = letters != [] and Enum.all?(letters, &MapSet.member?(supported, &1))
+        assert WordText.playable_text?(text) == expected_playable?
       end
     end
   end

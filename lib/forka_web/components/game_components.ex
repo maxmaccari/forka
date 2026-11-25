@@ -6,7 +6,9 @@ defmodule ForkaWeb.GameComponents do
   """
   use Phoenix.Component
 
-  @alphabet Enum.map(?A..?Z, &<<&1>>)
+  alias Forka.WordText
+
+  @alphabet WordText.supported_letters()
   @neck_half_heights {0.0, 1.0, 1.8, 2.6, 3.4, 4.2, 5.0}
 
   @fray_paths [

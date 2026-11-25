@@ -216,5 +216,43 @@ defmodule ForkaWeb.RoomLiveTest do
       assert visible_text(html) =~ "0 palavras válidas"
       refute has_element?(lv, "#broaden-word-selection")
     end
+
+    test "blocks kickoff and shows lobby guidance when excluding unsupported-letter words leaves too few words",
+         %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      guest = insert(:player, username: "bruno")
+      cat = insert(:category, name: "Mistura", language: "pt")
+
+      for text <- ~w(alfa bravo charlie straße) do
+        insert(:word, text: text, category: cat)
+      end
+
+      {:ok, game} =
+        Games.create_game(owner.id, %{
+          name: "Sala Alemã",
+          max_players: 4,
+          word_options: %{language: "pt", category_ids: [cat.id]}
+        })
+
+      :ok = Games.join_game(game.id, guest.id)
+
+      assert {:error, {:insufficient_words, %{available: 3, required: 4}}} =
+               Games.start_game(game.id)
+
+      {:ok, lv, html} = conn |> log_in_player(owner) |> live(~p"/rooms/#{game.id}")
+      text = visible_text(html)
+
+      assert text =~ "Aguardando jogadores"
+      assert text =~ "2 de 4 · 4 palavras (2 por jogador)"
+      assert has_element?(lv, "#room-word-availability-alert")
+      assert text =~ "Poucas palavras para começar"
+      assert text =~ "3 palavras válidas"
+      assert text =~ "Todas as categorias"
+
+      assert has_element?(
+               lv,
+               ~s|#broaden-word-selection[href="/rooms/#{game.id}/settings"]|
+             )
+    end
   end
 end

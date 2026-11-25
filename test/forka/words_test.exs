@@ -207,11 +207,13 @@ defmodule Forka.WordsTest do
       insert(:word, text: "coração", category: pt_food)
       insert(:word, text: "coracao", category: pt_drinks)
 
-      # Unplayable entries are ignored
+      # Unplayable entries (punctuation, empty, or unsupported letters) are ignored
       Repo.insert!(%Forka.Words.Word{text: "", category_id: pt_food.id})
       Repo.insert!(%Forka.Words.Word{text: "   ", category_id: pt_food.id})
       Repo.insert!(%Forka.Words.Word{text: "12345", category_id: pt_food.id})
       Repo.insert!(%Forka.Words.Word{text: "---", category_id: pt_drinks.id})
+      insert(:word, text: "straße", category: pt_food)
+      insert(:word, text: "øl", category: pt_drinks)
 
       # Different language is excluded from pt counts
       insert(:word, text: "coffee", category: en_food)
@@ -246,6 +248,8 @@ defmodule Forka.WordsTest do
       insert(:word, text: "lobo", hint: "Uiva", category: pt_b)
       Repo.insert!(%Forka.Words.Word{text: "   ", category_id: pt_a.id})
       Repo.insert!(%Forka.Words.Word{text: "---", category_id: pt_b.id})
+      insert(:word, text: "straße", category: pt_a)
+      insert(:word, text: "øl", category: pt_b)
 
       sampled =
         Words.sample_distinct_playable_words(4,

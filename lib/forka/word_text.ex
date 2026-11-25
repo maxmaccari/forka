@@ -1,8 +1,18 @@
 defmodule Forka.WordText do
   @moduledoc """
   Pure text rules for dictionary words, shared by the `Forka.Words` and `Forka.Games`
-  Contexts: normalization for distinctness (case and accents folded) and playability.
+  Contexts: normalization for distinctness (case and accents folded), supported input
+  letters, and playability.
   """
+
+  @supported_letters Enum.map(?A..?Z, &<<&1>>)
+  @supported_normalized_letters MapSet.new(@supported_letters, &String.downcase/1)
+
+  @doc """
+  Returns the canonical list of uppercase letters supported by the game input.
+  """
+  @spec supported_letters() :: [String.t()]
+  def supported_letters, do: @supported_letters
 
   @doc """
   Normalizes dictionary word text for distinctness comparison by folding accents and
@@ -24,14 +34,18 @@ defmodule Forka.WordText do
   end
 
   @doc """
-  Returns true when `text` contains at least one guessable letter after normalization.
+  Returns true when `text` contains at least one letter after normalization and every
+  normalized letter is supported by `supported_letters/0`.
   """
   @spec playable_text?(term()) :: boolean()
   def playable_text?(text) when is_binary(text) do
-    text
-    |> normalize_text()
-    |> String.replace(~r/[\s\-]+/u, "")
-    |> Kernel.!=("")
+    letters =
+      text
+      |> normalize_text()
+      |> String.replace(~r/[\s\-]+/u, "")
+      |> String.graphemes()
+
+    letters != [] and Enum.all?(letters, &MapSet.member?(@supported_normalized_letters, &1))
   end
 
   def playable_text?(_other), do: false
