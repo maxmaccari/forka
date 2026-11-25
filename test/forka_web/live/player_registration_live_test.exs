@@ -136,5 +136,32 @@ defmodule ForkaWeb.PlayerRegistrationLiveTest do
 
       assert login_html =~ "Entrar na sua conta"
     end
+
+    test "REQ-02: carries safe return_to through registration form action, login link, and confirmation email",
+         %{
+           conn: conn
+         } do
+      return_to = "/rooms/#{Ecto.UUID.generate()}/join"
+      {:ok, lv, _html} = live(conn, ~p"/players/register?return_to=#{return_to}")
+
+      assert has_element?(
+               lv,
+               ~s|a[href="/players/log_in?return_to=#{URI.encode_www_form(return_to)}"]|
+             )
+
+      params = player_registration_params()
+
+      form =
+        form(lv, "#registration_form",
+          player: %{email: params.email, username: params.username, password: params.password}
+        )
+
+      render_submit(form)
+      conn = follow_trigger_action(form, conn)
+      assert redirected_to(conn) == return_to
+
+      assert_receive {:email, %{text_body: body}}
+      assert body =~ "return_to=#{URI.encode_www_form(return_to)}"
+    end
   end
 end

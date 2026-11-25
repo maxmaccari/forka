@@ -18,17 +18,20 @@ defmodule ForkaWeb.PlayerSessionController do
     create(conn, params, "Bem-vindo de volta!")
   end
 
-  defp create(conn, %{"player" => player_params}, info) do
+  defp create(conn, %{"player" => player_params} = params, info) do
     if player = get_player_by_params(player_params) do
       conn
       |> put_flash(:info, info)
-      |> PlayerAuth.log_in_player(player, player_params)
+      |> PlayerAuth.log_in_player(
+        player,
+        Map.put(player_params, "return_to", params["return_to"])
+      )
     else
       # In order to prevent user enumeration attacks, don't disclose whether the email is registered.
       conn
       |> put_flash(:error, "E-mail, usuário ou senha inválidos.")
       |> put_credentials_in_flash(player_params)
-      |> redirect(to: ~p"/players/log_in")
+      |> redirect(to: ~p"/players/log_in?#{PlayerAuth.return_to_query(params["return_to"])}")
     end
   end
 

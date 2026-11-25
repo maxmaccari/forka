@@ -331,4 +331,38 @@ defmodule ForkaWeb.PlayerAuthTest do
              ) == "deve ter no mínimo 12 caracteres"
     end
   end
+
+  describe "safe_return_to/1" do
+    test "REQ-02: accepts relative local paths and rejects open redirects or control characters" do
+      assert PlayerAuth.safe_return_to("/rooms/123/join") == "/rooms/123/join"
+      assert PlayerAuth.safe_return_to("/rooms/123/join?ref=copy") == "/rooms/123/join?ref=copy"
+
+      assert PlayerAuth.safe_return_to(nil) == nil
+      assert PlayerAuth.safe_return_to("") == nil
+      assert PlayerAuth.safe_return_to("//evil.com") == nil
+      assert PlayerAuth.safe_return_to("https://evil.com/rooms/1") == nil
+      assert PlayerAuth.safe_return_to("/\\evil.com") == nil
+      assert PlayerAuth.safe_return_to("/rooms/1\r\nSet-Cookie: a=b") == nil
+      assert PlayerAuth.safe_return_to("rooms/1") == nil
+    end
+
+    test "REQ-02: log_in_player/3 prefers session :player_return_to, falls back to safe params return_to, and ignores unsafe values",
+         %{
+           conn: conn,
+           player: player
+         } do
+      conn_param = PlayerAuth.log_in_player(conn, player, %{"return_to" => "/rooms/abc/join"})
+      assert redirected_to(conn_param) == "/rooms/abc/join"
+
+      conn_unsafe = PlayerAuth.log_in_player(conn, player, %{"return_to" => "https://evil.com"})
+      assert redirected_to(conn_unsafe) == ~p"/"
+
+      conn_session =
+        conn
+        |> put_session(:player_return_to, "/players/settings")
+        |> PlayerAuth.log_in_player(player, %{"return_to" => "/rooms/abc/join"})
+
+      assert redirected_to(conn_session) == "/players/settings"
+    end
+  end
 end

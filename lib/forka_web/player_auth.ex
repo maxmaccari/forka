@@ -29,13 +29,43 @@ defmodule ForkaWeb.PlayerAuth do
   """
   def log_in_player(conn, player, params \\ %{}) do
     token = Players.generate_player_session_token(player)
-    player_return_to = get_session(conn, :player_return_to)
+
+    player_return_to =
+      safe_return_to(get_session(conn, :player_return_to)) ||
+        safe_return_to(params["return_to"])
 
     conn
     |> renew_session()
     |> put_token_in_session(token)
     |> maybe_write_remember_me_cookie(token, params)
     |> redirect(to: player_return_to || signed_in_path(conn))
+  end
+
+  @doc """
+  Validates that a return destination is a safe relative local path.
+  Returns `nil` for external URLs, protocol-relative paths, or control characters.
+  """
+  def safe_return_to(path) when is_binary(path) do
+    trimmed = String.trim(path)
+
+    if String.starts_with?(trimmed, "/") and
+         not String.starts_with?(trimmed, "//") and
+         not String.starts_with?(trimmed, "/\\") and
+         not String.match?(trimmed, ~r/[\x00-\x1f\x7f]/u) do
+      trimmed
+    else
+      nil
+    end
+  end
+
+  def safe_return_to(_other), do: nil
+
+  @doc "Returns a keyword query list for `~p` verified routes when `return_to` is safe."
+  def return_to_query(return_to) do
+    case safe_return_to(return_to) do
+      nil -> []
+      path -> [return_to: path]
+    end
   end
 
   defp maybe_write_remember_me_cookie(conn, token, %{"remember_me" => "true"}) do

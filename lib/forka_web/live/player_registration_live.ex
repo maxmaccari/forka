@@ -13,7 +13,7 @@ defmodule ForkaWeb.PlayerRegistrationLive do
           <:subtitle>
             Já tem uma conta?
             <.link
-              navigate={~p"/players/log_in"}
+              navigate={~p"/players/log_in?#{ForkaWeb.PlayerAuth.return_to_query(@return_to)}"}
               class="font-semibold text-brand-ink hover:underline"
             >
               Entrar
@@ -27,7 +27,9 @@ defmodule ForkaWeb.PlayerRegistrationLive do
           phx-submit="save"
           phx-change="validate"
           phx-trigger-action={@trigger_submit}
-          action={~p"/players/log_in?_action=registered"}
+          action={
+            ~p"/players/log_in?#{[{:_action, "registered"} | ForkaWeb.PlayerAuth.return_to_query(@return_to)]}"
+          }
           method="post"
         >
           <:alert>
@@ -69,12 +71,17 @@ defmodule ForkaWeb.PlayerRegistrationLive do
     """
   end
 
-  def mount(_params, _session, socket) do
+  def mount(params, _session, socket) do
     changeset = Players.change_player_registration(%Player{})
 
     socket =
       socket
-      |> assign(page_title: "Criar conta", trigger_submit: false, check_errors: false)
+      |> assign(
+        page_title: "Criar conta",
+        return_to: ForkaWeb.PlayerAuth.safe_return_to(params["return_to"]),
+        trigger_submit: false,
+        check_errors: false
+      )
       |> assign_form(changeset)
 
     {:ok, socket, temporary_assigns: [form: nil]}
@@ -86,7 +93,9 @@ defmodule ForkaWeb.PlayerRegistrationLive do
         {:ok, _} =
           Players.deliver_player_confirmation_instructions(
             player,
-            &url(~p"/players/confirm/#{&1}")
+            &url(
+              ~p"/players/confirm/#{&1}?#{ForkaWeb.PlayerAuth.return_to_query(socket.assigns.return_to)}"
+            )
           )
 
         changeset = Players.change_player_registration(player)
