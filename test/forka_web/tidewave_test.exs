@@ -1,5 +1,5 @@
 defmodule ForkaWeb.TidewaveTest do
-  use ForkaWeb.ConnCase, async: true
+  use ForkaWeb.ConnCase, async: false
 
   test "AC-01: tidewave is declared as a dev-only dependency and not loaded in test" do
     deps = Mix.Project.config()[:deps]
@@ -39,6 +39,7 @@ defmodule ForkaWeb.TidewaveTest do
     assert policy =~ "frame-ancestors 'self'"
   end
 
+  @tag timeout: 180_000
   test "AC-03 (dev): /tidewave/mcp answers 200 and GET / preserves strict CSP in dev" do
     script = """
     Application.put_env(:forka, :ecto_repos, [])
@@ -74,7 +75,7 @@ defmodule ForkaWeb.TidewaveTest do
 
     {output, status} =
       System.cmd("mix", ["run", "--no-start", "-e", script],
-        env: [{"MIX_ENV", "dev"}],
+        env: [{"MIX_ENV", "dev"}, {"PHX_SERVER", "false"}],
         stderr_to_stdout: true
       )
 

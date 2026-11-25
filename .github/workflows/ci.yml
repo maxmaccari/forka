@@ -59,7 +59,32 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-elixir
+      - id: setup
+        uses: ./.github/actions/setup-elixir
+      # Precompile `:dev` so `ForkaWeb.TidewaveTest` does not cold-compile
+      # dependencies inside ExUnit's test timeout.
+      - name: Restore dev dependency build cache
+        id: dev-build-cache
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: _build/dev
+          key: mix-${{ runner.os }}-${{ runner.arch }}-${{ steps.setup.outputs.otp-version }}-${{ steps.setup.outputs.elixir-version }}-dev-deps-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            mix-${{ runner.os }}-${{ runner.arch }}-${{ steps.setup.outputs.otp-version }}-${{ steps.setup.outputs.elixir-version }}-dev-deps-
+      - name: Compile dev dependencies
+        env:
+          MIX_ENV: dev
+        run: mix deps.compile
+      - name: Save dev dependency build cache
+        if: steps.dev-build-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: _build/dev
+          key: ${{ steps.dev-build-cache.outputs.cache-primary-key }}
+      - name: Compile app in dev for Tidewave test
+        env:
+          MIX_ENV: dev
+        run: mix compile
       # The `test` alias creates and migrates the database first (mix.exs).
       - name: Run tests with the coverage gate
         run: mix coveralls
