@@ -35,16 +35,16 @@ defmodule ForkaWeb.RoomFormLiveTest do
       assert has_element?(lv, "#category-chip-#{pt_animals.id}[aria-pressed='true']")
       assert has_element?(lv, "#category-chip-all[aria-pressed='false']")
 
-      lv |> element(~s|#room-language button[phx-value-value="en"]|) |> render_click()
+      lv |> element(~s|#room-language button[phx-value-option="en"]|) |> render_click()
       assert has_element?(lv, ~s|#room-language button[aria-checked="true"]|, "Inglês")
       assert has_element?(lv, "#category-chip-all[aria-pressed='true']")
       assert has_element?(lv, "#category-chip-#{en_movies.id}")
       refute has_element?(lv, "#category-chip-#{pt_animals.id}")
 
       # Switch back to PT, pick Música, set capacity 6, enter name, and submit
-      lv |> element(~s|#room-language button[phx-value-value="pt"]|) |> render_click()
+      lv |> element(~s|#room-language button[phx-value-option="pt"]|) |> render_click()
       lv |> element("#category-chip-#{pt_music.id}") |> render_click()
-      lv |> element(~s|#room-max-players button[phx-value-value="6"]|) |> render_click()
+      lv |> element(~s|#room-max-players button[phx-value-option="6"]|) |> render_click()
 
       {:ok, lobby_lv, lobby_html} =
         lv
@@ -84,9 +84,9 @@ defmodule ForkaWeb.RoomFormLiveTest do
       assert has_element?(lv, ~s|#room-language button[aria-checked="true"]|, "Português")
       assert has_element?(lv, "#category-chip-#{pt_cat.id}[aria-pressed='true']")
 
-      lv |> element(~s|#room-language button[phx-value-value="en"]|) |> render_click()
+      lv |> element(~s|#room-language button[phx-value-option="en"]|) |> render_click()
       lv |> element("#category-chip-#{en_cat.id}") |> render_click()
-      lv |> element(~s|#room-max-players button[phx-value-value="5"]|) |> render_click()
+      lv |> element(~s|#room-max-players button[phx-value-option="5"]|) |> render_click()
 
       {:ok, lobby_lv, lobby_html} =
         lv
@@ -196,7 +196,7 @@ defmodule ForkaWeb.RoomFormLiveTest do
       conn = log_in_player(conn, player)
       {:ok, lv, _html} = live(conn, ~p"/salas/nova")
 
-      lv |> element(~s|#room-max-players button[phx-value-value="5"]|) |> render_click()
+      lv |> element(~s|#room-max-players button[phx-value-option="5"]|) |> render_click()
       lv |> element("#category-chip-#{pt_cat.id}") |> render_click()
 
       html =
@@ -218,7 +218,7 @@ defmodule ForkaWeb.RoomFormLiveTest do
       conn = log_in_player(conn, player)
       {:ok, lv, _html} = live(conn, ~p"/salas/nova")
 
-      lv |> element(~s|#room-max-players button[phx-value-value="5"]|) |> render_click()
+      lv |> element(~s|#room-max-players button[phx-value-option="5"]|) |> render_click()
       lv |> element("#category-chip-#{keep_cat.id}") |> render_click()
       lv |> element("#category-chip-#{deleted_cat.id}") |> render_click()
 
@@ -262,7 +262,7 @@ defmodule ForkaWeb.RoomFormLiveTest do
       conn = log_in_player(conn, owner)
       {:ok, lv, _html} = live(conn, ~p"/salas/#{game.id}/configuracoes")
 
-      lv |> element(~s|#room-max-players button[phx-value-value="2"]|) |> render_click()
+      lv |> element(~s|#room-max-players button[phx-value-option="2"]|) |> render_click()
 
       html =
         lv
@@ -288,7 +288,7 @@ defmodule ForkaWeb.RoomFormLiveTest do
       lv |> element("#category-chip-#{pt_cat.id}") |> render_click()
       assert has_element?(lv, "#category-chip-#{pt_cat.id}[aria-pressed='true']")
 
-      lv |> element(~s|#room-language button[phx-value-value="pt"]|) |> render_click()
+      lv |> element(~s|#room-language button[phx-value-option="pt"]|) |> render_click()
       assert has_element?(lv, "#category-chip-#{pt_cat.id}[aria-pressed='true']")
     end
 

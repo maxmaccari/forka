@@ -84,7 +84,7 @@ defmodule ForkaWeb.RoomFormLive do
     {:noreply, socket}
   end
 
-  def handle_event("select_max_players", %{"value" => value}, socket) do
+  def handle_event("select_max_players", %{"option" => value}, socket) do
     case Integer.parse(to_string(value)) do
       {max_players, ""} ->
         {:noreply,
@@ -97,7 +97,7 @@ defmodule ForkaWeb.RoomFormLive do
     end
   end
 
-  def handle_event("select_language", %{"value" => lang}, socket) do
+  def handle_event("select_language", %{"option" => lang}, socket) do
     cond do
       lang == socket.assigns.language ->
         {:noreply, socket}
