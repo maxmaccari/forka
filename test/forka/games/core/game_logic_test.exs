@@ -429,6 +429,62 @@ defmodule Forka.Games.Core.GameLogicTest do
       assert [%{type: :game_over}, %{type: :player_died}, %{type: :player_guessed} | _] =
                game.events
     end
+
+    test "R-02: sixth miss locks a non-zero score across words and ends in game_over when last survivor falls",
+         %{
+           game_state: game,
+           player1: survivor,
+           player2: eliminated
+         } do
+      # Player 1 misses once (turn -> Player 2), Player 2 scores 20 pts ('c', 'a') then misses 6 times
+      assert {:ok, game} = GameLogic.guess(game, survivor.id, "z")
+      assert {:ok, game} = GameLogic.guess(game, eliminated.id, "c")
+      assert {:ok, game} = GameLogic.guess(game, eliminated.id, "a")
+      assert game.game_players[1].score == 20
+
+      # Five misses for Player 2 (alternating with Player 1, who stays alive and finishes word 1)
+      assert {:ok, game} = GameLogic.guess(game, eliminated.id, "x")
+      assert {:ok, game} = GameLogic.guess(game, survivor.id, "v")
+      assert {:ok, game} = GameLogic.guess(game, eliminated.id, "b")
+      assert {:ok, game} = GameLogic.guess(game, survivor.id, "n")
+      assert {:ok, game} = GameLogic.guess(game, eliminated.id, "m")
+      assert {:ok, game} = GameLogic.guess(game, survivor.id, "q")
+      assert {:ok, game} = GameLogic.guess(game, eliminated.id, "w")
+      assert {:ok, game} = GameLogic.guess(game, survivor.id, "e")
+      assert {:ok, game} = GameLogic.guess(game, eliminated.id, "r")
+
+      # Player 2 is down to 1 life; Player 1 finishes word 1 ('t') and heals to 6 lives
+      assert %{status: :alive, lives: 1, score: 20} = game.game_players[1]
+      assert {:ok, game} = GameLogic.guess(game, survivor.id, "t")
+      assert game.current_game_word_index == 1
+      assert %{status: :alive, lives: 6, score: 40} = game.game_players[0]
+      assert %{status: :alive, lives: 1, score: 20} = game.game_players[1]
+
+      # Word 2 ("dog"): Player 1 misses once (turn -> Player 2), Player 2 takes 6th miss
+      assert {:ok, game} = GameLogic.guess(game, survivor.id, "z")
+      assert {:ok, game} = GameLogic.guess(game, eliminated.id, "x")
+
+      assert %{status: :dead, lives: 0, score: 20} = game.game_players[1]
+      assert game.status == :playing
+      assert game.current_game_player_index == 0
+      assert GameLogic.guess(game, eliminated.id, "d") == {:error, :not_player_turn}
+
+      # Player 1 takes 5 more misses on word 2 (total 6 since heal) -> everyone out -> :game_over
+      game =
+        Enum.reduce(["v", "b", "n", "m", "q"], game, fn letter, state ->
+          assert {:ok, updated} = GameLogic.guess(state, survivor.id, letter)
+          updated
+        end)
+
+      assert game.status == :game_over
+      assert game.current_game_player_index == nil
+      assert game.current_game_word_index == nil
+      assert %{status: :dead, lives: 0, score: 40} = game.game_players[0]
+      assert %{status: :dead, lives: 0, score: 20} = game.game_players[1]
+
+      assert [%{type: :game_over}, %{type: :player_died}, %{type: :player_guessed} | _] =
+               game.events
+    end
   end
 
   describe "edge cases" do

@@ -533,6 +533,87 @@ defmodule Forka.Games.GameServerTest do
       # Try to guess with the inactive player
       assert {:error, :not_player_turn} = GameServer.guess(game_state.id, inactive_player_id, "a")
     end
+
+    test "R-03: persists sixth-miss elimination with locked score and ends in game_over when all players fall" do
+      category = insert(:category, name: "Deterministic", language: "en")
+      for text <- ["cat", "act", "tac", "at"], do: insert(:word, text: text, category: category)
+
+      owner = insert(:player)
+      player1 = insert(:player)
+      player2 = insert(:player)
+
+      dedicated_game =
+        insert(:game,
+          owner: owner,
+          word_options: WordOptions.new(%{language: "en", category_ids: [category.id]})
+        )
+
+      pid = start_supervised!({GameServer, dedicated_game.id}, id: :sixth_miss_server)
+      Sandbox.allow(Repo, self(), pid)
+
+      assert :ok = GameServer.join_game(dedicated_game.id, player1.id)
+      assert :ok = GameServer.join_game(dedicated_game.id, player2.id)
+      assert :ok = GameServer.start_game(dedicated_game.id)
+
+      initial_summary = GameServer.get_game(dedicated_game.id)
+      first_id = initial_summary.current_player_id
+
+      second_id =
+        initial_summary.players
+        |> Map.values()
+        |> Enum.map(& &1.player.id)
+        |> Enum.find(&(&1 != first_id))
+
+      # First player earns 10 points before alternating 11 misses (6 for first, 5 for second)
+      assert :ok = GameServer.guess(dedicated_game.id, first_id, "a")
+
+      for {pid_turn, letter} <- [
+            {first_id, "z"},
+            {second_id, "q"},
+            {first_id, "w"},
+            {second_id, "j"},
+            {first_id, "k"},
+            {second_id, "v"},
+            {first_id, "p"},
+            {second_id, "u"},
+            {first_id, "m"},
+            {second_id, "n"},
+            {first_id, "r"}
+          ] do
+        assert :ok = GameServer.guess(dedicated_game.id, pid_turn, letter)
+      end
+
+      mid_summary = GameServer.get_game(dedicated_game.id)
+      assert mid_summary.game_status == :playing
+      assert mid_summary.current_player_id == second_id
+
+      first_state =
+        mid_summary.players |> Map.values() |> Enum.find(&(&1.player.id == first_id))
+
+      assert %{status: :dead, lives: 0, score: 10} = first_state
+      assert {:error, :not_player_turn} = GameServer.guess(dedicated_game.id, first_id, "c")
+
+      # Second player takes 6th miss -> all players out -> persisted :game_over with locked scores
+      assert :ok = GameServer.guess(dedicated_game.id, second_id, "s")
+
+      final_summary = GameServer.get_game(dedicated_game.id)
+      assert final_summary.game_status == :game_over
+      assert final_summary.current_player_id == nil
+
+      {:ok, persisted} = Repository.get_game_state(dedicated_game.id)
+      assert persisted.status == :game_over
+      assert persisted.current_game_player_index == nil
+      assert persisted.current_game_word_index == nil
+
+      persisted_first =
+        persisted.game_players |> Map.values() |> Enum.find(&(&1.player.id == first_id))
+
+      persisted_second =
+        persisted.game_players |> Map.values() |> Enum.find(&(&1.player.id == second_id))
+
+      assert %{status: :dead, lives: 0, score: 10} = persisted_first
+      assert %{status: :dead, lives: 0, score: 0} = persisted_second
+    end
   end
 
   describe "transfer_ownership/2" do
