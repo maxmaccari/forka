@@ -1,5 +1,6 @@
 defmodule Forka.Games.CoreTest do
   use ExUnit.Case, async: true
+  use ExUnitProperties
   alias Forka.Games.Core
   alias Forka.Games.RoomSettings
   alias Forka.Games.Schemas.GameWord
@@ -711,6 +712,34 @@ defmodule Forka.Games.CoreTest do
       player1: player1
     } do
       assert {:error, :game_archived} = Core.join_room(%{game | status: :archived}, player1)
+    end
+
+    property "REQ-05: repeat join_room/2 leaves existing participant membership, events, and tick unchanged" do
+      check all(
+              max_players <- StreamData.integer(2..6),
+              roster_size <- StreamData.integer(1..max_players),
+              status <- StreamData.member_of([:lobby, :playing, :finished, :game_over]),
+              pick_index <- StreamData.integer(0..(roster_size - 1))
+            ) do
+        owner = build_games_player("Owner")
+        base = Core.new(owner, "Sala Propriedade", max_players)
+        players = Enum.map(1..roster_size, &build_games_player("P#{&1}"))
+
+        populated =
+          Enum.reduce(players, base, fn player, acc ->
+            {:ok, :joined, next} = Core.join_room(acc, player)
+            next
+          end)
+
+        state = %{populated | status: status, events: []}
+        existing = Enum.at(players, pick_index)
+        expected_outcome = if status == :lobby, do: :already_joined, else: :returning_participant
+
+        assert {:ok, ^expected_outcome, returned} = Core.join_room(state, existing)
+        assert returned.game_players == state.game_players
+        assert returned.tick == state.tick
+        assert returned.events == []
+      end
     end
   end
 end

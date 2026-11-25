@@ -1160,5 +1160,17 @@ defmodule Forka.GamesTest do
       archived = insert(:game, status: :archived)
       assert {:error, :game_archived} = Games.get_room_invite(archived.id)
     end
+
+    test "REQ-01: reads persisted room metadata without starting a cold GameServer" do
+      owner = insert(:player, username: "sofia")
+      cold_game = insert(:game, name: "Sala Fria", status: :lobby, max_players: 4, owner: owner)
+
+      assert :global.whereis_name({Forka.Games.GameServer, cold_game.id}) == :undefined
+
+      assert {:ok, %Forka.Games.RoomInvite{name: "Sala Fria", owner_username: "sofia"}} =
+               Games.get_room_invite(cold_game.id)
+
+      assert :global.whereis_name({Forka.Games.GameServer, cold_game.id}) == :undefined
+    end
   end
 end

@@ -4,8 +4,8 @@ defmodule Forka.Games.RoomInvite do
   """
 
   alias Forka.Games.Core.GameState
-  alias Forka.Games.GameSummary
   alias Forka.Games.RoomListItem
+  alias Forka.Games.Schemas.Game
   alias Forka.Games.Schemas.WordOptions
 
   @type t :: %__MODULE__{
@@ -32,31 +32,30 @@ defmodule Forka.Games.RoomInvite do
     :owner_username
   ]
 
-  @doc "Builds a `%RoomInvite{}` from a `%GameSummary{}` and resolved category names."
-  @spec from_game_summary(Ecto.UUID.t(), GameSummary.t(), [String.t()]) :: t()
-  def from_game_summary(game_id, %GameSummary{} = summary, category_names)
-      when is_list(category_names) do
-    word_options = WordOptions.normalize(summary.word_options)
-    player_count = map_size(summary.players)
+  @doc "Builds a `%RoomInvite{}` from persisted room metadata and resolved category names."
+  @spec from_game(Game.t(), non_neg_integer(), String.t() | nil, [String.t()]) :: t()
+  def from_game(%Game{} = game, player_count, owner_username, category_names)
+      when is_integer(player_count) and player_count >= 0 and is_list(category_names) do
+    word_options = WordOptions.normalize(game.word_options)
 
     availability_state =
       RoomListItem.availability_state(%RoomListItem{
-        id: game_id,
-        status: summary.game_status,
+        id: game.id,
+        status: game.status,
         player_count: player_count,
-        max_players: summary.max_players
+        max_players: game.max_players
       })
 
     %__MODULE__{
-      id: game_id,
-      name: summary.name,
-      status: summary.game_status,
+      id: game.id,
+      name: game.name,
+      status: game.status,
       availability_state: availability_state,
-      max_players: summary.max_players,
+      max_players: game.max_players,
       player_count: player_count,
       language: word_options.language,
       category_names: category_names,
-      owner_username: (summary.owner && summary.owner.username) || ""
+      owner_username: owner_username || ""
     }
   end
 end
