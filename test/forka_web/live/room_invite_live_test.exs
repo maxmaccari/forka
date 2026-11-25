@@ -40,20 +40,28 @@ defmodule ForkaWeb.RoomInviteLiveTest do
              )
     end
 
-    test "REQ-01 & REQ-05: authenticated new player joins and redirects to /rooms/:id", %{
-      conn: conn
-    } do
+    test "REQ-01 & REQ-05: authenticated new player previews without mutating on GET, then joins via protected action",
+         %{
+           conn: conn
+         } do
       owner = insert(:player)
       joiner = insert(:player, username: "carlos")
       {:ok, game} = Games.create_game(owner.id, %{name: "Sala Aberta", max_players: 4})
 
-      assert {:error, {:live_redirect, %{to: redirect_to}}} =
-               conn |> log_in_player(joiner) |> live(~p"/rooms/#{game.id}/join")
+      {:ok, lv, _html} =
+        conn |> log_in_player(joiner) |> live(~p"/rooms/#{game.id}/join")
 
-      assert redirect_to == "/rooms/#{game.id}"
+      assert has_element?(lv, "#room-invite-card")
+      assert has_element?(lv, "#invite-join-button")
 
-      summary = Games.get_game_summary(game.id)
-      assert Enum.any?(summary.players, fn {_pos, gp} -> gp.player.id == joiner.id end)
+      before_summary = Games.get_game_summary(game.id)
+      refute Enum.any?(before_summary.players, fn {_pos, gp} -> gp.player.id == joiner.id end)
+
+      lv |> element("#invite-join-button") |> render_click()
+      assert_redirect(lv, ~p"/rooms/#{game.id}")
+
+      after_summary = Games.get_game_summary(game.id)
+      assert Enum.any?(after_summary.players, fn {_pos, gp} -> gp.player.id == joiner.id end)
     end
 
     test "REQ-05: returning participant in playing match redirects back to /rooms/:id", %{

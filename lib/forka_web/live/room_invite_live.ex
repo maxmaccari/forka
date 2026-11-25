@@ -9,7 +9,7 @@ defmodule ForkaWeb.RoomInviteLive do
   def mount(%{"id" => game_id}, _session, socket) do
     case socket.assigns.current_scope do
       nil ->
-        mount_guest(game_id, socket)
+        mount_preview(game_id, socket)
 
       scope ->
         mount_authenticated(scope, game_id, socket)
@@ -17,57 +17,85 @@ defmodule ForkaWeb.RoomInviteLive do
   end
 
   defp mount_authenticated(scope, game_id, socket) do
-    case Games.join_room(scope, game_id) do
-      {:ok, _status} ->
-        {:ok, push_navigate(socket, to: ~p"/rooms/#{game_id}")}
+    case Games.get_room_invite(game_id) do
+      {:ok, %RoomInvite{} = invite} ->
+        if Games.room_participant?(scope, invite.id) do
+          {:ok, push_navigate(socket, to: ~p"/rooms/#{invite.id}")}
+        else
+          {:ok, assign_invite_state(socket, invite)}
+        end
 
       {:error, reason} ->
-        case Games.get_room_invite(game_id) do
-          {:ok, invite} ->
-            {:ok,
-             socket
-             |> assign(:page_title, invite.name)
-             |> assign(:invite, invite)
-             |> assign(:error_state, reason)}
-
-          {:error, _invite_reason} ->
-            {:ok,
-             socket
-             |> assign(:page_title, "Convite inválido")
-             |> assign(:invite, nil)
-             |> assign(:error_state, reason)}
-        end
+        {:ok, assign_error_state(socket, nil, reason)}
     end
   end
 
-  defp mount_guest(game_id, socket) do
+  defp mount_preview(game_id, socket) do
     case Games.get_room_invite(game_id) do
-      {:ok, %RoomInvite{availability_state: :open} = invite} ->
-        {:ok,
-         socket
-         |> assign(:page_title, invite.name)
-         |> assign(:invite, invite)
-         |> assign(:error_state, nil)}
-
-      {:ok, %RoomInvite{availability_state: availability} = invite} ->
-        {:ok,
-         socket
-         |> assign(:page_title, invite.name)
-         |> assign(:invite, invite)
-         |> assign(:error_state, availability_to_error(availability))}
+      {:ok, %RoomInvite{} = invite} ->
+        {:ok, assign_invite_state(socket, invite)}
 
       {:error, reason} ->
-        {:ok,
-         socket
-         |> assign(:page_title, "Convite inválido")
-         |> assign(:invite, nil)
-         |> assign(:error_state, reason)}
+        {:ok, assign_error_state(socket, nil, reason)}
     end
+  end
+
+  defp assign_invite_state(socket, %RoomInvite{availability_state: :open} = invite) do
+    socket
+    |> assign(:page_title, invite.name)
+    |> assign(:invite, invite)
+    |> assign(:error_state, nil)
+  end
+
+  defp assign_invite_state(socket, %RoomInvite{availability_state: availability} = invite) do
+    assign_error_state(socket, invite, availability_to_error(availability))
+  end
+
+  defp assign_error_state(socket, invite, reason) do
+    socket
+    |> assign(:page_title, (invite && invite.name) || "Convite inválido")
+    |> assign(:invite, invite)
+    |> assign(:error_state, reason)
   end
 
   defp availability_to_error(:full), do: :maximum_players
   defp availability_to_error(:playing), do: :game_already_started
   defp availability_to_error(:ended), do: :game_ended
+
+  @impl true
+  def handle_event(
+        "join_room",
+        _params,
+        %{assigns: %{current_scope: nil, invite: %RoomInvite{id: id}}} = socket
+      ) do
+    return_to = ~p"/rooms/#{id}/join"
+    {:noreply, push_navigate(socket, to: ~p"/players/log_in?return_to=#{return_to}")}
+  end
+
+  def handle_event(
+        "join_room",
+        _params,
+        %{assigns: %{current_scope: scope, invite: %RoomInvite{id: game_id}}} = socket
+      )
+      when not is_nil(scope) do
+    case Games.join_room(scope, game_id) do
+      {:ok, _status} ->
+        {:noreply, push_navigate(socket, to: ~p"/rooms/#{game_id}")}
+
+      {:error, reason} ->
+        invite =
+          case Games.get_room_invite(game_id) do
+            {:ok, fresh_invite} -> fresh_invite
+            {:error, _} -> nil
+          end
+
+        {:noreply, assign_error_state(socket, invite, reason)}
+    end
+  end
+
+  def handle_event("join_room", _params, socket) do
+    {:noreply, socket}
+  end
 
   @impl true
   def render(assigns) do
@@ -134,21 +162,32 @@ defmodule ForkaWeb.RoomInviteLive do
               </.button>
             </div>
           <% else %>
-            <div class="flex flex-wrap items-center gap-3">
-              <.button
-                id="invite-login-link"
-                navigate={~p"/players/log_in?return_to=#{~p"/rooms/#{@invite.id}/join"}"}
-              >
-                Entrar para jogar
-              </.button>
-              <.button
-                id="invite-register-link"
-                navigate={~p"/players/register?return_to=#{~p"/rooms/#{@invite.id}/join"}"}
-                variant="secondary"
-              >
-                Criar conta
-              </.button>
-            </div>
+            <%= if @current_scope do %>
+              <div class="flex flex-wrap items-center gap-3">
+                <.button id="invite-join-button" phx-click="join_room">
+                  Entrar na sala
+                </.button>
+                <.button id="invite-directory-link" navigate={~p"/"} variant="secondary">
+                  Voltar para as salas
+                </.button>
+              </div>
+            <% else %>
+              <div class="flex flex-wrap items-center gap-3">
+                <.button
+                  id="invite-login-link"
+                  navigate={~p"/players/log_in?return_to=#{~p"/rooms/#{@invite.id}/join"}"}
+                >
+                  Entrar para jogar
+                </.button>
+                <.button
+                  id="invite-register-link"
+                  navigate={~p"/players/register?return_to=#{~p"/rooms/#{@invite.id}/join"}"}
+                  variant="secondary"
+                >
+                  Criar conta
+                </.button>
+              </div>
+            <% end %>
           <% end %>
         </div>
       </.card>

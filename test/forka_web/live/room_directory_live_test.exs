@@ -432,6 +432,29 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
       assert redirect_to == ~p"/rooms/#{game.id}/join"
     end
 
+    test "REQ-04: handles malformed join_room payloads without disconnecting", %{conn: conn} do
+      {:ok, guest_lv, _html} = live(conn, ~p"/")
+      _ = render_async(guest_lv)
+
+      assert {:error, {:live_redirect, %{to: "/players/log_in"}}} =
+               render_hook(guest_lv, "join_room", %{})
+
+      {:ok, guest_lv2, _html} = live(conn, ~p"/")
+      _ = render_async(guest_lv2)
+
+      assert {:error, {:live_redirect, %{to: "/players/log_in"}}} =
+               render_hook(guest_lv2, "join_room", %{"id" => %{"nested" => "bad"}})
+
+      player = insert(:player)
+      {:ok, auth_lv, _html} = conn |> log_in_player(player) |> live(~p"/")
+      _ = render_async(auth_lv)
+
+      assert render_hook(auth_lv, "join_room", %{}) =~ "Sala não encontrada."
+
+      assert render_hook(auth_lv, "join_room", %{"id" => %{"nested" => "bad"}}) =~
+               "Sala não encontrada."
+    end
+
     test "AC-11: header connects theme toggle and account links for both guests and signed-in players",
          %{conn: conn} do
       guest_doc = conn |> get(~p"/") |> html_response(200) |> LazyHTML.from_document()
