@@ -290,25 +290,25 @@ html {
 }
 
 @keyframes forka-rope-hit {
-  0%, 100% { transform: translateX(0); }
-  20% { transform: translateX(-4px) rotate(-1deg); }
-  45% { transform: translateX(4px) rotate(1deg); }
-  70% { transform: translateX(-2px); }
+  0%, 100% { transform: none; }
+  25% { transform: translateX(-2px); }
+  50% { transform: translateX(2px); }
+  75% { transform: translateX(-1px); }
 }
 
 @keyframes forka-rope-fray {
-  0% { opacity: 0; stroke-dashoffset: 10; }
-  100% { opacity: 1; stroke-dashoffset: 0; }
+  0% { opacity: 0; }
+  100% { opacity: 1; }
 }
 
 @keyframes forka-rope-snap-l {
-  0% { transform: translate(0, 0) rotate(0); }
-  100% { transform: translate(-3px, 1px) rotate(-2deg); }
+  0% { transform: translateX(5px) rotate(0); }
+  100% { transform: translate(-2px, 1.5px) rotate(-7deg); }
 }
 
 @keyframes forka-rope-snap-r {
-  0% { transform: translate(0, 0) rotate(0); }
-  100% { transform: translate(3px, 1px) rotate(2deg); }
+  0% { transform: translateX(-5px) rotate(0); }
+  100% { transform: translate(2px, 1.5px) rotate(7deg); }
 }
 
 @keyframes forka-dots {
@@ -325,24 +325,23 @@ html {
 }
 
 .forka-rope-hit {
-  animation: forka-rope-hit 0.35s ease;
+  animation: forka-rope-hit 0.35s ease-in-out;
 }
 
 .forka-rope-fray {
-  stroke-dasharray: 10;
-  animation: forka-rope-fray 0.3s ease both;
+  animation: forka-rope-fray 0.4s ease-out both;
 }
 
 .forka-rope-snap-l {
   transform-box: fill-box;
-  transform-origin: left center;
-  animation: forka-rope-snap-l 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  transform-origin: 0% 50%;
+  animation: forka-rope-snap-l 0.55s cubic-bezier(0.3, 1.6, 0.5, 1) both;
 }
 
 .forka-rope-snap-r {
   transform-box: fill-box;
-  transform-origin: right center;
-  animation: forka-rope-snap-r 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  transform-origin: 100% 50%;
+  animation: forka-rope-snap-r 0.55s cubic-bezier(0.3, 1.6, 0.5, 1) both;
 }
 
 .forka-dots > i {
@@ -368,11 +367,11 @@ html {
 
   .forka-rope-snap-l {
     animation: none !important;
-    transform: translate(-3px, 1px) rotate(-2deg);
+    transform: translate(-2px, 1.5px) rotate(-7deg);
   }
 
   .forka-rope-snap-r {
     animation: none !important;
-    transform: translate(3px, 1px) rotate(2deg);
+    transform: translate(2px, 1.5px) rotate(7deg);
   }
 }
