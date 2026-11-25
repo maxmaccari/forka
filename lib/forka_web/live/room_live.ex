@@ -8,22 +8,32 @@ defmodule ForkaWeb.RoomLive do
   def mount(%{"id" => game_id}, _session, socket) do
     scope = socket.assigns.current_scope
 
-    case Games.get_room_lobby(scope, game_id) do
-      {:ok, lobby} ->
-        if connected?(socket) do
-          :ok = Games.subscribe_to_room_lobby(scope, game_id)
-        end
-
+    with :ok <- maybe_subscribe_room_lobby(socket, scope, game_id),
+         {:ok, lobby} <- Games.get_room_lobby(scope, game_id) do
+      {:ok,
+       socket
+       |> assign(:page_title, lobby.name)
+       |> assign(:lobby, lobby)}
+    else
+      {:error, :game_archived} ->
         {:ok,
          socket
-         |> assign(:page_title, lobby.name)
-         |> assign(:lobby, lobby)}
+         |> put_flash(:error, "Esta sala foi arquivada.")
+         |> push_navigate(to: ~p"/")}
 
       {:error, _reason} ->
         {:ok,
          socket
          |> put_flash(:error, "Sala não encontrada.")
          |> push_navigate(to: ~p"/")}
+    end
+  end
+
+  defp maybe_subscribe_room_lobby(socket, scope, game_id) do
+    if connected?(socket) do
+      Games.subscribe_to_room_lobby(scope, game_id)
+    else
+      :ok
     end
   end
 

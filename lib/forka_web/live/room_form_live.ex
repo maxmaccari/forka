@@ -60,13 +60,28 @@ defmodule ForkaWeb.RoomFormLive do
          socket
          |> put_flash(:error, "As configurações só podem ser alteradas antes da partida começar.")
          |> push_navigate(to: ~p"/salas/#{game_id}")}
+
+      {:error, :game_archived} ->
+        {:ok,
+         socket
+         |> put_flash(:error, "Esta sala foi arquivada.")
+         |> push_navigate(to: ~p"/")}
     end
   end
 
   @impl true
-  def handle_event("validate", %{"room_settings" => params}, socket) do
-    name = Map.get(params, "name", socket.assigns.name)
+  def handle_event("validate", %{"room_settings" => params}, socket) when is_map(params) do
+    name =
+      case Map.get(params, "name") do
+        val when is_binary(val) -> val
+        _ -> socket.assigns.name
+      end
+
     {:noreply, assign_form(socket, name, :validate)}
+  end
+
+  def handle_event("validate", _params, socket) do
+    {:noreply, socket}
   end
 
   def handle_event("select_max_players", %{"value" => value}, socket) do
@@ -83,21 +98,26 @@ defmodule ForkaWeb.RoomFormLive do
   end
 
   def handle_event("select_language", %{"value" => lang}, socket) do
-    if lang in Games.supported_languages() do
-      categories = Words.list_categories(language: lang)
+    cond do
+      lang == socket.assigns.language ->
+        {:noreply, socket}
 
-      {:noreply,
-       socket
-       |> assign(:language, lang)
-       |> assign(:categories, categories)
-       |> assign(:selected_category_ids, [])
-       |> assign_form(socket.assigns.name, :validate)}
-    else
-      {:noreply, socket}
+      lang in Games.supported_languages() ->
+        categories = Words.list_categories(language: lang)
+
+        {:noreply,
+         socket
+         |> assign(:language, lang)
+         |> assign(:categories, categories)
+         |> assign(:selected_category_ids, [])
+         |> assign_form(socket.assigns.name, :validate)}
+
+      true ->
+        {:noreply, socket}
     end
   end
 
-  def handle_event("toggle_category", %{"id" => id}, socket) do
+  def handle_event("toggle_category", %{"id" => id}, socket) when is_binary(id) do
     selected = socket.assigns.selected_category_ids
 
     updated =
@@ -113,6 +133,10 @@ defmodule ForkaWeb.RoomFormLive do
      |> assign_form(socket.assigns.name, :validate)}
   end
 
+  def handle_event("toggle_category", _params, socket) do
+    {:noreply, socket}
+  end
+
   def handle_event("clear_categories", _params, socket) do
     {:noreply,
      socket
@@ -120,7 +144,8 @@ defmodule ForkaWeb.RoomFormLive do
      |> assign_form(socket.assigns.name, :validate)}
   end
 
-  def handle_event("save", %{"room_settings" => params}, %{assigns: %{mode: :new}} = socket) do
+  def handle_event("save", %{"room_settings" => params}, %{assigns: %{mode: :new}} = socket)
+      when is_map(params) do
     submit_params = normalize_submit_params(params, socket.assigns)
 
     case Games.create_room(socket.assigns.current_scope, submit_params) do
@@ -132,7 +157,8 @@ defmodule ForkaWeb.RoomFormLive do
     end
   end
 
-  def handle_event("save", %{"room_settings" => params}, %{assigns: %{mode: :edit}} = socket) do
+  def handle_event("save", %{"room_settings" => params}, %{assigns: %{mode: :edit}} = socket)
+      when is_map(params) do
     submit_params = normalize_submit_params(params, socket.assigns)
 
     case Games.update_room_settings(
@@ -155,6 +181,12 @@ defmodule ForkaWeb.RoomFormLive do
          |> put_flash(:error, "As configurações só podem ser alteradas antes da partida começar.")
          |> push_navigate(to: ~p"/salas/#{socket.assigns.game_id}")}
 
+      {:error, :game_archived} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Esta sala foi arquivada.")
+         |> push_navigate(to: ~p"/")}
+
       {:error, :not_found} ->
         {:noreply,
          socket
@@ -164,6 +196,10 @@ defmodule ForkaWeb.RoomFormLive do
       {:error, %Ecto.Changeset{} = cs} ->
         handle_save_error(socket, params, cs)
     end
+  end
+
+  def handle_event("save", _params, socket) do
+    {:noreply, assign_form(socket, socket.assigns.name, :validate)}
   end
 
   @impl true
@@ -310,30 +346,44 @@ defmodule ForkaWeb.RoomFormLive do
   end
 
   defp normalize_submit_params(params, assigns) do
-    wo_params = Map.get(params, "word_options", %{})
+    word_options =
+      case Map.fetch(params, "word_options") do
+        {:ok, %{} = wo_params} ->
+          %{
+            "language" => Map.get(wo_params, "language", assigns.language),
+            "category_ids" => Map.get(wo_params, "category_ids", [])
+          }
+
+        {:ok, invalid_wo} ->
+          invalid_wo
+
+        :error ->
+          %{
+            "language" => assigns.language,
+            "category_ids" => []
+          }
+      end
 
     %{
       "name" => Map.get(params, "name", assigns.name),
       "max_players" => Map.get(params, "max_players", assigns.max_players),
-      "word_options" => %{
-        "language" => Map.get(wo_params, "language", assigns.language),
-        "category_ids" => Map.get(wo_params, "category_ids", [])
-      }
+      "word_options" => word_options
     }
   end
 
   defp handle_save_error(socket, params, changeset) do
-    name = Map.get(params, "name", socket.assigns.name)
+    name = extract_string(Map.get(params, "name"), socket.assigns.name)
     max_players = parse_int(Map.get(params, "max_players"), socket.assigns.max_players)
-    wo_params = Map.get(params, "word_options", %{})
-    language = Map.get(wo_params, "language", socket.assigns.language)
+    wo_params = extract_map(Map.get(params, "word_options"))
+    language = extract_supported_language(Map.get(wo_params, "language"), socket.assigns.language)
     categories = Words.list_categories(language: language)
-    valid_cat_ids = MapSet.new(categories, & &1.id)
 
     selected_ids =
-      wo_params
-      |> Map.get("category_ids", socket.assigns.selected_category_ids)
-      |> Enum.filter(&MapSet.member?(valid_cat_ids, &1))
+      filter_selected_categories(
+        Map.get(wo_params, "category_ids"),
+        categories,
+        socket.assigns.selected_category_ids
+      )
 
     {:noreply,
      socket
@@ -344,6 +394,29 @@ defmodule ForkaWeb.RoomFormLive do
      |> assign(:selected_category_ids, selected_ids)
      |> assign(:form, to_form(%{changeset | action: :validate}, as: :room_settings))}
   end
+
+  defp extract_string(val, _default) when is_binary(val), do: val
+  defp extract_string(_val, default), do: default
+
+  defp extract_map(%{} = val), do: val
+  defp extract_map(_val), do: %{}
+
+  defp extract_supported_language(lang, default) when is_binary(lang) do
+    normalized = lang |> String.trim() |> String.downcase()
+    if normalized in Games.supported_languages(), do: normalized, else: default
+  end
+
+  defp extract_supported_language(_lang, default), do: default
+
+  defp filter_selected_categories(ids, categories, _default) when is_list(ids) do
+    valid_cat_ids = MapSet.new(categories, & &1.id)
+
+    ids
+    |> Enum.filter(&(is_binary(&1) and MapSet.member?(valid_cat_ids, &1)))
+    |> Enum.uniq()
+  end
+
+  defp filter_selected_categories(_ids, _categories, default), do: default
 
   defp parse_int(val, _default) when is_integer(val), do: val
 

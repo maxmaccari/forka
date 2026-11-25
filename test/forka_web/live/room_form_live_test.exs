@@ -4,6 +4,7 @@ defmodule ForkaWeb.RoomFormLiveTest do
   import Phoenix.LiveViewTest
 
   alias Forka.Games
+  alias Forka.Games.GameServer
 
   describe "GET /salas/nova (:new)" do
     test "AC-06: redirects unauthenticated visitor to login", %{conn: conn} do
@@ -156,6 +157,33 @@ defmodule ForkaWeb.RoomFormLiveTest do
       assert lobby_lv.module == ForkaWeb.RoomLive
       assert lobby_html =~ "Apenas quem criou a sala pode editar as configurações."
     end
+
+    test "AC-08: redirects to directory when reopening or submitting edit on an archived room", %{
+      conn: conn
+    } do
+      owner = insert(:player)
+      {:ok, game} = Games.create_game(owner.id, %{name: "Sala Arquivada", max_players: 4})
+
+      conn = log_in_player(conn, owner)
+      {:ok, lv, _html} = live(conn, ~p"/salas/#{game.id}/configuracoes")
+
+      pid = GameServer.whereis(game.id)
+      ref = Process.monitor(pid)
+      :ok = Games.archive_game(game.id)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+
+      {:ok, _dir_lv, dir_html} =
+        lv
+        |> form("#room-form", room_settings: %{name: "Após arquivar"})
+        |> render_submit()
+        |> follow_redirect(conn, ~p"/")
+
+      assert dir_html =~ "Esta sala foi arquivada."
+
+      assert {:error,
+              {:live_redirect, %{to: "/", flash: %{"error" => "Esta sala foi arquivada."}}}} =
+               live(conn, ~p"/salas/#{game.id}/configuracoes")
+    end
   end
 
   describe "validation errors, stale selections, and capacity below occupancy" do
@@ -246,6 +274,76 @@ defmodule ForkaWeb.RoomFormLiveTest do
       assert has_element?(lv, ~s|#room-name[value="Novo Nome"]|)
       assert has_element?(lv, ~s|#room-max-players button[aria-checked="true"]|, "2")
       assert Games.get_game_summary(game.id).name == "Sala Cheia"
+    end
+
+    test "AC-06: re-selecting the already active language preserves selected categories", %{
+      conn: conn
+    } do
+      player = insert(:player)
+      pt_cat = insert(:category, name: "Animais", language: "pt")
+
+      conn = log_in_player(conn, player)
+      {:ok, lv, _html} = live(conn, ~p"/salas/nova")
+
+      lv |> element("#category-chip-#{pt_cat.id}") |> render_click()
+      assert has_element?(lv, "#category-chip-#{pt_cat.id}[aria-pressed='true']")
+
+      lv |> element(~s|#room-language button[phx-value-value="pt"]|) |> render_click()
+      assert has_element?(lv, "#category-chip-#{pt_cat.id}[aria-pressed='true']")
+    end
+
+    test "EDGE-02: handles malformed submit and validate payloads without crashing", %{
+      conn: conn
+    } do
+      owner = insert(:player)
+      pt_cat = insert(:category, name: "Animais", language: "pt")
+
+      {:ok, game} =
+        Games.create_game(owner.id, %{
+          name: "Sala Robusta",
+          max_players: 4,
+          word_options: %{language: "pt", category_ids: [pt_cat.id]}
+        })
+
+      conn = log_in_player(conn, owner)
+      {:ok, lv, _html} = live(conn, ~p"/salas/#{game.id}/configuracoes")
+
+      render_change(lv, "validate", %{"room_settings" => %{"name" => ["not", "a", "binary"]}})
+      assert has_element?(lv, ~s|#room-name[value="Sala Robusta"]|)
+
+      render_submit(lv, "save", %{
+        "room_settings" => %{
+          "name" => "Sala Robusta",
+          "max_players" => "4",
+          "word_options" => "not-a-map"
+        }
+      })
+
+      assert has_element?(lv, "#room-form")
+      assert has_element?(lv, "#category-chip-#{pt_cat.id}[aria-pressed='true']")
+
+      render_submit(lv, "save", %{
+        "room_settings" => %{
+          "name" => "Sala Robusta",
+          "max_players" => "4",
+          "word_options" => nil
+        }
+      })
+
+      assert has_element?(lv, "#room-form")
+      assert has_element?(lv, "#category-chip-#{pt_cat.id}[aria-pressed='true']")
+
+      render_submit(lv, "save", %{
+        "room_settings" => %{
+          "name" => "Sala Robusta",
+          "max_players" => "4",
+          "word_options" => %{"language" => "es", "category_ids" => "scalar"}
+        }
+      })
+
+      assert has_element?(lv, "#room-language-error")
+      assert has_element?(lv, ~s|#room-language button[aria-checked="true"]|, "Português")
+      assert has_element?(lv, "#category-chip-#{pt_cat.id}[aria-pressed='true']")
     end
   end
 end

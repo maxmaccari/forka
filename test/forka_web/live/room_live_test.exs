@@ -4,6 +4,7 @@ defmodule ForkaWeb.RoomLiveTest do
   import Phoenix.LiveViewTest
 
   alias Forka.Games
+  alias Forka.Games.GameServer
 
   describe "GET /salas/:id" do
     test "AC-05: redirects unauthenticated visitor to login", %{conn: conn} do
@@ -90,6 +91,46 @@ defmodule ForkaWeb.RoomLiveTest do
 
       assert {:error, {:live_redirect, %{to: "/", flash: %{"error" => "Sala não encontrada."}}}} =
                conn |> log_in_player(player) |> live(~p"/salas/not-a-uuid")
+    end
+
+    test "AC-05: redirects to directory with flash when reopening an archived room", %{
+      conn: conn
+    } do
+      owner = insert(:player)
+      {:ok, game} = Games.create_game(owner.id, %{name: "Sala Arquivada", max_players: 4})
+
+      pid = GameServer.whereis(game.id)
+      ref = Process.monitor(pid)
+      :ok = Games.archive_game(game.id)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+
+      assert {:error,
+              {:live_redirect, %{to: "/", flash: %{"error" => "Esta sala foi arquivada."}}}} =
+               conn |> log_in_player(owner) |> live(~p"/salas/#{game.id}")
+    end
+
+    test "AC-05: receives live room lobby updates after mounting", %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      viewer = insert(:player, username: "bruno")
+      owner_scope = Forka.Scope.for_player(owner)
+      cat = insert(:category, name: "Cinema", language: "pt")
+
+      {:ok, game} = Games.create_game(owner.id, %{name: "Sala Inicial", max_players: 4})
+
+      {:ok, lv, _html} = conn |> log_in_player(viewer) |> live(~p"/salas/#{game.id}")
+
+      :ok =
+        Games.update_room_settings(owner_scope, game.id, %{
+          name: "Sala Renovada",
+          max_players: 6,
+          word_options: %{language: "pt", category_ids: [cat.id]}
+        })
+
+      text = lv |> render() |> visible_text()
+      assert text =~ "Sala Renovada"
+      assert text =~ "1/6 jogadores"
+      assert text =~ "Português"
+      assert text =~ "Cinema"
     end
   end
 end
