@@ -55,7 +55,10 @@ defmodule Forka.Games.Schemas.GamePlayer do
   def changeset(game_player, attrs) do
     game_player
     |> cast(attrs, [:player_id, :status, :lives, :score])
-    |> validate_required([:player_id])
+    |> validate_required([:player_id, :status, :lives, :score])
+    |> validate_number(:lives, greater_than_or_equal_to: 0, less_than_or_equal_to: @initial_lives)
+    |> validate_number(:score, greater_than_or_equal_to: 0)
+    |> validate_rope_state()
     |> foreign_key_constraint(:player_id)
   end
 
@@ -70,7 +73,7 @@ defmodule Forka.Games.Schemas.GamePlayer do
 
   @doc false
   def decrement_lives(%__MODULE__{status: :alive, lives: lives} = game_player)
-      when lives in [0, 1],
+      when lives <= 1,
       do: %{game_player | lives: 0, status: :dead}
 
   @doc false
@@ -104,4 +107,20 @@ defmodule Forka.Games.Schemas.GamePlayer do
   @spec alive?(t()) :: boolean()
   def alive?(%__MODULE__{status: :alive}), do: true
   def alive?(%__MODULE__{}), do: false
+
+  defp validate_rope_state(changeset) do
+    status = get_field(changeset, :status)
+    lives = get_field(changeset, :lives)
+
+    cond do
+      status == :alive and lives == 0 ->
+        add_error(changeset, :lives, "must be greater than 0 while player is alive")
+
+      status == :dead and is_integer(lives) and lives > 0 ->
+        add_error(changeset, :lives, "must be 0 when player is eliminated")
+
+      true ->
+        changeset
+    end
+  end
 end
