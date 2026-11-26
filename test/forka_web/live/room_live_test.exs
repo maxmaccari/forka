@@ -600,5 +600,80 @@ defmodule ForkaWeb.RoomLiveTest do
       assert Enum.map(lobby.players, & &1.id) == [owner.id]
       assert lobby.owner_id == owner.id
     end
+
+    test "REQ-04: stale guest unconfirmed leave after owner leaves prompts archival confirmation instead of archiving room",
+         %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      guest = insert(:player, username: "bruno")
+      owner_scope = Forka.Scope.for_player(owner)
+      guest_scope = Forka.Scope.for_player(guest)
+
+      {:ok, game} = Games.create_game(owner.id, %{name: "Sala Corrida", max_players: 4})
+      {:ok, :joined} = Games.join_room(guest_scope, game.id)
+
+      guest_conn = conn |> log_in_player(guest)
+      {:ok, guest_lv, _html} = live(guest_conn, ~p"/rooms/#{game.id}")
+
+      refute has_element?(guest_lv, "#edit-room-settings")
+      assert has_element?(guest_lv, "#leave-room-button")
+
+      game_pid = GameServer.whereis(game.id)
+      task_supervisor = start_supervised!(Task.Supervisor)
+      owner_id = owner.id
+      guest_id = guest.id
+
+      :ok = :sys.suspend(game_pid)
+
+      {owner_task, guest_task} =
+        try do
+          :erlang.trace(game_pid, true, [:receive])
+
+          owner_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.leave_game(owner_scope, game.id)
+            end)
+
+          assert_receive {:trace, ^game_pid, :receive, {:"$gen_call", _, msg}}, 1_000
+          assert elem(msg, 0) == :leave_game and elem(msg, 1) == owner_id
+
+          guest_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              guest_lv |> element("#leave-room-button") |> render_click()
+            end)
+
+          assert_receive {:trace, ^game_pid, :receive, {:"$gen_call", _, guest_msg}}, 1_000
+          assert elem(guest_msg, 0) == :leave_game and elem(guest_msg, 1) == guest_id
+
+          {owner_task, guest_task}
+        after
+          :erlang.trace(game_pid, false, [:receive])
+          :sys.resume(game_pid)
+        end
+
+      assert :ok = Task.await(owner_task, 5_000)
+      leave_html = Task.await(guest_task, 5_000)
+
+      assert is_binary(leave_html)
+      assert has_element?(guest_lv, "#leave-room-confirm", "Você é a última pessoa na sala.")
+      assert has_element?(guest_lv, "#confirm-leave-room", "Sair e arquivar a sala")
+      assert GameServer.whereis(game.id) == game_pid
+
+      assert {:ok, lobby} = Games.get_room_lobby(guest_scope, game.id)
+      assert lobby.status == :lobby
+      assert lobby.owner_id == guest.id
+      assert Enum.map(lobby.players, & &1.id) == [guest.id]
+
+      ref = Process.monitor(game_pid)
+
+      {:ok, _dir_lv, dir_html} =
+        guest_lv
+        |> element("#confirm-leave-room")
+        |> render_click()
+        |> follow_redirect(guest_conn, ~p"/")
+
+      assert dir_html =~ "Você saiu da sala."
+      assert_receive {:DOWN, ^ref, :process, ^game_pid, :normal}
+      assert {:error, :game_archived} = Games.get_room_lobby(guest_scope, game.id)
+    end
   end
 end

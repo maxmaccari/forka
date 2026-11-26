@@ -75,16 +75,11 @@ defmodule ForkaWeb.RoomLive do
   end
 
   @impl true
-  def handle_event(
-        "leave_room",
-        _params,
-        %{assigns: %{lobby: %RoomLobby{is_owner?: true}}} = socket
-      ),
-      do: {:noreply, assign(socket, :confirm_leave?, true)}
+  def handle_event("leave_room", _params, socket),
+    do: leave_room(socket, confirmed?: false)
 
-  def handle_event("leave_room", _params, socket), do: leave_room(socket)
-
-  def handle_event("confirm_leave_room", _params, socket), do: leave_room(socket)
+  def handle_event("confirm_leave_room", _params, socket),
+    do: leave_room(socket, confirmed?: true)
 
   def handle_event("cancel_leave_room", _params, socket),
     do: {:noreply, assign(socket, :confirm_leave?, false)}
@@ -97,15 +92,21 @@ defmodule ForkaWeb.RoomLive do
     end
   end
 
-  defp leave_room(socket) do
+  defp leave_room(socket, opts) do
     game_id = socket.assigns.lobby.id
 
-    case Games.leave_game(socket.assigns.current_scope, game_id) do
+    case Games.leave_game(socket.assigns.current_scope, game_id, opts) do
       :ok ->
         {:noreply,
          socket
          |> put_flash(:info, "Você saiu da sala.")
          |> push_navigate(to: ~p"/")}
+
+      {:error, {:confirmation_required, %RoomLobby{} = current_lobby}} ->
+        {:noreply,
+         socket
+         |> apply_lobby_update(current_lobby)
+         |> assign(:confirm_leave?, true)}
 
       {:error, :game_already_started} ->
         {:noreply,
@@ -126,8 +127,6 @@ defmodule ForkaWeb.RoomLive do
 
   @impl true
   def handle_info({:room_lobby_updated, payload}, socket) do
-    previous_lobby = socket.assigns.lobby
-
     case Games.room_lobby_from_payload(socket.assigns.current_scope, payload) do
       {:ok, %RoomLobby{status: :archived}} ->
         {:noreply,
@@ -143,18 +142,24 @@ defmodule ForkaWeb.RoomLive do
         {:noreply, push_navigate(socket, to: ~p"/")}
 
       {:ok, %RoomLobby{} = lobby} ->
-        notice =
-          ownership_change_notice(previous_lobby, lobby) || socket.assigns.lobby_notice
-
         {:noreply,
          socket
-         |> assign(:page_title, lobby.name)
-         |> assign(:lobby, lobby)
-         |> assign(:lobby_notice, notice)}
+         |> apply_lobby_update(lobby)
+         |> assign(:confirm_leave?, socket.assigns.confirm_leave? and lobby.is_owner?)}
 
       {:error, _reason} ->
         {:noreply, socket}
     end
+  end
+
+  defp apply_lobby_update(socket, %RoomLobby{} = lobby) do
+    notice =
+      ownership_change_notice(socket.assigns.lobby, lobby) || socket.assigns.lobby_notice
+
+    socket
+    |> assign(:page_title, lobby.name)
+    |> assign(:lobby, lobby)
+    |> assign(:lobby_notice, notice)
   end
 
   defp ownership_change_notice(

@@ -448,19 +448,30 @@ defmodule Forka.Games do
   end
 
   @doc "Removes the scoped authenticated participant from a lobby room."
-  @spec leave_game(Scope.t() | nil, Ecto.UUID.t()) ::
+  @spec leave_game(Scope.t() | nil, Ecto.UUID.t(), keyword()) ::
           :ok
           | {:error,
              :unauthorized
              | :not_found
              | :game_archived
              | :not_a_participant
-             | :game_already_started}
-  def leave_game(scope, game_id) do
+             | :game_already_started
+             | {:confirmation_required, RoomLobby.t()}}
+  def leave_game(scope, game_id, opts \\ [])
+
+  def leave_game(scope, game_id, opts) when is_list(opts) do
     with_scoped_game(scope, game_id, fn valid_id, actor_id ->
-      GameServer.leave_game(valid_id, actor_id)
+      case GameServer.leave_game(valid_id, actor_id, opts) do
+        {:error, {:confirmation_required, payload}} ->
+          {:error, {:confirmation_required, RoomLobby.from_payload(scope, payload)}}
+
+        other ->
+          other
+      end
     end)
   end
+
+  def leave_game(_scope, _game_id, _opts), do: {:error, :unauthorized}
 
   @doc "Starts a lobby game for the scoped authenticated owner."
   @spec start_game(Scope.t() | nil, Ecto.UUID.t()) ::

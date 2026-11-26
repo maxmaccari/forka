@@ -260,6 +260,33 @@ defmodule Forka.Games.CoreTest do
       game_archived = %{game | status: :archived}
       assert {:error, :game_archived} = Core.leave_game(game_archived, player.id)
     end
+
+    test "REQ-04: unconfirmed leave_game/3 rejects current owner in lobby without mutating state while allowing non-owner leave",
+         %{owner: owner, game: game, player: player} do
+      {:ok, game_with_two} = Core.join_game(game, owner)
+
+      assert {:error, :confirmation_required} =
+               Core.leave_game(game_with_two, owner.id, confirmed?: false)
+
+      assert {:ok, updated_game} =
+               Core.leave_game(game_with_two, player.id, confirmed?: false)
+
+      assert map_size(updated_game.game_players) == 1
+      assert updated_game.owner.id == owner.id
+
+      assert {:error, :confirmation_required} =
+               Core.leave_game(updated_game, owner.id, confirmed?: false)
+
+      assert {:ok, archived_game} =
+               Core.leave_game(updated_game, owner.id, confirmed?: true)
+
+      assert archived_game.status == :archived
+
+      playing_game = %{game_with_two | status: :playing}
+
+      assert {:error, :game_already_started} =
+               Core.leave_game(playing_game, owner.id, confirmed?: false)
+    end
   end
 
   describe "set_words/2" do

@@ -685,6 +685,34 @@ defmodule Forka.GamesTest do
       assert archived_id == game.id
       assert {:error, :game_archived} = Games.get_room_lobby(p2_scope, game.id)
     end
+
+    test "REQ-04: unconfirmed leave_game/3 checks ownership against current GameServer state via Scope API" do
+      owner = insert(:player, username: "lia")
+      guest = insert(:player, username: "bruno")
+      owner_scope = Scope.for_player(owner)
+      guest_scope = Scope.for_player(guest)
+
+      {:ok, game} = Games.create_room(owner_scope, %{name: "Sala Confirm", max_players: 4})
+      assert {:ok, :joined} = Games.join_room(guest_scope, game.id)
+
+      assert {:error, {:confirmation_required, %Forka.Games.RoomLobby{} = lobby}} =
+               Games.leave_game(owner_scope, game.id, confirmed?: false)
+
+      assert lobby.is_owner? == true
+      assert lobby.owner_id == owner.id
+      assert lobby.player_count == 2
+
+      assert :ok = Games.leave_game(guest_scope, game.id, confirmed?: false)
+
+      assert {:error, {:confirmation_required, %Forka.Games.RoomLobby{} = solo_lobby}} =
+               Games.leave_game(owner_scope, game.id, confirmed?: false)
+
+      assert solo_lobby.player_count == 1
+      assert GameServer.whereis(game.id) != nil
+
+      assert :ok = Games.leave_game(owner_scope, game.id, confirmed?: true)
+      assert {:error, :game_archived} = Games.get_room_lobby(owner_scope, game.id)
+    end
   end
 
   describe "start_game/2" do

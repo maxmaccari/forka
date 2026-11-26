@@ -224,6 +224,29 @@ defmodule Forka.Games.GameServerTest do
       assert persisted.status == :archived
       assert persisted.game_players == %{}
     end
+
+    test "REQ-04: unconfirmed leave_game/3 by current owner returns confirmation_required payload without mutating or stopping server",
+         %{game_state: game_state, pid: pid} do
+      owner = game_state.owner
+      guest = insert(:player, username: "bruno")
+
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, owner.id)
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, guest.id)
+      :ok = GameServer.subscribe_lobby(game_state.id)
+      flush_messages()
+
+      assert {:error, {:confirmation_required, payload}} =
+               GameServer.leave_game(game_state.id, owner.id, confirmed?: false)
+
+      assert payload.owner_id == owner.id
+      assert payload.player_count == 2
+      assert payload.status == :lobby
+      refute_receive {:game_updated, _}
+      refute_receive {:room_lobby_updated, _}
+      assert Process.alive?(pid)
+
+      assert :ok = GameServer.leave_game(game_state.id, guest.id, confirmed?: false)
+    end
   end
 
   describe "update_settings/3" do
