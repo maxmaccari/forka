@@ -225,7 +225,7 @@ defmodule Forka.Games.GameServerTest do
       assert persisted.game_players == %{}
     end
 
-    test "REQ-04: unconfirmed leave_game/3 by current owner returns confirmation_required payload without mutating or stopping server",
+    test "REQ-04: leave_game/3 checks confirmed consequence and returns confirmation_required payload on mismatch without mutating or stopping server",
          %{game_state: game_state, pid: pid} do
       owner = game_state.owner
       guest = insert(:player, username: "bruno")
@@ -236,16 +236,27 @@ defmodule Forka.Games.GameServerTest do
       flush_messages()
 
       assert {:error, {:confirmation_required, payload}} =
-               GameServer.leave_game(game_state.id, owner.id, confirmed?: false)
+               GameServer.leave_game(game_state.id, owner.id, confirm: false)
 
       assert payload.owner_id == owner.id
       assert payload.player_count == 2
       assert payload.status == :lobby
+
+      assert {:error, {:confirmation_required, ^payload}} =
+               GameServer.leave_game(game_state.id, owner.id, confirm: :archive)
+
       refute_receive {:game_updated, _}
       refute_receive {:room_lobby_updated, _}
       assert Process.alive?(pid)
 
-      assert :ok = GameServer.leave_game(game_state.id, guest.id, confirmed?: false)
+      assert :ok = GameServer.leave_game(game_state.id, guest.id, confirm: false)
+      flush_messages()
+
+      assert {:error, {:confirmation_required, solo_payload}} =
+               GameServer.leave_game(game_state.id, owner.id, confirm: {:handoff, guest.id})
+
+      assert solo_payload.player_count == 1
+      assert Process.alive?(pid)
     end
   end
 

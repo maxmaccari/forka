@@ -686,7 +686,7 @@ defmodule Forka.GamesTest do
       assert {:error, :game_archived} = Games.get_room_lobby(p2_scope, game.id)
     end
 
-    test "REQ-04: unconfirmed leave_game/3 checks ownership against current GameServer state via Scope API" do
+    test "REQ-04: leave_game/3 verifies confirmed consequence against current GameServer state via Scope API" do
       owner = insert(:player, username: "lia")
       guest = insert(:player, username: "bruno")
       owner_scope = Scope.for_player(owner)
@@ -696,21 +696,26 @@ defmodule Forka.GamesTest do
       assert {:ok, :joined} = Games.join_room(guest_scope, game.id)
 
       assert {:error, {:confirmation_required, %Forka.Games.RoomLobby{} = lobby}} =
-               Games.leave_game(owner_scope, game.id, confirmed?: false)
+               Games.leave_game(owner_scope, game.id, confirm: false)
 
       assert lobby.is_owner? == true
       assert lobby.owner_id == owner.id
       assert lobby.player_count == 2
 
-      assert :ok = Games.leave_game(guest_scope, game.id, confirmed?: false)
+      # Confirming :archive while guest is present fails without mutating
+      assert {:error, {:confirmation_required, %Forka.Games.RoomLobby{player_count: 2}}} =
+               Games.leave_game(owner_scope, game.id, confirm: :archive)
 
+      assert :ok = Games.leave_game(guest_scope, game.id, confirm: false)
+
+      # Confirming stale {:handoff, guest.id} after guest left fails without archiving
       assert {:error, {:confirmation_required, %Forka.Games.RoomLobby{} = solo_lobby}} =
-               Games.leave_game(owner_scope, game.id, confirmed?: false)
+               Games.leave_game(owner_scope, game.id, confirm: {:handoff, guest.id})
 
       assert solo_lobby.player_count == 1
       assert GameServer.whereis(game.id) != nil
 
-      assert :ok = Games.leave_game(owner_scope, game.id, confirmed?: true)
+      assert :ok = Games.leave_game(owner_scope, game.id, confirm: :archive)
       assert {:error, :game_archived} = Games.get_room_lobby(owner_scope, game.id)
     end
   end

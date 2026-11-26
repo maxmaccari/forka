@@ -76,20 +76,29 @@ defmodule ForkaWeb.RoomLive do
 
   @impl true
   def handle_event("leave_room", _params, socket),
-    do: leave_room(socket, confirmed?: false)
+    do: leave_room(socket, confirm: false)
 
-  def handle_event("confirm_leave_room", _params, socket),
-    do: leave_room(socket, confirmed?: true)
+  def handle_event("confirm_leave_room", params, socket),
+    do: leave_room(socket, confirm: parse_confirmed_consequence(params))
 
   def handle_event("cancel_leave_room", _params, socket),
     do: {:noreply, assign(socket, :confirm_leave?, false)}
 
-  # Players are sorted by seat, so the first other player is the lowest remaining seat.
-  defp next_owner_username(%RoomLobby{players: players}, viewer_id) do
-    case Enum.find(players, &(&1.id != viewer_id)) do
-      nil -> nil
-      player -> player.username
+  defp parse_confirmed_consequence(%{"consequence" => "archive"}), do: :archive
+
+  defp parse_confirmed_consequence(%{"consequence" => "handoff", "target_id" => target_id})
+       when is_binary(target_id) do
+    case Ecto.UUID.cast(target_id) do
+      {:ok, valid_id} -> {:handoff, valid_id}
+      :error -> false
     end
+  end
+
+  defp parse_confirmed_consequence(_params), do: false
+
+  # Players are sorted by seat, so the first other player is the lowest remaining seat.
+  defp next_owner(%RoomLobby{players: players}, viewer_id) do
+    Enum.find(players, &(&1.id != viewer_id))
   end
 
   defp leave_room(socket, opts) do
@@ -307,53 +316,56 @@ defmodule ForkaWeb.RoomLive do
           Sair da sala
         </.button>
 
-        <.modal
+        <.leave_confirm_modal
           :if={@confirm_leave?}
-          id="leave-room-confirm"
-          show
-          role="alertdialog"
-          on_cancel={JS.push("cancel_leave_room")}
-        >
-          <:title>Sair da sala?</:title>
-          <:description>
-            <%= case next_owner_username(@lobby, @current_scope.player.id) do %>
-              <% nil -> %>
-                Você é a última pessoa na sala. Ao sair, ela será arquivada.
-              <% next_owner -> %>
-                A sala passa para {next_owner}.
-            <% end %>
-          </:description>
-          <p
-            :if={next_owner_username(@lobby, @current_scope.player.id)}
-            class="text-sm text-ink-muted"
-          >
-            Você pode voltar pelo link de convite.
-          </p>
-          <:actions>
-            <.button
-              id="cancel-leave-room"
-              type="button"
-              variant="secondary"
-              phx-click="cancel_leave_room"
-            >
-              Cancelar
-            </.button>
-            <.button
-              id="confirm-leave-room"
-              type="button"
-              variant="danger"
-              phx-click="confirm_leave_room"
-              phx-disable-with="Saindo..."
-            >
-              {if(next_owner_username(@lobby, @current_scope.player.id),
-                do: "Sair e passar a sala",
-                else: "Sair e arquivar a sala"
-              )}
-            </.button>
-          </:actions>
-        </.modal>
+          next_owner={next_owner(@lobby, @current_scope.player.id)}
+        />
       </aside>
     </div>
+    """
+  end
+
+  defp leave_confirm_modal(assigns) do
+    ~H"""
+    <.modal
+      id="leave-room-confirm"
+      show
+      role="alertdialog"
+      on_cancel={JS.push("cancel_leave_room")}
+    >
+      <:title>Sair da sala?</:title>
+      <:description>
+        <%= if @next_owner do %>
+          A sala passa para {@next_owner.username}.
+        <% else %>
+          Você é a última pessoa na sala. Ao sair, ela será arquivada.
+        <% end %>
+      </:description>
+      <p :if={@next_owner} class="text-sm text-ink-muted">
+        Você pode voltar pelo link de convite.
+      </p>
+      <:actions>
+        <.button
+          id="cancel-leave-room"
+          type="button"
+          variant="secondary"
+          phx-click="cancel_leave_room"
+        >
+          Cancelar
+        </.button>
+        <.button
+          id="confirm-leave-room"
+          type="button"
+          variant="danger"
+          phx-click="confirm_leave_room"
+          phx-value-consequence={if(@next_owner, do: "handoff", else: "archive")}
+          phx-value-target_id={@next_owner && @next_owner.id}
+          phx-disable-with="Saindo..."
+        >
+          {if(@next_owner, do: "Sair e passar a sala", else: "Sair e arquivar a sala")}
+        </.button>
+      </:actions>
+    </.modal>
     """
   end
 end

@@ -175,6 +175,8 @@ defmodule Forka.Games.Core do
     |> indexed_map()
   end
 
+  @type leave_consequence :: :archive | {:handoff, Ecto.UUID.t()}
+
   @doc """
   Removes a participating player from the game state while in lobby state.
 
@@ -186,15 +188,17 @@ defmodule Forka.Games.Core do
     - game_state: The GameState struct
     - player_id: The ID of the participating player to remove
     - opts: Optional keyword list:
-      - `:confirmed?` (boolean, default `true`): when `false`, leaving as the
-        current owner returns `{:error, :confirmation_required}` without mutating state
+      - `:confirm` (`:archive | {:handoff, Ecto.UUID.t()} | false`): when `opts` is
+        non-empty, leaving as the current owner succeeds only when `:confirm` matches
+        the actual consequence (`:archive` or `{:handoff, target_player_id}`); otherwise
+        returns `{:error, :confirmation_required}` without mutating state
 
   ## Returns
     - `{:ok, game_state}` if the player was successfully removed
     - `{:error, :game_archived}` if the game state is archived
     - `{:error, :not_a_participant}` if the player is not seated in the game
     - `{:error, :game_already_started}` if the game state is not in lobby state
-    - `{:error, :confirmation_required}` if `confirmed?: false` and the player is the current owner
+    - `{:error, :confirmation_required}` if owner confirmation is missing or mismatches
   """
   @spec leave_game(GameState.t(), Ecto.UUID.t(), keyword()) ::
           {:ok, GameState.t()}
@@ -211,31 +215,48 @@ defmodule Forka.Games.Core do
 
   def leave_game(%GameState{} = game_state, player_id, opts)
       when is_binary(player_id) and is_list(opts) do
-    confirmed? = Keyword.get(opts, :confirmed?, true)
-
     case find_game_player_by_id(game_state, player_id) do
       nil ->
         {:error, :not_a_participant}
 
-      {_idx, %{player: left_player}} ->
-        cond do
-          game_state.status != :lobby ->
-            {:error, :game_already_started}
+      {_idx, %{player: left_player}} when game_state.status == :lobby ->
+        handle_lobby_leave(game_state, player_id, left_player, opts)
 
-          owner_leaving?(game_state, player_id) and not confirmed? ->
-            {:error, :confirmation_required}
+      {_idx, _game_player} ->
+        {:error, :game_already_started}
+    end
+  end
 
-          true ->
-            new_game_players = remove_game_player(game_state.game_players, player_id)
+  defp handle_lobby_leave(game_state, player_id, left_player, opts) do
+    new_game_players = remove_game_player(game_state.game_players, player_id)
 
-            new_game_state =
-              %{game_state | game_players: new_game_players}
-              |> increment_tick()
-              |> push_event(:player_left, left_player)
-              |> handle_post_leave(left_player)
+    if owner_leaving?(game_state, player_id) and
+         not leave_confirmed?(owner_leave_consequence(new_game_players), opts) do
+      {:error, :confirmation_required}
+    else
+      new_game_state =
+        %{game_state | game_players: new_game_players}
+        |> increment_tick()
+        |> push_event(:player_left, left_player)
+        |> handle_post_leave(left_player)
 
-            {:ok, new_game_state}
-        end
+      {:ok, new_game_state}
+    end
+  end
+
+  defp leave_confirmed?(_actual_consequence, []), do: true
+
+  defp leave_confirmed?(actual_consequence, opts) do
+    case Keyword.fetch(opts, :confirm) do
+      {:ok, confirmed} -> confirmed == actual_consequence
+      :error -> false
+    end
+  end
+
+  defp owner_leave_consequence(remaining_players) do
+    case Map.get(remaining_players, 0) do
+      nil -> :archive
+      %{player: next_owner} -> {:handoff, next_owner.id}
     end
   end
 

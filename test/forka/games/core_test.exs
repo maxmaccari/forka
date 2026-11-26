@@ -261,31 +261,55 @@ defmodule Forka.Games.CoreTest do
       assert {:error, :game_archived} = Core.leave_game(game_archived, player.id)
     end
 
-    test "REQ-04: unconfirmed leave_game/3 rejects current owner in lobby without mutating state while allowing non-owner leave",
+    test "REQ-04: leave_game/3 verifies confirmed consequence for current owner while allowing non-owner leave",
          %{owner: owner, game: game, player: player} do
       {:ok, game_with_two} = Core.join_game(game, owner)
 
       assert {:error, :confirmation_required} =
-               Core.leave_game(game_with_two, owner.id, confirmed?: false)
+               Core.leave_game(game_with_two, owner.id, confirm: false)
+
+      assert {:error, :confirmation_required} =
+               Core.leave_game(game_with_two, owner.id, confirmed?: true)
+
+      assert {:error, :confirmation_required} =
+               Core.leave_game(game_with_two, owner.id, confirm: :archive)
+
+      assert {:error, :confirmation_required} =
+               Core.leave_game(game_with_two, owner.id, confirm: {:handoff, Ecto.UUID.generate()})
 
       assert {:ok, updated_game} =
-               Core.leave_game(game_with_two, player.id, confirmed?: false)
+               Core.leave_game(game_with_two, player.id, confirm: false)
 
       assert map_size(updated_game.game_players) == 1
       assert updated_game.owner.id == owner.id
 
       assert {:error, :confirmation_required} =
-               Core.leave_game(updated_game, owner.id, confirmed?: false)
+               Core.leave_game(updated_game, owner.id, confirm: false)
+
+      assert {:error, :confirmation_required} =
+               Core.leave_game(updated_game, owner.id, confirm: {:handoff, player.id})
 
       assert {:ok, archived_game} =
-               Core.leave_game(updated_game, owner.id, confirmed?: true)
+               Core.leave_game(updated_game, owner.id, confirm: :archive)
 
       assert archived_game.status == :archived
+
+      # Handoff with matching target succeeds
+      other = build_games_player("Other")
+      {:ok, handoff_game} = Core.join_game(game_with_two, other)
+      # Seat 0 is player, seat 1 is owner, seat 2 is other -> remaining lowest seat is player
+      assert {:error, :confirmation_required} =
+               Core.leave_game(handoff_game, owner.id, confirm: {:handoff, other.id})
+
+      assert {:ok, handed_off} =
+               Core.leave_game(handoff_game, owner.id, confirm: {:handoff, player.id})
+
+      assert handed_off.owner.id == player.id
 
       playing_game = %{game_with_two | status: :playing}
 
       assert {:error, :game_already_started} =
-               Core.leave_game(playing_game, owner.id, confirmed?: false)
+               Core.leave_game(playing_game, owner.id, confirm: false)
     end
   end
 
