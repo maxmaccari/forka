@@ -74,7 +74,7 @@ defmodule ForkaWeb.RoomLiveTest do
 
       {:ok, game} = Games.create_game(owner.id, %{name: "Sala jogando", max_players: 4})
       {:ok, :joined} = Games.join_room(Forka.Scope.for_player(guest), game.id)
-      insert(:word, text: "forka")
+      insert_list(4, :word)
       :ok = Games.start_game(Forka.Scope.for_player(owner), game.id)
 
       {:ok, lv, _html} = conn |> log_in_player(owner) |> live(~p"/rooms/#{game.id}")
@@ -131,6 +131,128 @@ defmodule ForkaWeb.RoomLiveTest do
       assert text =~ "1/6 jogadores"
       assert text =~ "Português"
       assert text =~ "Cinema"
+    end
+
+    test "REQ-05 & REQ-06: shows word requirement and updates broadening alert live on join, leave, and settings change",
+         %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      p2 = insert(:player, username: "bruno")
+      p3 = insert(:player, username: "caio")
+      owner_scope = Forka.Scope.for_player(owner)
+
+      cat_small = insert(:category, name: "Pequena", language: "pt")
+      cat_extra = insert(:category, name: "Extra", language: "pt")
+
+      for text <- ~w(alfa bravo charlie delta) do
+        insert(:word, text: text, category: cat_small)
+      end
+
+      for text <- ~w(eco foxtrot) do
+        insert(:word, text: text, category: cat_extra)
+      end
+
+      {:ok, game} =
+        Games.create_game(owner.id, %{
+          name: "Noite de palavras",
+          max_players: 6,
+          word_options: %{language: "pt", category_ids: [cat_small.id]}
+        })
+
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(p2), game.id)
+
+      {:ok, lv, html} = conn |> log_in_player(owner) |> live(~p"/rooms/#{game.id}")
+      assert visible_text(html) =~ "2 de 6 · 4 palavras (2 por jogador)"
+      refute has_element?(lv, "#room-word-availability-alert")
+
+      # 3rd player joins -> required rises to 6 while pool has 4 -> alert appears with owner link
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(p3), game.id)
+      joined_text = lv |> render() |> visible_text()
+      assert joined_text =~ "3 de 6 · 6 palavras (2 por jogador)"
+      assert has_element?(lv, "#room-word-availability-alert")
+      assert joined_text =~ "Poucas palavras para começar"
+      assert joined_text =~ "4 palavras válidas"
+      assert joined_text =~ "Todas as categorias"
+
+      assert has_element?(
+               lv,
+               ~s|#broaden-word-selection[href="/rooms/#{game.id}/settings"]|
+             )
+
+      # 3rd player leaves -> required returns to 4 -> alert disappears
+      :ok = Games.leave_game(Forka.Scope.for_player(p3), game.id)
+      left_text = lv |> render() |> visible_text()
+      assert left_text =~ "2 de 6 · 4 palavras (2 por jogador)"
+      refute has_element?(lv, "#room-word-availability-alert")
+
+      # 3rd player rejoins, then owner broadens categories -> alert disappears
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(p3), game.id)
+      assert has_element?(lv, "#room-word-availability-alert")
+
+      :ok =
+        Games.update_room_settings(owner_scope, game.id, %{
+          word_options: %{language: "pt", category_ids: [cat_small.id, cat_extra.id]}
+        })
+
+      _ = render(lv)
+      refute has_element?(lv, "#room-word-availability-alert")
+    end
+
+    test "REQ-06: hides owner settings action inside word alert for non-owner viewers", %{
+      conn: conn
+    } do
+      owner = insert(:player, username: "lia")
+      viewer = insert(:player, username: "bruno")
+      cat_empty = insert(:category, name: "Vazia", language: "pt")
+
+      {:ok, game} =
+        Games.create_game(owner.id, %{
+          name: "Sala Vazia",
+          max_players: 4,
+          word_options: %{language: "pt", category_ids: [cat_empty.id]}
+        })
+
+      {:ok, lv, html} = conn |> log_in_player(viewer) |> live(~p"/rooms/#{game.id}")
+      assert has_element?(lv, "#room-word-availability-alert")
+      assert visible_text(html) =~ "0 palavras válidas"
+      refute has_element?(lv, "#broaden-word-selection")
+    end
+
+    test "blocks kickoff and shows lobby guidance when excluding unsupported-letter words leaves too few words",
+         %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      guest = insert(:player, username: "bruno")
+      cat = insert(:category, name: "Mistura", language: "pt")
+
+      for text <- ~w(alfa bravo charlie straße) do
+        insert(:word, text: text, category: cat)
+      end
+
+      {:ok, game} =
+        Games.create_game(owner.id, %{
+          name: "Sala Alemã",
+          max_players: 4,
+          word_options: %{language: "pt", category_ids: [cat.id]}
+        })
+
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(guest), game.id)
+
+      assert {:error, {:insufficient_words, %{available: 3, required: 4}}} =
+               Games.start_game(Forka.Scope.for_player(owner), game.id)
+
+      {:ok, lv, html} = conn |> log_in_player(owner) |> live(~p"/rooms/#{game.id}")
+      text = visible_text(html)
+
+      assert text =~ "Aguardando jogadores"
+      assert text =~ "2 de 4 · 4 palavras (2 por jogador)"
+      assert has_element?(lv, "#room-word-availability-alert")
+      assert text =~ "Poucas palavras para começar"
+      assert text =~ "3 palavras válidas"
+      assert text =~ "Todas as categorias"
+
+      assert has_element?(
+               lv,
+               ~s|#broaden-word-selection[href="/rooms/#{game.id}/settings"]|
+             )
     end
   end
 end

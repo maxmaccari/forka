@@ -7,9 +7,8 @@ defmodule Forka.Games.Repository do
   alias Forka.Games.Schemas.Word
   alias Forka.Games.Schemas.WordOptions
   alias Forka.Repo
+  alias Forka.Words
   alias Phoenix.PubSub
-
-  import Ecto.Query
 
   @pubsub Forka.PubSub
   @topic "games"
@@ -40,43 +39,32 @@ defmodule Forka.Games.Repository do
   A list of Word structs with text, hint, category, and language fields.
   Returns fewer words than requested if not enough words match the filters.
   """
-  @spec get_random_words(non_neg_integer(), WordOptions.t()) :: [Word.t()]
+  @spec get_random_words(non_neg_integer(), WordOptions.t() | keyword() | map() | nil) :: [
+          Word.t()
+        ]
   def get_random_words(count \\ 5, word_options \\ %WordOptions{}) do
-    %WordOptions{language: language, category_ids: category_ids} = word_options
+    %WordOptions{language: language, category_ids: category_ids} =
+      WordOptions.normalize(word_options)
 
-    query =
-      from w in Forka.Words.Word,
-        join: c in assoc(w, :category),
-        select: %{
-          text: w.text,
-          category: c.name,
-          hint: w.hint,
-          language: c.language
-        }
-
-    query =
-      if language do
-        from [w, c] in query, where: c.language == ^String.downcase(language)
-      else
-        query
-      end
-
-    query =
-      if category_ids && !Enum.empty?(category_ids) do
-        from w in query, where: w.category_id in ^category_ids
-      else
-        query
-      end
-
-    # Order by random and limit to requested count
-    query =
-      from q in query,
-        order_by: fragment("RANDOM()"),
-        limit: ^count
-
-    query
-    |> Repo.all()
+    Words.sample_distinct_playable_words(count,
+      language: language,
+      category_ids: category_ids
+    )
     |> Enum.map(&Word.from_map/1)
+  end
+
+  @doc """
+  Counts distinct playable dictionary words available for the given `word_options`.
+  """
+  @spec count_available_words(WordOptions.t() | keyword() | map() | nil) :: non_neg_integer()
+  def count_available_words(word_options \\ %WordOptions{}) do
+    %WordOptions{language: language, category_ids: category_ids} =
+      WordOptions.normalize(word_options)
+
+    Words.count_distinct_playable_words(
+      language: language,
+      category_ids: category_ids
+    )
   end
 
   @doc """

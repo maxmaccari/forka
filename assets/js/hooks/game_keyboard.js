@@ -25,9 +25,11 @@ const GameKeyboard = {
         .replace(/[\u0300-\u036f]/g, "")
         .toUpperCase()
 
-      if (!/^[A-Z]$/.test(folded)) return
+      if (!folded) return
 
-      const btn = this.el.querySelector(`[data-letter="${folded}"]:not(:disabled)`)
+      const btn = Array.from(
+        this.el.querySelectorAll("button[data-letter]:not(:disabled)")
+      ).find((el) => el.dataset.letter === folded)
       if (btn) {
         e.preventDefault()
         btn.click()

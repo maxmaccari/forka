@@ -193,7 +193,10 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
       owner = insert(:player, username: "lia")
       guest = insert(:player, username: "bruno")
       cat_games = insert(:category, name: "Jogos", language: "pt")
-      insert(:word, text: "forka", category: cat_games)
+
+      for text <- ~w(forka xadrez dama truco) do
+        insert(:word, text: text, category: cat_games)
+      end
 
       {:ok, lv, _html} = live(conn, ~p"/")
       _ = render_async(lv)

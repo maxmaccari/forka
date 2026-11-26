@@ -69,7 +69,7 @@ defmodule ForkaWeb.RoomInviteLiveTest do
     } do
       owner = insert(:player)
       p2 = insert(:player)
-      insert(:word)
+      insert_list(4, :word)
       {:ok, game} = Games.create_game(owner.id, %{name: "Em Jogo", max_players: 2})
       {:ok, :joined} = Games.join_room(Forka.Scope.for_player(p2), game.id)
       :ok = Games.start_game(Forka.Scope.for_player(owner), game.id)
@@ -87,7 +87,7 @@ defmodule ForkaWeb.RoomInviteLiveTest do
       owner = insert(:player)
       p2 = insert(:player)
       outsider = insert(:player)
-      insert(:word)
+      insert_list(4, :word)
 
       {:ok, full_game} = Games.create_game(owner.id, %{name: "Sala Cheia", max_players: 2})
       {:ok, :joined} = Games.join_room(Forka.Scope.for_player(p2), full_game.id)
@@ -121,7 +121,7 @@ defmodule ForkaWeb.RoomInviteLiveTest do
          %{conn: conn} do
       owner = insert(:player)
       p2 = insert(:player)
-      insert(:word)
+      insert_list(4, :word)
 
       {:ok, game} = Games.create_game(owner.id, %{name: "Sala Cheia", max_players: 2})
       {:ok, :joined} = Games.join_room(Forka.Scope.for_player(p2), game.id)

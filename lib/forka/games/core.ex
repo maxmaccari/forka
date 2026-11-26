@@ -21,6 +21,14 @@ defmodule Forka.Games.Core do
 
   @min_players_allowed 2
   @max_players_allowed 6
+  @words_per_player 2
+
+  @type start_error ::
+          :game_not_ready
+          | :too_many_players
+          | :game_archived
+          | :game_already_initialized
+          | {:insufficient_words, %{available: non_neg_integer(), required: pos_integer()}}
 
   @doc """
   Creates a new game state with the given name and maximum number of players.
@@ -226,7 +234,8 @@ defmodule Forka.Games.Core do
   def set_words(%GameState{status: :lobby} = game_state, words) when is_list(words) do
     new_game_words =
       words
-      |> Enum.uniq()
+      |> Enum.filter(&Word.playable?/1)
+      |> Enum.uniq_by(&Word.normalized_key/1)
       |> indexed_map(&GameWord.new/1)
 
     %{game_state | game_words: new_game_words}
@@ -287,33 +296,83 @@ defmodule Forka.Games.Core do
     end
   end
 
-  @doc "Initializes a lobby game for `actor_id` if they are the owner and the game is ready."
-  @spec start_game(GameState.t(), Ecto.UUID.t()) ::
-          {:ok, GameState.t()}
-          | {:error, :game_archived | :unauthorized | :game_already_initialized | :game_not_ready}
-  def start_game(%GameState{} = game_state, actor_id) when is_binary(actor_id) do
-    with :ok <- authorize_start(game_state, actor_id) do
-      if can_start?(game_state) do
-        new_game_state =
-          %{
-            game_state
-            | current_game_word_index: 0,
-              current_game_player_index: 0,
-              status: :playing
-          }
-          |> increment_tick()
-          |> push_event(:game_started)
+  @doc """
+  Validates whether `game_state` has `:lobby` status and a roster size within
+  `min_players_allowed/0`..`min(max_players, max_players_allowed/0)`.
+  """
+  @spec validate_start_roster(GameState.t()) ::
+          :ok
+          | {:error,
+             :game_archived | :game_already_initialized | :game_not_ready | :too_many_players}
+  def validate_start_roster(%GameState{status: :archived}), do: {:error, :game_archived}
 
-        {:ok, new_game_state}
-      else
-        {:error, :game_not_ready}
-      end
+  def validate_start_roster(%GameState{status: status}) when status != :lobby,
+    do: {:error, :game_already_initialized}
+
+  def validate_start_roster(%GameState{game_players: game_players, max_players: max_players}) do
+    player_count = map_size(game_players)
+    effective_max = effective_max_players(max_players)
+
+    cond do
+      player_count < @min_players_allowed -> {:error, :game_not_ready}
+      player_count > effective_max -> {:error, :too_many_players}
+      true -> :ok
     end
   end
 
-  defp can_start?(%GameState{game_players: game_players, game_words: game_words}) do
-    map_size(game_players) >= 2 and map_size(game_words) >= 1
+  @doc """
+  Initializes a lobby game for `actor_id`, transitioning it to playing state.
+
+  Requires `actor_id` to be the owner, `:lobby` status, between 2 and
+  `min(max_players, 6)` players, and at least two distinct playable words per player.
+  """
+  @spec start_game(GameState.t(), Ecto.UUID.t()) ::
+          {:ok, GameState.t()} | {:error, :unauthorized | start_error()}
+  def start_game(%GameState{} = game_state, actor_id) when is_binary(actor_id) do
+    with :ok <- authorize_start(game_state, actor_id),
+         :ok <- validate_start_roster(game_state),
+         :ok <- validate_start_words(game_state) do
+      new_game_state =
+        %{
+          game_state
+          | current_game_word_index: 0,
+            current_game_player_index: 0,
+            status: :playing
+        }
+        |> increment_tick()
+        |> push_event(:game_started)
+
+      {:ok, new_game_state}
+    end
   end
+
+  defp validate_start_words(%GameState{game_players: game_players, game_words: game_words}) do
+    required = required_words_for_players(map_size(game_players))
+    available = count_distinct_playable_game_words(game_words)
+
+    if available >= required do
+      :ok
+    else
+      {:error, {:insufficient_words, %{available: available, required: required}}}
+    end
+  end
+
+  defp count_distinct_playable_game_words(game_words) when is_map(game_words) do
+    game_words
+    |> Map.values()
+    |> Enum.map(& &1.word)
+    |> Enum.filter(&Word.playable?/1)
+    |> Enum.map(&Word.normalized_key/1)
+    |> Enum.uniq()
+    |> length()
+  end
+
+  defp effective_max_players(max_players)
+       when is_integer(max_players) and max_players >= @min_players_allowed do
+    min(max_players, @max_players_allowed)
+  end
+
+  defp effective_max_players(_max_players), do: @max_players_allowed
 
   defp indexed_map(enum, transform \\ & &1) do
     enum
@@ -618,4 +677,15 @@ defmodule Forka.Games.Core do
   @doc false
   @spec max_players_allowed() :: 6
   def max_players_allowed, do: @max_players_allowed
+
+  @doc "Returns the number of distinct playable words required per player."
+  @spec words_per_player() :: 2
+  def words_per_player, do: @words_per_player
+
+  @doc "Returns the minimum number of distinct playable words required to start a match."
+  @spec required_words_for_players(non_neg_integer()) :: pos_integer()
+  def required_words_for_players(player_count)
+      when is_integer(player_count) and player_count >= 0 do
+    max(player_count, @min_players_allowed) * @words_per_player
+  end
 end

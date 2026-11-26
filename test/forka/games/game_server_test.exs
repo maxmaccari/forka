@@ -270,12 +270,12 @@ defmodule Forka.Games.GameServerTest do
       player2 = insert(:player)
       GameServer.join_room(game_state.id, player2.id)
 
-      # Insert a Portuguese word
-      insert(:word,
-        text: "gato",
-        hint: "Mia",
-        category: insert(:category, language: "pt", name: "animals")
-      )
+      # Insert Portuguese words
+      pt_category = insert(:category, language: "pt", name: "animals")
+
+      for text <- ~w(gato pato rato sapo) do
+        insert(:word, text: text, category: pt_category)
+      end
 
       # Set language option to Portuguese
       GameServer.update_settings(game_state.id, game_state.owner.id, %{
@@ -290,16 +290,21 @@ defmodule Forka.Games.GameServerTest do
       assert_receive {:game_updated, game_summary}
       assert game_summary.game_status == :playing
 
+      {:ok, persisted} = Repository.get_game_state(game_state.id)
+      assert map_size(persisted.game_words) == 4
+      assert Enum.all?(Map.values(persisted.game_words), &(&1.word.language == "pt"))
+
       # Get the current player
       current_player_id = game_summary.current_player_id
 
-      # Try to guess the Portuguese word "gato" letter by letter
-      letters = ["g", "a", "t", "o"]
+      for idx <- 0..3 do
+        letters = persisted.game_words[idx].word.text |> String.graphemes() |> Enum.uniq()
 
-      Enum.each(letters, fn letter ->
-        assert :ok = GameServer.guess(game_state.id, current_player_id, letter)
-        assert_receive {:game_updated, _updated_summary}
-      end)
+        Enum.each(letters, fn letter ->
+          assert :ok = GameServer.guess(game_state.id, current_player_id, letter)
+          assert_receive {:game_updated, _updated_summary}
+        end)
+      end
 
       # Get the final game state
       final_summary = GameServer.get_game(game_state.id)
@@ -313,17 +318,19 @@ defmodule Forka.Games.GameServerTest do
       player2 = insert(:player)
       GameServer.join_room(game_state.id, player2.id)
 
-      # Insert a Portuguese word
+      # Insert words across two categories
       category_1 = insert(:category)
       category_2 = insert(:category)
 
-      insert(:word,
-        text: "gato",
-        hint: "Mia",
-        category: category_1
-      )
+      for text <- ~w(gato pato) do
+        insert(:word, text: text, category: category_1)
+      end
 
-      # Set language option to Portuguese
+      for text <- ~w(rato sapo) do
+        insert(:word, text: text, category: category_2)
+      end
+
+      # Set category filter
       GameServer.update_settings(game_state.id, game_state.owner.id, %{
         word_options: %{category_ids: [category_1.id, category_2.id]}
       })
@@ -336,16 +343,25 @@ defmodule Forka.Games.GameServerTest do
       assert_receive {:game_updated, game_summary}
       assert game_summary.game_status == :playing
 
+      {:ok, persisted} = Repository.get_game_state(game_state.id)
+      assert map_size(persisted.game_words) == 4
+
+      assert Enum.all?(
+               Map.values(persisted.game_words),
+               &(&1.word.category in [category_1.name, category_2.name])
+             )
+
       # Get the current player
       current_player_id = game_summary.current_player_id
 
-      # Try to guess the Portuguese word "gato" letter by letter
-      letters = ["g", "a", "t", "o"]
+      for idx <- 0..3 do
+        letters = persisted.game_words[idx].word.text |> String.graphemes() |> Enum.uniq()
 
-      Enum.each(letters, fn letter ->
-        assert :ok = GameServer.guess(game_state.id, current_player_id, letter)
-        assert_receive {:game_updated, _updated_summary}
-      end)
+        Enum.each(letters, fn letter ->
+          assert :ok = GameServer.guess(game_state.id, current_player_id, letter)
+          assert_receive {:game_updated, _updated_summary}
+        end)
+      end
 
       # Get the final game state
       final_summary = GameServer.get_game(game_state.id)
@@ -370,6 +386,136 @@ defmodule Forka.Games.GameServerTest do
 
       # Don't receive messages in case of errors
       refute_receive {:game_updated, _game_summary}
+    end
+
+    test "REQ-04 & EDGE-01: keeps room in lobby with insufficient_words error and no broadcast when pool is too small",
+         %{game_state: game_state} do
+      player1 = insert(:player)
+      player2 = insert(:player)
+      {:ok, :joined} = GameServer.join_room(game_state.id, player1.id)
+      {:ok, :joined} = GameServer.join_room(game_state.id, player2.id)
+
+      pt_cat = insert(:category, name: "Pequena", language: "pt")
+      insert(:word, text: "café", category: pt_cat)
+      insert(:word, text: "cafe", category: pt_cat)
+      insert(:word, text: "gato", category: pt_cat)
+      insert(:word, text: "pato", category: pt_cat)
+      insert(:word, text: "straße", category: pt_cat)
+      Repo.insert!(%Forka.Words.Word{text: "   ", category_id: pt_cat.id})
+
+      :ok =
+        GameServer.update_settings(game_state.id, game_state.owner.id, %{
+          word_options: %{language: "pt", category_ids: [pt_cat.id]}
+        })
+
+      flush_messages()
+      before_state = Repository.get_game_state(game_state.id)
+
+      assert {:error, {:insufficient_words, %{available: 3, required: 4}}} =
+               GameServer.start_game(game_state.id, game_state.owner.id)
+
+      summary = GameServer.get_game(game_state.id)
+      assert summary.game_status == :lobby
+      assert Repository.get_game_state(game_state.id) == before_state
+      refute_receive {:game_updated, _}
+    end
+
+    test "REQ-03 & REQ-05: validates 2-player and 6-player limits and re-validates as roster changes" do
+      owner = insert(:player)
+      pt_cat = insert(:category, name: "Limite", language: "pt")
+
+      for text <- ~w(alfa bravo charlie delta) do
+        insert(:word, text: text, category: pt_cat)
+      end
+
+      game =
+        insert(:game,
+          owner: owner,
+          max_players: 6,
+          word_options: %WordOptions{language: "pt", category_ids: [pt_cat.id]}
+        )
+
+      {:ok, pid} = GameServer.start_link(game.id)
+      Sandbox.allow(Repo, self(), pid)
+
+      on_exit(fn ->
+        try do
+          GameServer.archive_game(game.id, owner.id)
+        catch
+          :exit, _ -> :ok
+        end
+      end)
+
+      p1 = insert(:player)
+      p2 = insert(:player)
+      p3 = insert(:player)
+
+      {:ok, :joined} = GameServer.join_room(game.id, p1.id)
+      assert {:error, :game_not_ready} = GameServer.start_game(game.id, owner.id)
+
+      # 2 players with 4 distinct words -> ready; 3rd player joins -> needs 6 -> blocked
+      {:ok, :joined} = GameServer.join_room(game.id, p2.id)
+      {:ok, :joined} = GameServer.join_room(game.id, p3.id)
+
+      assert {:error, {:insufficient_words, %{available: 4, required: 6}}} =
+               GameServer.start_game(game.id, owner.id)
+
+      assert GameServer.get_game(game.id).game_status == :lobby
+
+      # 3rd player leaves -> back to 2 players -> 4 words is enough again
+      :ok = GameServer.leave_game(game.id, p3.id)
+      assert :ok = GameServer.start_game(game.id, owner.id)
+
+      {:ok, started_state} = Repository.get_game_state(game.id)
+      assert started_state.status == :playing
+      assert map_size(started_state.game_words) == 4
+    end
+
+    test "REQ-03: enforces 12 distinct playable words for 6-player match and blocks 7th player" do
+      owner = insert(:player)
+      pt_cat = insert(:category, name: "Seis", language: "pt")
+
+      for text <- ~w(um dois tres quatro cinco seis sete oito nove dez onze) do
+        insert(:word, text: text, category: pt_cat)
+      end
+
+      game =
+        insert(:game,
+          owner: owner,
+          max_players: 6,
+          word_options: %WordOptions{language: "pt", category_ids: [pt_cat.id]}
+        )
+
+      {:ok, pid} = GameServer.start_link(game.id)
+      Sandbox.allow(Repo, self(), pid)
+
+      on_exit(fn ->
+        try do
+          GameServer.archive_game(game.id, owner.id)
+        catch
+          :exit, _ -> :ok
+        end
+      end)
+
+      for _ <- 1..6 do
+        p = insert(:player)
+        assert {:ok, :joined} = GameServer.join_room(game.id, p.id)
+      end
+
+      seventh = insert(:player)
+      assert {:error, :maximum_players} = GameServer.join_room(game.id, seventh.id)
+
+      assert {:error, {:insufficient_words, %{available: 11, required: 12}}} =
+               GameServer.start_game(game.id, owner.id)
+
+      assert GameServer.get_game(game.id).game_status == :lobby
+
+      insert(:word, text: "doze", category: pt_cat)
+      assert :ok = GameServer.start_game(game.id, owner.id)
+
+      {:ok, started_state} = Repository.get_game_state(game.id)
+      assert started_state.status == :playing
+      assert map_size(started_state.game_words) == 12
     end
   end
 

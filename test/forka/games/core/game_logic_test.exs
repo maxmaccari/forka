@@ -68,12 +68,14 @@ defmodule Forka.Games.Core.GameLogicTest do
     # Create words
     word1 = Word.new("cat", "animals", "Meows")
     word2 = Word.new("dog", "animals", "Barks")
+    word3 = Word.new("fox", "animals", "Clever")
+    word4 = Word.new("owl", "animals", "Hoots")
 
     # Create a game
     game = Core.new(owner, "Test Game", 4)
     {:ok, game_with_player1} = Core.join_game(game, player1)
     {:ok, game_with_players} = Core.join_game(game_with_player1, player2)
-    game_with_words = Core.set_words(game_with_players, [word1, word2])
+    game_with_words = Core.set_words(game_with_players, [word1, word2, word3, word4])
     {:ok, initialized_game} = Core.start_game(game_with_words, owner.id)
 
     {:ok,
@@ -339,6 +341,8 @@ defmodule Forka.Games.Core.GameLogicTest do
       game_state: game_state,
       player1: player1
     } do
+      game_state = %{game_state | game_words: Map.take(game_state.game_words, [0, 1])}
+
       # Complete first word 'cat'
       {:ok, game_after_c} = GameLogic.guess(game_state, player1.id, "c")
       {:ok, game_after_a} = GameLogic.guess(game_after_c, player1.id, "a")
@@ -376,6 +380,8 @@ defmodule Forka.Games.Core.GameLogicTest do
       player1: survivor,
       player2: eliminated
     } do
+      game = %{game | game_words: Map.take(game.game_words, [0, 1])}
+
       guesses = [
         {survivor.id, "z"},
         {eliminated.id, "x"},

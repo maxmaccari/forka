@@ -84,6 +84,30 @@ defmodule ForkaWeb.RoomLive do
             </span>
           </div>
 
+          <p
+            :if={@lobby.word_availability}
+            id="room-lobby-words-requirement"
+            class="text-sm font-bold text-ink-muted tabular-nums"
+          >
+            {ForkaWeb.RoomComponents.room_words_requirement_label(
+              @lobby.player_count,
+              @lobby.max_players,
+              @lobby.word_availability.required_words
+            )}
+          </p>
+
+          <.word_availability_alert
+            :if={
+              @lobby.status == :lobby and @lobby.word_availability != nil and
+                not @lobby.word_availability.enough_words?
+            }
+            id="room-word-availability-alert"
+            availability={@lobby.word_availability}
+            settings_path={
+              if(@lobby.can_edit_settings?, do: ~p"/rooms/#{@lobby.id}/settings", else: nil)
+            }
+          />
+
           <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <dt class="text-xs font-extrabold uppercase tracking-wider text-ink-subtle">

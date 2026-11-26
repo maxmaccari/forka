@@ -154,15 +154,24 @@ defmodule Forka.GamesTest do
     assert :ok = Games.subscribe_to_game(game.id)
     game_id = game.id
     current = Games.get_game_summary(game_id).current_player_id
+    {:ok, persisted} = Repository.get_game_state(game_id)
+    [l1, l2] = String.graphemes(persisted.game_words[0].word.text)
 
-    assert :ok = Games.guess(scopes[current], game_id, "a")
+    assert :ok = Games.guess(scopes[current], game_id, l1)
 
     assert_receive {:game_updated,
-                    %{game_status: :playing, current_word_letters: [{:found, "a"}, :hidden]}}
+                    %{game_status: :playing, current_word_letters: [{:found, ^l1}, :hidden]}}
 
     refute_receive {:game_list_updated, %{id: ^game_id}}, 50
 
-    assert :ok = Games.guess(scopes[current], game_id, "b")
+    assert :ok = Games.guess(scopes[current], game_id, l2)
+
+    for idx <- 1..3 do
+      [w1, w2] = String.graphemes(persisted.game_words[idx].word.text)
+      assert :ok = Games.guess(scopes[current], game_id, w1)
+      assert :ok = Games.guess(scopes[current], game_id, w2)
+    end
+
     assert_receive {:game_list_updated, %{id: ^game_id, status: :finished, action: :updated}}
   end
 
@@ -204,7 +213,11 @@ defmodule Forka.GamesTest do
 
   defp start_list_audit_game do
     category = insert(:category, name: "List audit")
-    Forka.Repo.insert!(%Forka.Words.Word{text: "ab", category_id: category.id})
+
+    for text <- ~w(ab cd ef gh) do
+      Forka.Repo.insert!(%Forka.Words.Word{text: text, category_id: category.id})
+    end
+
     owner = insert(:player)
     other = insert(:player)
 
@@ -588,7 +601,7 @@ defmodule Forka.GamesTest do
     } do
       player1 = insert(:player)
       {:ok, :joined} = Games.join_room(Scope.for_player(player1), game.id)
-      insert(:word, %{text: "hangman"})
+      insert_list(4, :word)
       :ok = Games.start_game(owner_scope, game.id)
 
       assert {:error, :game_not_in_lobby} =
@@ -638,7 +651,7 @@ defmodule Forka.GamesTest do
       {:ok, :joined} = Games.join_room(Scope.for_player(player1), game.id)
       {:ok, :joined} = Games.join_room(Scope.for_player(player2), game.id)
 
-      insert(:word)
+      insert_list(6, :word)
 
       %{game: game, owner: owner, players: [player1, player2]}
     end
@@ -672,7 +685,7 @@ defmodule Forka.GamesTest do
       {:ok, :joined} = Games.join_room(Scope.for_player(player1), game.id)
       {:ok, :joined} = Games.join_room(Scope.for_player(player2), game.id)
 
-      insert(:word, text: "banana")
+      for text <- ~w(banana papaia goiaba manga laranja amora), do: insert(:word, text: text)
 
       :ok = Games.start_game(Forka.Scope.for_player(owner), game.id)
 
@@ -709,7 +722,7 @@ defmodule Forka.GamesTest do
 
   describe "game completion scenarios" do
     setup do
-      word = insert(:word)
+      insert_list(6, :word)
 
       owner = insert(:player)
 
@@ -723,7 +736,7 @@ defmodule Forka.GamesTest do
 
       :ok = Games.start_game(Forka.Scope.for_player(owner), game.id)
 
-      %{game: game, owner: owner, player1: player1, player2: player2, word: word}
+      %{game: game, owner: owner, player1: player1, player2: player2}
     end
 
     test "game over when all players give up", %{
@@ -745,25 +758,24 @@ defmodule Forka.GamesTest do
       game: game,
       owner: owner,
       player1: player1,
-      player2: player2,
-      word: word
+      player2: player2
     } do
-      # Extract all unique letters from the word
-      unique_letters =
-        word.text
-        |> String.downcase()
-        |> String.graphemes()
-        |> Enum.uniq()
-
-      # Get the current game state
+      {:ok, persisted} = Repository.get_game_state(game.id)
       game_summary = Games.get_game_summary(game.id)
 
       current_player =
         Enum.find([owner, player1, player2], &(&1.id == game_summary.current_player_id))
 
-      # Guess each letter in the word to complete it
-      for letter <- unique_letters do
-        assert :ok = Games.guess(Scope.for_player(current_player), game.id, letter)
+      for idx <- 0..5 do
+        unique_letters =
+          persisted.game_words[idx].word.text
+          |> String.downcase()
+          |> String.graphemes()
+          |> Enum.uniq()
+
+        for letter <- unique_letters do
+          assert :ok = Games.guess(Scope.for_player(current_player), game.id, letter)
+        end
       end
 
       # Verify the game is finished after all letters are guessed
@@ -774,7 +786,7 @@ defmodule Forka.GamesTest do
 
   describe "game subscriptions" do
     setup do
-      insert(:word)
+      insert_list(6, :word)
       owner = insert(:player)
       {:ok, game} = Games.create_game(owner.id, params_for(:game))
       :ok = Games.subscribe_to_game(game.id)
@@ -855,8 +867,8 @@ defmodule Forka.GamesTest do
       {:ok, :joined} = Games.join_room(Scope.for_player(player1), game.id)
       {:ok, :joined} = Games.join_room(Scope.for_player(player2), game.id)
 
-      # Add a word so the game can start
-      insert(:word)
+      # Add words so the game can start
+      insert_list(6, :word)
 
       # Flush previous messages
       flush_messages()
@@ -1093,7 +1105,7 @@ defmodule Forka.GamesTest do
          } do
       p2 = insert(:player)
       outsider = insert(:player)
-      insert(:word)
+      insert_list(4, :word)
       assert {:ok, :joined} = Games.join_room(Forka.Scope.for_player(p2), game.id)
       assert :ok = Games.start_game(Forka.Scope.for_player(owner), game.id)
 
@@ -1209,7 +1221,7 @@ defmodule Forka.GamesTest do
     test "REQ-03: classifies full and playing states and returns :not_found or :game_archived" do
       owner = insert(:player)
       p2 = insert(:player)
-      insert(:word)
+      insert_list(4, :word)
       {:ok, full_game} = Games.create_game(owner.id, %{name: "Cheia", max_players: 2})
       {:ok, :joined} = Games.join_room(Scope.for_player(p2), full_game.id)
 
@@ -1243,7 +1255,7 @@ defmodule Forka.GamesTest do
       owner = insert(:player, username: "dona")
       member = insert(:player, username: "membro")
       outsider = insert(:player, username: "visitante")
-      insert(:word, text: "ab")
+      for text <- ~w(ab cd ef gh), do: insert(:word, text: text)
 
       {:ok, game} =
         Games.create_room(Forka.Scope.for_player(owner), %{name: "Sala Dono", max_players: 4})
@@ -1385,7 +1397,7 @@ defmodule Forka.GamesTest do
       owner = insert(:player, username: "dona")
       member = insert(:player, username: "membro")
       outsider = insert(:player, username: "visitante")
-      insert(:word, text: "ab")
+      for text <- ~w(ab cd ef gh), do: insert(:word, text: text)
 
       {:ok, game} =
         Games.create_room(Forka.Scope.for_player(owner), %{name: "Sala Jogo", max_players: 3})
@@ -1493,6 +1505,114 @@ defmodule Forka.GamesTest do
       players_by_id = Map.new(after_give_up.players, fn {_pos, gp} -> {gp.player.id, gp} end)
       assert players_by_id[member.id].status == :dead
       assert players_by_id[owner.id].status == :alive
+    end
+  end
+
+  describe "word availability and roster re-validation" do
+    test "REQ-05 & EDGE-02: get_room_lobby/2 and room_lobby_updated payloads re-evaluate availability on join, leave, settings change, and deleted category" do
+      owner = insert(:player, username: "lia")
+      p2 = insert(:player, username: "bruno")
+      p3 = insert(:player, username: "caio")
+      owner_scope = Forka.Scope.for_player(owner)
+
+      cat_small = insert(:category, name: "Pequena", language: "pt")
+      cat_extra = insert(:category, name: "Extra", language: "pt")
+
+      for text <- ~w(alfa bravo charlie delta) do
+        insert(:word, text: text, category: cat_small)
+      end
+
+      for text <- ~w(eco foxtrot) do
+        insert(:word, text: text, category: cat_extra)
+      end
+
+      {:ok, game} =
+        Games.create_game(owner.id, %{
+          name: "Sala Disponibilidade",
+          max_players: 6,
+          word_options: %{language: "pt", category_ids: [cat_small.id]}
+        })
+
+      assert :ok = Games.subscribe_to_room_lobby(owner_scope, game.id)
+
+      # 1 player in lobby, 4 words available -> waiting_for_players
+      assert {:ok, lobby_1} = Games.get_room_lobby(owner_scope, game.id)
+      assert lobby_1.word_availability.available_words == 4
+      assert lobby_1.word_availability.required_words == 4
+      assert lobby_1.word_availability.status == :waiting_for_players
+      assert lobby_1.word_availability.has_category_filter? == true
+
+      # 2nd player joins -> 4 available >= 4 required -> ready
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(p2), game.id)
+      assert_receive {:room_lobby_updated, payload_2}
+      assert {:ok, lobby_2} = Games.room_lobby_from_payload(owner_scope, payload_2)
+      assert lobby_2.word_availability.status == :ready
+      assert lobby_2.word_availability.ready? == true
+
+      # 3rd player joins -> 4 available < 6 required -> insufficient_words
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(p3), game.id)
+      assert_receive {:room_lobby_updated, payload_3}
+      assert {:ok, lobby_3} = Games.room_lobby_from_payload(owner_scope, payload_3)
+      assert lobby_3.word_availability.status == :insufficient_words
+      assert lobby_3.word_availability.available_words == 4
+      assert lobby_3.word_availability.required_words == 6
+      assert lobby_3.word_availability.missing_words == 2
+
+      # Broadening categories to include cat_extra -> 6 available >= 6 required -> ready
+      assert :ok =
+               Games.update_room_settings(owner_scope, game.id, %{
+                 word_options: %{language: "pt", category_ids: [cat_small.id, cat_extra.id]}
+               })
+
+      assert_receive {:room_lobby_updated, payload_broad}
+      assert {:ok, lobby_broad} = Games.room_lobby_from_payload(owner_scope, payload_broad)
+      assert lobby_broad.word_availability.status == :ready
+      assert lobby_broad.word_availability.available_words == 6
+      assert lobby_broad.word_availability.required_words == 6
+
+      # EDGE-02: if selected category is deleted externally, availability drops to 0 with filter still true
+      assert :ok =
+               Games.update_room_settings(owner_scope, game.id, %{
+                 word_options: %{language: "pt", category_ids: [cat_extra.id]}
+               })
+
+      assert_receive {:room_lobby_updated, _}
+      Repo.delete!(cat_extra)
+
+      assert {:ok, lobby_deleted} = Games.get_room_lobby(owner_scope, game.id)
+      assert lobby_deleted.word_availability.available_words == 0
+      assert lobby_deleted.word_availability.has_category_filter? == true
+      assert lobby_deleted.word_availability.status == :insufficient_words
+
+      assert {:error, {:insufficient_words, %{available: 0, required: 6}}} =
+               Games.start_game(owner_scope, game.id)
+    end
+
+    test "EDGE-03: lobby projection of a started room omits word_availability" do
+      cat_pt = insert(:category, name: "Frutas", language: "pt")
+
+      # "maçã" and "maca" fold to 1 -> 4 distinct words, enough for 2 players
+      for text <- ~w(maçã maca banana uva pera) do
+        insert(:word, text: text, category: cat_pt)
+      end
+
+      owner = insert(:player)
+      p2 = insert(:player)
+      owner_scope = Forka.Scope.for_player(owner)
+
+      {:ok, game} =
+        Games.create_game(owner.id, %{
+          name: "Sala Jogando",
+          max_players: 2,
+          word_options: %{language: "pt", category_ids: [cat_pt.id]}
+        })
+
+      {:ok, :joined} = Games.join_room(Scope.for_player(p2), game.id)
+      :ok = Games.start_game(owner_scope, game.id)
+
+      assert {:ok, playing_lobby} = Games.get_room_lobby(owner_scope, game.id)
+      assert playing_lobby.status == :playing
+      assert playing_lobby.word_availability == nil
     end
   end
 end

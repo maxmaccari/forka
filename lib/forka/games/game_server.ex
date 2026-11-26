@@ -291,7 +291,14 @@ defmodule Forka.Games.GameServer do
       |> Words.list_categories_by_ids()
       |> Enum.map(& &1.name)
 
-    payload = RoomLobby.payload(game_state, category_names)
+    available_words =
+      if game_state.status == :lobby do
+        Repository.count_available_words(word_options)
+      else
+        nil
+      end
+
+    payload = RoomLobby.payload(game_state, category_names, available_words)
     PubSub.broadcast!(Forka.PubSub, lobby_topic(game_id), {:room_lobby_updated, payload})
   end
 
@@ -328,9 +335,10 @@ defmodule Forka.Games.GameServer do
   end
 
   defp do_start_game(game, actor_id) do
-    with :ok <- Core.authorize_start(game, actor_id) do
-      words_count = map_size(game.game_players) * 2
-      words = Repository.get_random_words(words_count, game.word_options)
+    with :ok <- Core.authorize_start(game, actor_id),
+         :ok <- Core.validate_start_roster(game) do
+      required = Core.required_words_for_players(map_size(game.game_players))
+      words = Repository.get_random_words(required, game.word_options)
 
       game
       |> Core.set_words(words)

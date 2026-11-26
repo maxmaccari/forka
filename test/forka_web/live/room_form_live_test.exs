@@ -121,7 +121,7 @@ defmodule ForkaWeb.RoomFormLiveTest do
       guest = insert(:player)
       {:ok, game} = Games.create_game(owner.id, %{name: "Em jogo", max_players: 4})
       {:ok, :joined} = Games.join_room(Forka.Scope.for_player(guest), game.id)
-      insert(:word, text: "forka")
+      insert_list(4, :word)
       :ok = Games.start_game(Forka.Scope.for_player(owner), game.id)
 
       assert {:error,
@@ -344,6 +344,36 @@ defmodule ForkaWeb.RoomFormLiveTest do
       assert has_element?(lv, "#room-language-error")
       assert has_element?(lv, ~s|#room-language button[aria-checked="true"]|, "Português")
       assert has_element?(lv, "#category-chip-#{pt_cat.id}[aria-pressed='true']")
+    end
+  end
+
+  describe "match-size note" do
+    test "REQ-07: displays live wordsNote matching the selected capacity", %{conn: conn} do
+      player = insert(:player, username: "lia")
+      {:ok, lv, _html} = conn |> log_in_player(player) |> live(~p"/rooms/new")
+
+      # Default max_players is 4 -> 8 words
+      assert has_element?(
+               lv,
+               "#room-words-note",
+               "Cada jogador traz 2 palavras: com 4 jogadores, são 8 palavras. Mínimo de 2 para começar."
+             )
+
+      lv |> element(~s|#room-max-players button[phx-value-option="2"]|) |> render_click()
+
+      assert has_element?(
+               lv,
+               "#room-words-note",
+               "Cada jogador traz 2 palavras: com 2 jogadores, são 4 palavras. Mínimo de 2 para começar."
+             )
+
+      lv |> element(~s|#room-max-players button[phx-value-option="6"]|) |> render_click()
+
+      assert has_element?(
+               lv,
+               "#room-words-note",
+               "Cada jogador traz 2 palavras: com 6 jogadores, são 12 palavras. Mínimo de 2 para começar."
+             )
     end
   end
 end
