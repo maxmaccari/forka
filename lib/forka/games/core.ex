@@ -766,4 +766,172 @@ defmodule Forka.Games.Core do
       when is_integer(player_count) and player_count >= 0 do
     max(player_count, @min_players_allowed) * @words_per_player
   end
+
+  @doc """
+  Reconciles a game state against the list of player IDs that still exist in persistence.
+
+  Drops seated players whose accounts were deleted, compacts remaining seats in seat
+  order, and resolves an absent or deleted owner by promoting seat `0` or archiving the
+  room when nobody remains. Returns `:unchanged` when no repair is needed or the room is
+  already `:archived`.
+  """
+  @spec reconcile_missing_players(GameState.t(), [Ecto.UUID.t()]) ::
+          :unchanged | {:changed, GameState.t()}
+  def reconcile_missing_players(%GameState{status: :archived}, existing_player_ids)
+      when is_list(existing_player_ids),
+      do: :unchanged
+
+  def reconcile_missing_players(%GameState{} = game_state, existing_player_ids)
+      when is_list(existing_player_ids) do
+    existing_set = MapSet.new(existing_player_ids)
+
+    {kept_entries, removed_entries} =
+      game_state.game_players
+      |> Enum.sort_by(fn {pos, _gp} -> pos end)
+      |> Enum.split_with(fn {_pos, gp} -> MapSet.member?(existing_set, gp.player.id) end)
+
+    owner_missing? =
+      is_nil(game_state.owner) or not MapSet.member?(existing_set, game_state.owner.id)
+
+    if removed_entries == [] and not owner_missing? do
+      :unchanged
+    else
+      remaining_players = kept_entries |> Enum.map(&elem(&1, 1)) |> indexed_map()
+      removed_ids = Enum.map(removed_entries, fn {_pos, gp} -> gp.player.id end)
+      previous_turn_player_id = current_turn_player_id(game_state)
+      previous_owner_id = game_state.owner && game_state.owner.id
+
+      updated =
+        %{game_state | game_players: remaining_players}
+        |> clear_removed_word_finishers(removed_ids)
+        |> increment_tick()
+        |> push_removed_player_events(removed_entries)
+        |> reconcile_owner_and_status(owner_missing?, previous_owner_id, previous_turn_player_id)
+
+      {:changed, updated}
+    end
+  end
+
+  # game_words.finished_by_id references players; a deleted id would fail the next save.
+  defp clear_removed_word_finishers(%GameState{} = game_state, []), do: game_state
+
+  defp clear_removed_word_finishers(%GameState{game_words: game_words} = game_state, removed_ids) do
+    cleared =
+      Map.new(game_words, fn {idx, game_word} ->
+        if game_word.finished_by_id in removed_ids do
+          {idx, %{game_word | finished_by_id: nil}}
+        else
+          {idx, game_word}
+        end
+      end)
+
+    %{game_state | game_words: cleared}
+  end
+
+  defp push_removed_player_events(game_state, removed_entries) do
+    Enum.reduce(removed_entries, game_state, fn {_pos, gp}, acc ->
+      push_event(acc, :player_left, gp.player)
+    end)
+  end
+
+  defp reconcile_owner_and_status(
+         %GameState{game_players: remaining_players} = game_state,
+         true,
+         _previous_owner_id,
+         _previous_turn_player_id
+       )
+       when map_size(remaining_players) == 0 do
+    %{
+      game_state
+      | owner: nil,
+        current_game_word_index: nil,
+        current_game_player_index: nil
+    }
+    |> do_archive()
+  end
+
+  defp reconcile_owner_and_status(
+         %GameState{game_players: remaining_players} = game_state,
+         true,
+         previous_owner_id,
+         previous_turn_player_id
+       ) do
+    %{player: new_owner} = Map.fetch!(remaining_players, 0)
+
+    %{game_state | owner: new_owner}
+    |> push_event(:ownership_transferred_to, %{
+      from_player_id: previous_owner_id,
+      to_player_id: new_owner.id
+    })
+    |> realign_playing_turn(previous_turn_player_id)
+  end
+
+  defp reconcile_owner_and_status(
+         %GameState{} = game_state,
+         false,
+         _previous_owner_id,
+         previous_turn_player_id
+       ) do
+    realign_playing_turn(game_state, previous_turn_player_id)
+  end
+
+  defp current_turn_player_id(%GameState{
+         status: :playing,
+         game_players: players,
+         current_game_player_index: idx
+       })
+       when is_integer(idx) do
+    case Map.get(players, idx) do
+      %{player: %{id: id}} -> id
+      _ -> nil
+    end
+  end
+
+  defp current_turn_player_id(_game_state), do: nil
+
+  defp realign_playing_turn(%GameState{status: :playing, game_players: players} = game_state, _id)
+       when map_size(players) == 0 do
+    %{
+      game_state
+      | status: :game_over,
+        current_game_word_index: nil,
+        current_game_player_index: nil
+    }
+    |> push_event(:game_over)
+  end
+
+  defp realign_playing_turn(%GameState{status: :playing} = game_state, previous_turn_player_id) do
+    preserved_index =
+      if is_binary(previous_turn_player_id) do
+        case find_game_player_by_id(game_state, previous_turn_player_id) do
+          {new_idx, %{status: :alive}} -> new_idx
+          _ -> nil
+        end
+      end
+
+    next_alive_index =
+      preserved_index ||
+        game_state.game_players
+        |> Enum.sort_by(fn {idx, _gp} -> idx end)
+        |> Enum.find_value(fn
+          {idx, %{status: :alive}} -> idx
+          _ -> nil
+        end)
+
+    case next_alive_index do
+      nil ->
+        %{
+          game_state
+          | status: :game_over,
+            current_game_word_index: nil,
+            current_game_player_index: nil
+        }
+        |> push_event(:game_over)
+
+      idx ->
+        %{game_state | current_game_player_index: idx}
+    end
+  end
+
+  defp realign_playing_turn(game_state, _previous_turn_player_id), do: game_state
 end

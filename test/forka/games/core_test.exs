@@ -1224,4 +1224,219 @@ defmodule Forka.Games.CoreTest do
       end
     end
   end
+
+  describe "reconcile_missing_players/2" do
+    test "OWN-02: cold ownerless lobby promotes lowest seat and emits ownership_transferred_to" do
+      owner = build_games_player("lia")
+      p2 = build_games_player("bruno")
+      p3 = build_games_player("caio")
+
+      {:ok, g1} = Core.new(owner, "Sala", 4) |> Core.join_game(p2)
+      {:ok, g2} = Core.join_game(g1, p3)
+      ownerless = %{g2 | owner: nil}
+
+      assert {:changed, reconciled} =
+               Core.reconcile_missing_players(ownerless, [p2.id, p3.id])
+
+      assert reconciled.status == :lobby
+      assert reconciled.owner.id == p2.id
+      assert reconciled.tick == ownerless.tick + 1
+      assert Map.keys(reconciled.game_players) |> Enum.sort() == [0, 1]
+      assert reconciled.game_players[0].player.id == p2.id
+      assert reconciled.game_players[1].player.id == p3.id
+
+      tick_events =
+        reconciled.events
+        |> Enum.filter(&(&1.tick == reconciled.tick))
+        |> Enum.map(&{&1.type, &1.payload})
+
+      assert tick_events == [
+               {:ownership_transferred_to, %{from_player_id: nil, to_player_id: p2.id}}
+             ]
+    end
+
+    test "OWN-02: cold ownerless empty room archives with nil owner" do
+      owner = build_games_player("lia")
+      ownerless_empty = %{Core.new(owner, "Vazia", 4) | owner: nil}
+
+      assert {:changed, archived} = Core.reconcile_missing_players(ownerless_empty, [])
+
+      assert archived.status == :archived
+      assert archived.owner == nil
+      assert archived.game_players == %{}
+      assert archived.tick == ownerless_empty.tick + 1
+
+      tick_events =
+        archived.events
+        |> Enum.filter(&(&1.tick == archived.tick))
+        |> Enum.map(& &1.type)
+
+      assert tick_events == [:game_archived]
+    end
+
+    test "OWN-02: running state with deleted owner drops owner, compacts seats, and promotes next seat" do
+      owner = build_games_player("lia")
+      p2 = build_games_player("bruno")
+      p3 = build_games_player("caio")
+
+      {:ok, g1} = Core.new(owner, "Ativa", 4) |> Core.join_game(owner)
+      {:ok, g2} = Core.join_game(g1, p2)
+      {:ok, g3} = Core.join_game(g2, p3)
+
+      assert {:changed, reconciled} = Core.reconcile_missing_players(g3, [p2.id, p3.id])
+
+      assert reconciled.status == :lobby
+      assert reconciled.owner.id == p2.id
+      assert Map.keys(reconciled.game_players) |> Enum.sort() == [0, 1]
+      assert reconciled.game_players[0].player.id == p2.id
+      assert reconciled.game_players[1].player.id == p3.id
+
+      tick_types =
+        reconciled.events
+        |> Enum.filter(&(&1.tick == reconciled.tick))
+        |> Enum.map(&{&1.type, &1.payload})
+
+      assert {:player_left, %{player_id: owner.id}} in tick_types
+      assert {:ownership_transferred_to, %{from_player_id: owner.id, to_player_id: p2.id}} in tick_types
+    end
+
+    test "OWN-02: running state with deleted solo owner drops owner and archives room" do
+      owner = build_games_player("lia")
+      {:ok, g1} = Core.new(owner, "Solo", 4) |> Core.join_game(owner)
+
+      assert {:changed, archived} = Core.reconcile_missing_players(g1, [])
+
+      assert archived.status == :archived
+      assert archived.owner == nil
+      assert archived.game_players == %{}
+
+      tick_types =
+        archived.events
+        |> Enum.filter(&(&1.tick == archived.tick))
+        |> Enum.map(& &1.type)
+
+      assert :player_left in tick_types
+      assert :game_archived in tick_types
+    end
+
+    test "OWN-02: running playing state with deleted owner compacts seats, promotes owner, and preserves or advances turn index" do
+      owner = build_games_player("lia")
+      p2 = build_games_player("bruno")
+      p3 = build_games_player("caio")
+
+      words =
+        for text <- ~w(alfa bravo charlie delta echo foxtrot),
+            do: Word.new(text, "Geral")
+
+      {:ok, g1} = Core.new(owner, "Em Jogo", 4) |> Core.join_game(owner)
+      {:ok, g2} = Core.join_game(g1, p2)
+      {:ok, g3} = Core.join_game(g2, p3)
+      {:ok, playing} = g3 |> Core.set_words(words) |> Core.start_game(owner.id)
+
+      # Case A: deleted owner was current turn (index 0) -> p2 becomes owner and turn moves to seat 0 (p2)
+      assert {:changed, reconciled_a} = Core.reconcile_missing_players(playing, [p2.id, p3.id])
+      assert reconciled_a.status == :playing
+      assert reconciled_a.owner.id == p2.id
+      assert reconciled_a.current_game_player_index == 0
+      assert Core.get_current_player(reconciled_a).id == p2.id
+
+      # Case B: p3 (index 2) was current turn when owner (index 0) was deleted -> p3 stays current turn at new index 1
+      playing_p3_turn = %{playing | current_game_player_index: 2}
+      assert {:changed, reconciled_b} = Core.reconcile_missing_players(playing_p3_turn, [p2.id, p3.id])
+      assert reconciled_b.status == :playing
+      assert reconciled_b.owner.id == p2.id
+      assert reconciled_b.current_game_player_index == 1
+      assert Core.get_current_player(reconciled_b).id == p3.id
+
+      # Case C: all players deleted while playing -> archived with nil indices
+      assert {:changed, archived} = Core.reconcile_missing_players(playing, [])
+      assert archived.status == :archived
+      assert archived.owner == nil
+      assert archived.current_game_player_index == nil
+      assert archived.current_game_word_index == nil
+
+      # Case D: a word finished by the deleted owner loses its finisher (FK to players);
+      # a word finished by a kept player keeps it
+      word0 = %{playing.game_words[0] | finished_by_id: owner.id}
+      word1 = %{playing.game_words[1] | finished_by_id: p2.id}
+
+      with_finishers = %{
+        playing
+        | game_words: playing.game_words |> Map.put(0, word0) |> Map.put(1, word1)
+      }
+
+      assert {:changed, healed} = Core.reconcile_missing_players(with_finishers, [p2.id, p3.id])
+      assert healed.game_words[0].finished_by_id == nil
+      assert healed.game_words[1].finished_by_id == p2.id
+    end
+
+    test "OWN-02: running state with deleted non-owner drops only that player and keeps owner; healthy or archived state is unchanged" do
+      owner = build_games_player("lia")
+      p2 = build_games_player("bruno")
+
+      {:ok, g1} = Core.new(owner, "Ativa", 4) |> Core.join_game(owner)
+      {:ok, g2} = Core.join_game(g1, p2)
+
+      assert :unchanged = Core.reconcile_missing_players(g2, [owner.id, p2.id])
+      assert :unchanged = Core.reconcile_missing_players(%{g2 | status: :archived, owner: nil}, [])
+
+      # Healthy game with empty game_players (e.g. insert(:game)) stays unchanged when owner exists
+      assert :unchanged = Core.reconcile_missing_players(Core.new(owner, "Nova", 4), [owner.id])
+
+      assert {:changed, reconciled} = Core.reconcile_missing_players(g2, [owner.id])
+      assert reconciled.owner.id == owner.id
+      assert Map.keys(reconciled.game_players) == [0]
+      assert reconciled.game_players[0].player.id == owner.id
+    end
+
+    property "OWN-02: after reconcile_missing_players/2, non-archived games always have an existing owner and only existing seated players" do
+      check all(
+              status <- StreamData.member_of([:lobby, :playing, :finished, :game_over]),
+              player_count <- StreamData.integer(1..4),
+              keep_mask <- StreamData.list_of(StreamData.boolean(), length: player_count),
+              owner_nil? <- StreamData.boolean()
+            ) do
+        players = for idx <- 1..player_count, do: build_games_player("P#{idx}")
+        [owner | _] = players
+
+        state =
+          Enum.reduce(players, Core.new(owner, "Prop", 4), fn p, acc ->
+            {:ok, next} = Core.join_game(acc, p)
+            next
+          end)
+
+        state = %{
+          state
+          | status: status,
+            owner: if(owner_nil?, do: nil, else: owner),
+            current_game_player_index: if(status == :playing, do: 0, else: nil),
+            current_game_word_index: if(status == :playing, do: 0, else: nil)
+        }
+
+        existing_ids =
+          players
+          |> Enum.zip(keep_mask)
+          |> Enum.filter(fn {_p, keep?} -> keep? end)
+          |> Enum.map(fn {p, _} -> p.id end)
+
+        existing_set = MapSet.new(existing_ids)
+
+        final =
+          case Core.reconcile_missing_players(state, existing_ids) do
+            :unchanged -> state
+            {:changed, updated} -> updated
+          end
+
+        seated_ids = final.game_players |> Map.values() |> Enum.map(& &1.player.id)
+        assert Enum.all?(seated_ids, &MapSet.member?(existing_set, &1))
+
+        if final.status == :archived do
+          assert final.game_players == %{}
+        else
+          assert final.owner != nil
+          assert MapSet.member?(existing_set, final.owner.id)
+        end
+      end
+    end
+  end
 end
