@@ -112,10 +112,14 @@ defmodule ForkaWeb.RoomInviteLiveTest do
       assert has_element?(lv_missing, ~s|#invite-directory-link[href="/"]|)
 
       archived = insert(:game, status: :archived)
-      {:ok, lv_archived, html_archived} = live(conn, ~p"/rooms/#{archived.id}/join")
-      assert visible_text(html_archived) =~ "Esta sala foi arquivada"
-      assert has_element?(lv_archived, ~s|#invite-directory-link[href="/"]|)
-      refute has_element?(lv_archived, "#invite-login-link")
+
+      assert {:error,
+              {:live_redirect, %{to: "/", flash: %{"error" => "Esta sala foi arquivada."}}}} =
+               live(conn, ~p"/rooms/#{archived.id}/join")
+
+      assert {:error,
+              {:live_redirect, %{to: "/", flash: %{"error" => "Esta sala foi arquivada."}}}} =
+               conn |> log_in_player(outsider) |> live(~p"/rooms/#{archived.id}/join")
     end
 
     test "REQ-03 & REQ-05: guest viewing full or playing room keeps sign-in link with return_to for returning participants",
@@ -180,7 +184,8 @@ defmodule ForkaWeb.RoomInviteLiveTest do
       owner_scope = Forka.Scope.for_player(owner)
 
       {:ok, game} = Games.create_room(owner_scope, %{name: "Sala Encerrando", max_players: 4})
-      {:ok, lv, _html} = conn |> log_in_player(joiner) |> live(~p"/rooms/#{game.id}/join")
+      join_conn = conn |> log_in_player(joiner)
+      {:ok, lv, _html} = live(join_conn, ~p"/rooms/#{game.id}/join")
 
       game_pid = GameServer.whereis(game.id)
       ref = Process.monitor(game_pid)
@@ -219,9 +224,33 @@ defmodule ForkaWeb.RoomInviteLiveTest do
       assert :ok = Task.await(leave_task, 5_000)
       assert_receive {:DOWN, ^ref, :process, ^game_pid, :normal}
 
-      html = Task.await(join_task, 5_000)
-      assert visible_text(html) =~ "Esta sala foi arquivada"
-      assert has_element?(lv, ~s|#invite-directory-link[href="/"]|)
+      {:ok, _dir_lv, dir_html} =
+        join_task
+        |> Task.await(5_000)
+        |> follow_redirect(join_conn, ~p"/")
+
+      assert dir_html =~ "Esta sala foi arquivada."
+    end
+
+    test "OWN-06: invite page heals ownerless room with members remaining and redirects archived when empty",
+         %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      member = insert(:player, username: "bruno")
+      {:ok, shared} = Games.create_game(owner.id, %{name: "Convite Orfa", max_players: 4})
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(member), shared.id)
+      Forka.Repo.delete!(owner)
+
+      {:ok, lv, html} = live(conn, ~p"/rooms/#{shared.id}/join")
+      assert visible_text(html) =~ "bruno"
+      assert has_element?(lv, "#room-invite-owner", "bruno")
+
+      solo_owner = insert(:player, username: "caio")
+      {:ok, solo} = Games.create_game(solo_owner.id, %{name: "Convite Solo", max_players: 4})
+      Forka.Repo.delete!(solo_owner)
+
+      assert {:error,
+              {:live_redirect, %{to: "/", flash: %{"error" => "Esta sala foi arquivada."}}}} =
+               live(conn, ~p"/rooms/#{solo.id}/join")
     end
   end
 end

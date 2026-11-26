@@ -526,5 +526,22 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
       assert actor.id in player_ids
       refute victim.id in player_ids
     end
+
+    test "ARCH-02: clicking join on a room archived just before click stays on directory with archived flash and removes card",
+         %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      joiner = insert(:player, username: "bruno")
+      {:ok, game} = Games.create_game(owner.id, %{name: "Sala Arquivando", max_players: 4})
+
+      {:ok, lv, _html} = conn |> log_in_player(joiner) |> live(~p"/")
+      _ = render_async(lv)
+      assert has_element?(lv, "#rooms-#{game.id}")
+
+      :ok = Games.archive_game(Forka.Scope.for_player(owner), game.id)
+      html = render_hook(lv, "join_room", %{"id" => game.id})
+
+      assert html =~ "Esta sala foi arquivada."
+      refute has_element?(lv, "#rooms-#{game.id}")
+    end
   end
 end

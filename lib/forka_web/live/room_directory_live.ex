@@ -183,6 +183,16 @@ defmodule ForkaWeb.RoomDirectoryLive do
           {:ok, _status} ->
             {:noreply, push_navigate(socket, to: ~p"/rooms/#{valid_id}")}
 
+          {:error, :game_archived} ->
+            {:noreply,
+             socket
+             |> apply_hidden_room_event(
+               %RoomListItem{id: valid_id, status: :archived},
+               socket.assigns.room_ids,
+               socket.assigns.room_order
+             )
+             |> put_flash(:error, "Esta sala foi arquivada.")}
+
           {:error, _reason} ->
             {:noreply, push_navigate(socket, to: ~p"/rooms/#{valid_id}/join")}
         end
