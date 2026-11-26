@@ -638,6 +638,53 @@ defmodule Forka.GamesTest do
       game_state = Games.get_game_summary(game.id)
       refute Enum.any?(game_state.players, fn {_, p} -> p.player.id == player.id end)
     end
+
+    test "REQ-04 & REQ-05: owner leave transfers controls to lowest seat and last-player leave archives room" do
+      owner = insert(:player, username: "lia")
+      p2 = insert(:player, username: "bruno")
+      p3 = insert(:player, username: "caio")
+      owner_scope = Scope.for_player(owner)
+      p2_scope = Scope.for_player(p2)
+      p3_scope = Scope.for_player(p3)
+
+      {:ok, game} = Games.create_room(owner_scope, %{name: "Sala Handoff", max_players: 4})
+      assert {:ok, :joined} = Games.join_room(p2_scope, game.id)
+      assert {:ok, :joined} = Games.join_room(p3_scope, game.id)
+
+      assert :ok = Games.subscribe_to_room_lobby(p2_scope, game.id)
+      assert :ok = Games.subscribe_to_game_list()
+      flush_messages()
+
+      # Owner leaves -> p2 (lowest remaining seat) becomes owner
+      assert :ok = Games.leave_game(owner_scope, game.id)
+      assert_receive {:room_lobby_updated, payload}
+      assert {:ok, p2_lobby} = Games.room_lobby_from_payload(p2_scope, payload)
+      assert p2_lobby.owner_username == "bruno"
+      assert p2_lobby.can_edit_settings? == true
+      assert_receive {:game_list_updated, %{id: id, owner_username: "bruno", player_count: 2}}
+      assert id == game.id
+
+      # Former owner loses settings permission; new owner gains it
+      assert {:error, :unauthorized} =
+               Games.update_room_settings(owner_scope, game.id, %{name: "Bloqueado"})
+
+      assert :ok = Games.update_room_settings(p2_scope, game.id, %{name: "Sala do Bruno"})
+      flush_messages()
+
+      # p3 leaves, then p2 leaves as last player -> room archives and GameServer stops
+      assert :ok = Games.leave_game(p3_scope, game.id)
+      flush_messages()
+
+      pid = GameServer.whereis(game.id)
+      ref = Process.monitor(pid)
+      assert :ok = Games.leave_game(p2_scope, game.id)
+
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+      assert_receive {:room_lobby_updated, %{status: :archived, player_count: 0}}
+      assert_receive {:game_list_updated, %{id: archived_id, status: :archived}}
+      assert archived_id == game.id
+      assert {:error, :game_archived} = Games.get_room_lobby(p2_scope, game.id)
+    end
   end
 
   describe "start_game/2" do

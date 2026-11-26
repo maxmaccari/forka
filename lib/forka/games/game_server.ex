@@ -161,9 +161,12 @@ defmodule Forka.Games.GameServer do
   @impl true
   def handle_call({:leave_game, player_id}, _from, game) do
     case Core.leave_game(game, player_id) do
+      {:ok, %GameState{status: :archived} = new_game} ->
+        saved_game = save_and_publish!(game, new_game)
+        {:stop, :normal, :ok, saved_game}
+
       {:ok, new_game} ->
         saved_game = save_and_publish!(game, new_game)
-
         {:reply, :ok, saved_game, @timeout_ms}
 
       {:error, error} ->
