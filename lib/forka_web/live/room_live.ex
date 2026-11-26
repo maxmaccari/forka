@@ -70,22 +70,106 @@ defmodule ForkaWeb.RoomLive do
      |> assign(:page_title, lobby.name)
      |> assign(:lobby, lobby)
      |> assign(:invite_url, url(~p"/rooms/#{lobby.id}/join"))
-     |> assign(:lobby_notice, nil)}
+     |> assign(:lobby_notice, nil)
+     |> assign(:confirm_leave?, false)}
+  end
+
+  @impl true
+  def handle_event("leave_room", _params, %{assigns: %{lobby: %RoomLobby{is_owner?: true}}} = socket),
+    do: {:noreply, assign(socket, :confirm_leave?, true)}
+
+  def handle_event("leave_room", _params, socket), do: leave_room(socket)
+
+  def handle_event("confirm_leave_room", _params, socket), do: leave_room(socket)
+
+  def handle_event("cancel_leave_room", _params, socket),
+    do: {:noreply, assign(socket, :confirm_leave?, false)}
+
+  # Players are sorted by seat, so the first other player is the lowest remaining seat.
+  defp next_owner_username(%RoomLobby{players: players}, viewer_id) do
+    case Enum.find(players, &(&1.id != viewer_id)) do
+      nil -> nil
+      player -> player.username
+    end
+  end
+
+  defp leave_room(socket) do
+    game_id = socket.assigns.lobby.id
+
+    case Games.leave_game(socket.assigns.current_scope, game_id) do
+      :ok ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Você saiu da sala.")
+         |> push_navigate(to: ~p"/")}
+
+      {:error, :game_already_started} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "A partida já começou.")
+         |> push_navigate(to: ~p"/rooms/#{game_id}/match")}
+
+      {:error, :game_archived} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Esta sala foi arquivada.")
+         |> push_navigate(to: ~p"/")}
+
+      {:error, _reason} ->
+        {:noreply, push_navigate(socket, to: ~p"/")}
+    end
   end
 
   @impl true
   def handle_info({:room_lobby_updated, payload}, socket) do
+    previous_lobby = socket.assigns.lobby
+
     case Games.room_lobby_from_payload(socket.assigns.current_scope, payload) do
-      {:ok, lobby} ->
+      {:ok, %RoomLobby{status: :archived}} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Esta sala foi arquivada.")
+         |> push_navigate(to: ~p"/")}
+
+      {:ok, %RoomLobby{status: status, participant?: true, id: id}}
+      when status in [:playing, :finished, :game_over] ->
+        {:noreply, push_navigate(socket, to: ~p"/rooms/#{id}/match")}
+
+      {:ok, %RoomLobby{participant?: false}} ->
+        {:noreply, push_navigate(socket, to: ~p"/")}
+
+      {:ok, %RoomLobby{} = lobby} ->
+        notice =
+          ownership_change_notice(previous_lobby, lobby) || socket.assigns.lobby_notice
+
         {:noreply,
          socket
          |> assign(:page_title, lobby.name)
-         |> assign(:lobby, lobby)}
+         |> assign(:lobby, lobby)
+         |> assign(:lobby_notice, notice)}
 
       {:error, _reason} ->
         {:noreply, socket}
     end
   end
+
+  defp ownership_change_notice(
+         %RoomLobby{owner_id: old_owner_id},
+         %RoomLobby{owner_id: new_owner_id, is_owner?: true}
+       )
+       when old_owner_id != new_owner_id and not is_nil(new_owner_id) do
+    "Agora você comanda a sala."
+  end
+
+  defp ownership_change_notice(
+         %RoomLobby{owner_id: old_owner_id},
+         %RoomLobby{owner_id: new_owner_id, owner_username: username}
+       )
+       when old_owner_id != new_owner_id and not is_nil(new_owner_id) and username != "" do
+    "Agora #{username} comanda a sala."
+  end
+
+  defp ownership_change_notice(_previous, _current), do: nil
 
   @impl true
   def render(assigns) do
@@ -208,6 +292,47 @@ defmodule ForkaWeb.RoomLive do
         >
           Sair da sala
         </.button>
+
+        <.modal
+          :if={@confirm_leave?}
+          id="leave-room-confirm"
+          show
+          role="alertdialog"
+          on_cancel={JS.push("cancel_leave_room")}
+        >
+          <:title>Sair da sala?</:title>
+          <:description>
+            <%= case next_owner_username(@lobby, @current_scope.player.id) do %>
+              <% nil -> %>
+                Você é a última pessoa na sala. Ao sair, ela será arquivada.
+              <% next_owner -> %>
+                A sala passa para {next_owner}.
+            <% end %>
+          </:description>
+          <p
+            :if={next_owner_username(@lobby, @current_scope.player.id)}
+            class="text-sm text-ink-muted"
+          >
+            Você pode voltar pelo link de convite.
+          </p>
+          <:actions>
+            <.button id="cancel-leave-room" type="button" variant="secondary" phx-click="cancel_leave_room">
+              Cancelar
+            </.button>
+            <.button
+              id="confirm-leave-room"
+              type="button"
+              variant="danger"
+              phx-click="confirm_leave_room"
+              phx-disable-with="Saindo..."
+            >
+              {if(next_owner_username(@lobby, @current_scope.player.id),
+                do: "Sair e passar a sala",
+                else: "Sair e arquivar a sala"
+              )}
+            </.button>
+          </:actions>
+        </.modal>
       </aside>
     </div>
     """
