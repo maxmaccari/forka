@@ -8,6 +8,7 @@ defmodule Forka.Words do
 
   alias Forka.Words.Category
   alias Forka.Words.Word
+  alias Forka.WordText
 
   @doc """
   Imports words from a list of maps.
@@ -163,5 +164,82 @@ defmodule Forka.Words do
         where: c.id in ^ids,
         order_by: [asc: c.name]
     )
+  end
+
+  @doc """
+  Counts distinct playable words matching the optional `:language` and `:category_ids` filters.
+
+  Words are filtered to playable text (`WordText.playable_text?/1`) and deduplicated by
+  `WordText.normalize_text/1` (case and accents folded).
+  """
+  @spec count_distinct_playable_words(keyword()) :: non_neg_integer()
+  def count_distinct_playable_words(opts \\ []) when is_list(opts) do
+    opts
+    |> filtered_words_query()
+    |> select([w, _c], w.text)
+    |> Repo.all()
+    |> Stream.filter(&WordText.playable_text?/1)
+    |> Stream.map(&WordText.normalize_text/1)
+    |> MapSet.new()
+    |> MapSet.size()
+  end
+
+  @doc """
+  Samples up to `count` distinct playable dictionary entries matching the optional
+  `:language` and `:category_ids` filters.
+
+  Returns fewer entries than `count` when the filtered pool has fewer distinct playable words.
+  """
+  @spec sample_distinct_playable_words(non_neg_integer(), keyword()) :: [
+          %{
+            text: String.t(),
+            category: String.t(),
+            hint: String.t() | nil,
+            language: String.t()
+          }
+        ]
+  def sample_distinct_playable_words(count, opts \\ [])
+
+  def sample_distinct_playable_words(0, opts) when is_list(opts), do: []
+
+  def sample_distinct_playable_words(count, opts)
+      when is_integer(count) and count > 0 and is_list(opts) do
+    opts
+    |> filtered_words_query()
+    |> select([w, c], %{
+      text: w.text,
+      category: c.name,
+      hint: w.hint,
+      language: c.language
+    })
+    |> Repo.all()
+    |> Enum.filter(&WordText.playable_text?(&1.text))
+    |> Enum.group_by(&WordText.normalize_text(&1.text))
+    |> Map.values()
+    |> Enum.take_random(count)
+    |> Enum.map(&Enum.random/1)
+  end
+
+  defp filtered_words_query(opts) do
+    language = Keyword.get(opts, :language)
+    category_ids = Keyword.get(opts, :category_ids, [])
+
+    query =
+      from w in Word,
+        join: c in assoc(w, :category)
+
+    query =
+      if is_binary(language) and String.trim(language) != "" do
+        normalized_lang = language |> String.trim() |> String.downcase()
+        from [w, c] in query, where: c.language == ^normalized_lang
+      else
+        query
+      end
+
+    if is_list(category_ids) and category_ids != [] do
+      from [w, _c] in query, where: w.category_id in ^category_ids
+    else
+      query
+    end
   end
 end

@@ -31,7 +31,12 @@ defmodule Forka.Games.RepositoryTest do
 
     state =
       %{state | game_players: %{0 => player_two_state, 1 => player_one_state}}
-      |> Core.set_words([Word.new("cat", "Animals")])
+      |> Core.set_words([
+        Word.new("cat", "Animals"),
+        Word.new("dog", "Animals"),
+        Word.new("fox", "Animals"),
+        Word.new("owl", "Animals")
+      ])
 
     {:ok, state} = Core.start_game(state)
     assert {:ok, _state} = Repository.save_game_state(state)
@@ -86,6 +91,40 @@ defmodule Forka.Games.RepositoryTest do
       category_words = Repository.get_random_words(5, word_options)
       assert length(category_words) == 2
       assert Enum.all?(category_words, fn word -> word.category == "Animals" end)
+    end
+
+    test "REQ-01 & EDGE-01: returns distinct playable Word structs and ignores accent/case duplicates and empty text" do
+      cat_a = insert(:category, name: "Comida", language: "pt")
+      cat_b = insert(:category, name: "Bebidas", language: "pt")
+
+      insert(:word, text: "café", category: cat_a)
+      insert(:word, text: "cafe", category: cat_a)
+      insert(:word, text: "CAFÉ", category: cat_b)
+      insert(:word, text: "pão", category: cat_a)
+      insert(:word, text: "suco", category: cat_b)
+      insert(:word, text: "bolo", category: cat_a)
+      Repo.insert!(%Forka.Words.Word{text: "   ", category_id: cat_a.id})
+      Repo.insert!(%Forka.Words.Word{text: "---", category_id: cat_b.id})
+
+      opts = %WordOptions{language: "pt", category_ids: [cat_a.id, cat_b.id]}
+      words = Repository.get_random_words(4, opts)
+
+      assert length(words) == 4
+      assert Enum.all?(words, &Word.playable?/1)
+
+      keys = words |> Enum.map(&Word.normalized_key/1) |> MapSet.new()
+      assert keys == MapSet.new(["cafe", "pao", "suco", "bolo"])
+    end
+  end
+
+  describe "count_available_words/1" do
+    test "EDGE-03: normalizes legacy keyword word_options for get_random_words/2 and count_available_words/1" do
+      cat_pt = insert(:category, name: "Animais", language: "pt")
+      insert(:word, text: "gato", category: cat_pt)
+      insert(:word, text: "pato", category: cat_pt)
+
+      assert Repository.count_available_words(language: "pt") == 2
+      assert length(Repository.get_random_words(2, language: "pt")) == 2
     end
   end
 
@@ -297,6 +336,24 @@ defmodule Forka.Games.RepositoryTest do
           hint: "Citrus fruit",
           category: "Food",
           language: "en"
+        },
+        %Word{
+          text: "grape",
+          hint: "Small fruit",
+          category: "Food",
+          language: "en"
+        },
+        %Word{
+          text: "melon",
+          hint: "Sweet fruit",
+          category: "Food",
+          language: "en"
+        },
+        %Word{
+          text: "peach",
+          hint: "Fuzzy fruit",
+          category: "Food",
+          language: "en"
         }
       ]
 
@@ -326,7 +383,7 @@ defmodule Forka.Games.RepositoryTest do
       assert map_size(saved_game_state.game_players) == 3
 
       # Verify words were saved
-      assert map_size(saved_game_state.game_words) == 3
+      assert map_size(saved_game_state.game_words) == 6
       assert saved_game_state.game_words[0].word.text == "apple"
       assert saved_game_state.game_words[1].word.text == "banana"
       assert saved_game_state.game_words[2].word.text == "orange"
@@ -351,7 +408,7 @@ defmodule Forka.Games.RepositoryTest do
       {:ok, reloaded_game_state} = Repository.get_game_state(game.id)
       assert reloaded_game_state.status == :playing
       assert map_size(reloaded_game_state.game_players) == 3
-      assert map_size(reloaded_game_state.game_words) == 3
+      assert map_size(reloaded_game_state.game_words) == 6
       assert length(reloaded_game_state.game_words[0].guesses) == 5
 
       assert reloaded_game_state.current_game_word_index == 1
@@ -408,7 +465,9 @@ defmodule Forka.Games.RepositoryTest do
       playing_game_state =
         Core.set_words(saved_game_state, [
           Word.new("apple", "fruits"),
-          Word.new("banana", "fruits")
+          Word.new("banana", "fruits"),
+          Word.new("cherry", "fruits"),
+          Word.new("mango", "fruits")
         ])
 
       {:ok, playing_game_state} = Core.start_game(playing_game_state)

@@ -115,4 +115,21 @@ defmodule Forka.Games.Schemas.WordTest do
     assert Word.letters_count(Word.new("hello world", "")) == 10
     assert Word.letters_count(Word.new("hello-world", "")) == 10
   end
+
+  test "REQ-01: playable?/1 and normalized_key/1 delegate consistently to WordText normalization" do
+    assert Word.playable?(Word.new("café", "food"))
+    assert Word.playable?(Word.new("beija-flor", "animals"))
+    refute Word.playable?(Word.new("", "food"))
+    refute Word.playable?(Word.new("   ", "food"))
+    refute Word.playable?(Word.new("12345", "food"))
+    refute Word.playable?(Word.new("---", "food"))
+    refute Word.playable?(Word.new("straße", "food"))
+    refute Word.playable?(Word.new("øl", "food"))
+    refute Word.playable?(%Word{text: nil, category: "food"})
+    refute Word.playable?(nil)
+
+    assert Word.normalized_key(Word.new("Café", "food")) == "cafe"
+    assert Word.normalized_key(Word.new("cafe", "other")) == "cafe"
+    assert Word.normalized_key(Word.new("Coração", "pt")) == "coracao"
+  end
 end

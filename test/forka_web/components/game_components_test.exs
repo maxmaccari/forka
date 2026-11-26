@@ -350,6 +350,7 @@ defmodule ForkaWeb.GameComponentsTest do
 
       keys = LazyHTML.query(doc, "button[data-letter]")
       assert Enum.count(keys) == 26
+      assert LazyHTML.attribute(keys, "data-letter") == Forka.WordText.supported_letters()
 
       assert LazyHTML.attribute(LazyHTML.query(doc, ~s|button[data-letter="A"]|), "aria-label") ==
                ["A, certa"]

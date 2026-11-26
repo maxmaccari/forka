@@ -10,6 +10,7 @@ defmodule ForkaWeb.RoomComponents do
   import ForkaWeb.CoreComponents
 
   alias Forka.Games.RoomListItem
+  alias Forka.Games.WordAvailability
 
   @doc "Renders a room status pill using Forka's `<.badge>` primitive."
   attr :status, :atom,
@@ -262,4 +263,71 @@ defmodule ForkaWeb.RoomComponents do
   @doc "Formats category names for room lobby and invite details."
   def room_categories_label([]), do: "Todas as categorias"
   def room_categories_label(names), do: Enum.join(names, ", ")
+
+  @doc """
+  Formats the human-readable pt-BR explanation for an insufficient word pool, including
+  actionable guidance on how to broaden the selection.
+  """
+  def insufficient_words_message(%WordAvailability{} = availability) do
+    count_label = valid_words_count_label(availability.available_words)
+
+    requirement_part =
+      if availability.player_count < 2 do
+        "são necessárias pelo menos #{availability.required_words} (2 por jogador, mínimo de 2 jogadores)"
+      else
+        "são necessárias #{availability.required_words} (2 por jogador)"
+      end
+
+    guidance = broaden_guidance(availability.broaden_actions)
+    "Esta seleção tem #{count_label}, mas #{requirement_part}. #{guidance}"
+  end
+
+  @doc "Renders the warning alert when a room's word pool is smaller than required for kickoff."
+  attr :id, :string, required: true
+  attr :availability, WordAvailability, required: true
+  attr :settings_path, :string, default: nil
+  attr :role, :string, default: "alert", values: ~w(alert status)
+  attr :title, :string, default: "Poucas palavras para começar"
+
+  def word_availability_alert(assigns) do
+    assigns = assign(assigns, :message, insufficient_words_message(assigns.availability))
+
+    ~H"""
+    <div id={@id}>
+      <.alert tone="warning" role={@role} title={@title}>
+        {@message}
+        <:actions :if={@settings_path}>
+          <.button
+            id="broaden-word-selection"
+            variant="secondary"
+            size="sm"
+            navigate={@settings_path}
+          >
+            Ajustar configurações
+          </.button>
+        </:actions>
+      </.alert>
+    </div>
+    """
+  end
+
+  @doc "Formats the Sala.dc.html word-requirement summary line for a lobby."
+  def room_words_requirement_label(player_count, max_players, required_words) do
+    "#{player_count} de #{max_players} · #{required_words} palavras (2 por jogador)"
+  end
+
+  defp valid_words_count_label(1), do: "1 palavra válida"
+  defp valid_words_count_label(count), do: "#{count} palavras válidas"
+
+  defp broaden_guidance([:add_categories, :all_categories, :change_language]) do
+    ~s(Para ampliar o banco de palavras, escolha mais categorias, selecione "Todas as categorias" ou troque o idioma nas configurações da sala.)
+  end
+
+  defp broaden_guidance([:change_language, :fewer_players]) do
+    "Como todas as categorias já estão incluídas, troque o idioma nas configurações da sala ou jogue com menos jogadores."
+  end
+
+  defp broaden_guidance(_actions) do
+    "Como todas as categorias já estão incluídas, troque o idioma nas configurações da sala."
+  end
 end

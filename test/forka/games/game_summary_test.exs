@@ -23,7 +23,9 @@ defmodule Forka.Games.GameSummaryTest do
     # Set words
     words = [
       Word.new("cat", "animals", "Meows"),
-      Word.new("dog", "animals", "Barks")
+      Word.new("dog", "animals", "Barks"),
+      Word.new("fox", "animals", "Clever"),
+      Word.new("owl", "animals", "Hoots")
     ]
 
     game_with_words = Core.set_words(game_with_players, words)
