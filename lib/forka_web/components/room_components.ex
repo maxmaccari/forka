@@ -358,8 +358,7 @@ defmodule ForkaWeb.RoomComponents do
               size="sm"
               data-copy-invite
             >
-              <.icon name="hero-clipboard-document-mini" class="size-5" />
-              Copiar link
+              <.icon name="hero-clipboard-document-mini" class="size-5" /> Copiar link
             </.button>
             <.button
               id="share-invite-link"
@@ -369,8 +368,7 @@ defmodule ForkaWeb.RoomComponents do
               data-share-invite
               class="hidden"
             >
-              <.icon name="hero-share-mini" class="size-5" />
-              Compartilhar
+              <.icon name="hero-share-mini" class="size-5" /> Compartilhar
             </.button>
           </div>
         </div>
@@ -482,7 +480,9 @@ defmodule ForkaWeb.RoomComponents do
           <span>Ajuste as configurações para ter palavras suficientes.</span>
         <% true -> %>
           <span>
-            Sala pronta com {@player_count} jogadores ({(@word_availability && @word_availability.required_words) || @player_count * 2} palavras).
+            Sala pronta com {@player_count} jogadores ({(@word_availability &&
+                                                           @word_availability.required_words) ||
+              @player_count * 2} palavras).
           </span>
       <% end %>
     </p>

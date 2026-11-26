@@ -408,7 +408,13 @@ defmodule ForkaWeb.RoomLiveTest do
       owner_lv |> element("#leave-room-button") |> render_click()
       assert has_element?(owner_lv, "#leave-room-confirm", "A sala passa para bruno.")
       assert has_element?(owner_lv, "#confirm-leave-room", "Sair e passar a sala")
-      assert has_element?(owner_lv, "#leave-room-confirm", "Você pode voltar pelo link de convite.")
+
+      assert has_element?(
+               owner_lv,
+               "#leave-room-confirm",
+               "Você pode voltar pelo link de convite."
+             )
+
       assert has_element?(p2_lv, "#room-lobby-player-#{owner.id}")
 
       {:ok, _dir_lv, dir_html} =
@@ -421,7 +427,10 @@ defmodule ForkaWeb.RoomLiveTest do
 
       p2_text = p2_lv |> render() |> visible_text()
       assert has_element?(p2_lv, ~s|#edit-room-settings[href="/rooms/#{game.id}/settings"]|)
-      assert visible_text(element(p2_lv, "#room-lobby-player-#{p2.id}") |> render()) =~ "Anfitrião"
+
+      assert visible_text(element(p2_lv, "#room-lobby-player-#{p2.id}") |> render()) =~
+               "Anfitrião"
+
       assert has_element?(p2_lv, "#room-lobby-notice", "Agora você comanda a sala.")
       refute has_element?(p2_lv, "#room-lobby-player-#{owner.id}")
       assert p2_text =~ "2/4 jogadores"
@@ -464,12 +473,15 @@ defmodule ForkaWeb.RoomLiveTest do
       assert dir_html =~ "Você saiu da sala."
 
       assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
-      assert {:error, :game_archived} = Games.get_room_lobby(Forka.Scope.for_player(owner), game.id)
+
+      assert {:error, :game_archived} =
+               Games.get_room_lobby(Forka.Scope.for_player(owner), game.id)
     end
 
-    test "REQ-07: routes every connected lobby participant live to match page when game starts", %{
-      conn: conn
-    } do
+    test "REQ-07: routes every connected lobby participant live to match page when game starts",
+         %{
+           conn: conn
+         } do
       owner = insert(:player, username: "lia")
       guest = insert(:player, username: "bruno")
       insert_list(4, :word)
@@ -515,9 +527,10 @@ defmodule ForkaWeb.RoomLiveTest do
       assert_redirect(tab1_lv, ~p"/")
     end
 
-    test "REQ-08: forged leave_room payload cannot remove another player or affect another room", %{
-      conn: conn
-    } do
+    test "REQ-08: forged leave_room payload cannot remove another player or affect another room",
+         %{
+           conn: conn
+         } do
       owner = insert(:player, username: "lia")
       guest = insert(:player, username: "bruno")
 

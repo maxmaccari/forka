@@ -75,8 +75,12 @@ defmodule ForkaWeb.RoomLive do
   end
 
   @impl true
-  def handle_event("leave_room", _params, %{assigns: %{lobby: %RoomLobby{is_owner?: true}}} = socket),
-    do: {:noreply, assign(socket, :confirm_leave?, true)}
+  def handle_event(
+        "leave_room",
+        _params,
+        %{assigns: %{lobby: %RoomLobby{is_owner?: true}}} = socket
+      ),
+      do: {:noreply, assign(socket, :confirm_leave?, true)}
 
   def handle_event("leave_room", _params, socket), do: leave_room(socket)
 
@@ -277,7 +281,12 @@ defmodule ForkaWeb.RoomLive do
           word_availability={@lobby.word_availability}
         />
 
-        <.status_toast :if={@lobby_notice} id="room-lobby-notice" tone="hero" class="w-full justify-center">
+        <.status_toast
+          :if={@lobby_notice}
+          id="room-lobby-notice"
+          tone="hero"
+          class="w-full justify-center"
+        >
           {@lobby_notice}
         </.status_toast>
 
@@ -316,7 +325,12 @@ defmodule ForkaWeb.RoomLive do
             Você pode voltar pelo link de convite.
           </p>
           <:actions>
-            <.button id="cancel-leave-room" type="button" variant="secondary" phx-click="cancel_leave_room">
+            <.button
+              id="cancel-leave-room"
+              type="button"
+              variant="secondary"
+              phx-click="cancel_leave_room"
+            >
               Cancelar
             </.button>
             <.button

@@ -3,6 +3,7 @@ defmodule Forka.Games.RoomLobbyTest do
 
   alias Forka.Games.Core
   alias Forka.Games.RoomLobby
+  alias Forka.Games.Schemas.Word
   alias Forka.Players.Player, as: AuthPlayer
   alias Forka.Scope
 
@@ -84,7 +85,7 @@ defmodule Forka.Games.RoomLobbyTest do
 
       words =
         for word <- ~w(samba bossa frevo choro),
-            do: Forka.Games.Schemas.Word.new(word, "Música", "Ritmo")
+            do: Word.new(word, "Música", "Ritmo")
 
       {:ok, playing_state} =
         full_state

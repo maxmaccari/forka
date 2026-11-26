@@ -144,9 +144,18 @@ defmodule Forka.Games.CoreTest do
       # Case 1: owner at seat 0 -> seat 1 (Bruno) becomes owner
       game_owner_first =
         Core.new(owner, "Sala da Lia", 4)
-        |> then(fn g -> {:ok, g} = Core.join_game(g, owner); g end)
-        |> then(fn g -> {:ok, g} = Core.join_game(g, p1); g end)
-        |> then(fn g -> {:ok, g} = Core.join_game(g, p2); g end)
+        |> then(fn g ->
+          {:ok, g} = Core.join_game(g, owner)
+          g
+        end)
+        |> then(fn g ->
+          {:ok, g} = Core.join_game(g, p1)
+          g
+        end)
+        |> then(fn g ->
+          {:ok, g} = Core.join_game(g, p2)
+          g
+        end)
 
       assert {:ok, after_first} = Core.leave_game(game_owner_first, owner.id)
       assert after_first.status == :lobby
@@ -168,9 +177,18 @@ defmodule Forka.Games.CoreTest do
       # Case 2: owner at seat 1 (non-zero) -> seat 0 (Bruno) becomes owner, seat 2 (Caio) shifts to 1
       game_owner_middle =
         Core.new(owner, "Sala Meio", 4)
-        |> then(fn g -> {:ok, g} = Core.join_game(g, p1); g end)
-        |> then(fn g -> {:ok, g} = Core.join_game(g, owner); g end)
-        |> then(fn g -> {:ok, g} = Core.join_game(g, p2); g end)
+        |> then(fn g ->
+          {:ok, g} = Core.join_game(g, p1)
+          g
+        end)
+        |> then(fn g ->
+          {:ok, g} = Core.join_game(g, owner)
+          g
+        end)
+        |> then(fn g ->
+          {:ok, g} = Core.join_game(g, p2)
+          g
+        end)
 
       assert {:ok, after_middle} = Core.leave_game(game_owner_middle, owner.id)
       assert after_middle.status == :lobby
