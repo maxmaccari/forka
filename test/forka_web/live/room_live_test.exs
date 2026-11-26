@@ -63,12 +63,15 @@ defmodule ForkaWeb.RoomLiveTest do
           word_options: %{language: "pt", category_ids: []}
         })
 
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(other), game.id)
+
       {:ok, lv, html} = conn |> log_in_player(other) |> live(~p"/rooms/#{game.id}")
       assert visible_text(html) =~ "Todas as categorias"
       refute has_element?(lv, "#edit-room-settings")
     end
 
-    test "AC-05: hides owner settings link once the game is no longer in lobby", %{conn: conn} do
+    test "REQ-07: redirects seated participants to match page when opening room URL after start",
+         %{conn: conn} do
       owner = insert(:player, username: "lia")
       guest = insert(:player, username: "bruno")
 
@@ -77,8 +80,12 @@ defmodule ForkaWeb.RoomLiveTest do
       insert_list(4, :word)
       :ok = Games.start_game(Forka.Scope.for_player(owner), game.id)
 
-      {:ok, lv, _html} = conn |> log_in_player(owner) |> live(~p"/rooms/#{game.id}")
-      refute has_element?(lv, "#edit-room-settings")
+      for player <- [owner, guest] do
+        assert {:error, {:live_redirect, %{to: redirect_to}}} =
+                 conn |> log_in_player(player) |> live(~p"/rooms/#{game.id}")
+
+        assert redirect_to == ~p"/rooms/#{game.id}/match"
+      end
     end
 
     test "AC-05: redirects to directory with flash when room does not exist or ID is invalid",
@@ -116,6 +123,7 @@ defmodule ForkaWeb.RoomLiveTest do
       cat = insert(:category, name: "Cinema", language: "pt")
 
       {:ok, game} = Games.create_game(owner.id, %{name: "Sala Inicial", max_players: 4})
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(viewer), game.id)
 
       {:ok, lv, _html} = conn |> log_in_player(viewer) |> live(~p"/rooms/#{game.id}")
 
@@ -128,7 +136,7 @@ defmodule ForkaWeb.RoomLiveTest do
 
       text = lv |> render() |> visible_text()
       assert text =~ "Sala Renovada"
-      assert text =~ "1/6 jogadores"
+      assert text =~ "2/6 jogadores"
       assert text =~ "Português"
       assert text =~ "Cinema"
     end
@@ -211,6 +219,8 @@ defmodule ForkaWeb.RoomLiveTest do
           word_options: %{language: "pt", category_ids: [cat_empty.id]}
         })
 
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(viewer), game.id)
+
       {:ok, lv, html} = conn |> log_in_player(viewer) |> live(~p"/rooms/#{game.id}")
       assert has_element?(lv, "#room-word-availability-alert")
       assert visible_text(html) =~ "0 palavras válidas"
@@ -253,6 +263,95 @@ defmodule ForkaWeb.RoomLiveTest do
                lv,
                ~s|#broaden-word-selection[href="/rooms/#{game.id}/settings"]|
              )
+    end
+
+    test "REQ-08: redirects signed-in non-seated visitor to the join page", %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      outsider = insert(:player, username: "caio")
+      {:ok, game} = Games.create_game(owner.id, %{name: "Sala Aberta", max_players: 4})
+
+      assert {:error, {:live_redirect, %{to: redirect_to}}} =
+               conn |> log_in_player(outsider) |> live(~p"/rooms/#{game.id}")
+
+      assert redirect_to == ~p"/rooms/#{game.id}/join"
+    end
+
+    test "REQ-01 & REQ-02 & REQ-03 & EDGE-04: renders full lobby for owner with invite link, empty seats, settings, waiting status, leave button, and no start button",
+         %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      guest = insert(:player, username: "bruno")
+      cat = insert(:category, name: "Música", language: "pt")
+
+      for text <- ~w(samba bossa frevo choro), do: insert(:word, text: text, category: cat)
+
+      {:ok, game} =
+        Games.create_game(owner.id, %{
+          name: "Noite de palavras",
+          max_players: 4,
+          word_options: %{language: "pt", category_ids: [cat.id]}
+        })
+
+      {:ok, lv, html} = conn |> log_in_player(owner) |> live(~p"/rooms/#{game.id}")
+      text = visible_text(html)
+
+      assert text =~ "Sala de espera"
+      assert text =~ "Noite de palavras"
+      assert text =~ "1 de 4 · 4 palavras (2 por jogador)"
+      assert text =~ "1/4 jogadores"
+      assert text =~ "lia · você"
+      assert text =~ "Anfitrião"
+      assert has_element?(lv, "#room-lobby-empty-seat-1")
+      assert has_element?(lv, "#room-lobby-empty-seat-2")
+      assert has_element?(lv, "#room-lobby-empty-seat-3")
+      refute has_element?(lv, "#room-lobby-empty-seat-4")
+      assert has_element?(lv, ~s|#room-invite-url[value$="/rooms/#{game.id}/join"]|)
+      assert has_element?(lv, "#copy-invite-link")
+      assert has_element?(lv, "#room-waiting-status", "Aguardando pelo menos mais 1 jogador")
+      assert has_element?(lv, ~s|#edit-room-settings[href="/rooms/#{game.id}/settings"]|)
+      assert has_element?(lv, "#leave-room-button", "Sair da sala")
+      refute text =~ "Começar partida"
+      refute text =~ "Passar a posse"
+
+      # When another player joins and max_players is lowered to 2 (full), empty seats disappear
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(guest), game.id)
+
+      :ok =
+        Games.update_room_settings(Forka.Scope.for_player(owner), game.id, %{max_players: 2})
+
+      full_text = lv |> render() |> visible_text()
+      assert full_text =~ "2 de 2 · 4 palavras (2 por jogador)"
+      assert full_text =~ "Sala pronta com 2 jogadores (4 palavras)."
+      refute has_element?(lv, "#room-lobby-empty-seat-1")
+      refute full_text =~ "Lugar livre"
+    end
+
+    test "REQ-01 & REQ-03: renders non-owner lobby with waiting message, invite link, leave button, and no edit settings link",
+         %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      guest = insert(:player, username: "bruno")
+
+      {:ok, game} =
+        Games.create_game(owner.id, %{
+          name: "Sala da Lia",
+          max_players: 4,
+          word_options: %{language: "pt", category_ids: []}
+        })
+
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(guest), game.id)
+
+      {:ok, lv, html} = conn |> log_in_player(guest) |> live(~p"/rooms/#{game.id}")
+      text = visible_text(html)
+
+      assert text =~ "lia"
+      assert text =~ "bruno · você"
+      assert text =~ "Anfitrião"
+      assert has_element?(lv, "#room-lobby-empty-seat-1")
+      assert has_element?(lv, "#room-lobby-empty-seat-2")
+      assert has_element?(lv, ~s|#room-invite-url[value$="/rooms/#{game.id}/join"]|)
+      assert has_element?(lv, "#room-waiting-status", "Esperando lia começar")
+      assert has_element?(lv, "#leave-room-button", "Sair da sala")
+      refute has_element?(lv, "#edit-room-settings")
+      refute text =~ "Começar partida"
     end
   end
 end
