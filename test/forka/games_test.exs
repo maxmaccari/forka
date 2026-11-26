@@ -1640,6 +1640,24 @@ defmodule Forka.GamesTest do
       refute_receive {:game_updated, _}
       assert Games.get_game_summary(game.id).game_status == :playing
     end
+
+    test "STALE-01: transfer_ownership/4 with lobby_only: true rejects started and archived rooms",
+         %{game: game, owner_scope: owner_scope, member: member, member_scope: member_scope} do
+      assert :ok = Games.start_game(owner_scope, game.id)
+
+      assert {:error, :game_not_in_lobby} =
+               Games.transfer_ownership(owner_scope, game.id, member.id, lobby_only: true)
+
+      assert {:error, :unauthorized} =
+               Games.transfer_ownership(member_scope, game.id, member.id, lobby_only: true)
+
+      assert :ok = Games.give_up_game(owner_scope, game.id)
+      assert :ok = Games.give_up_game(member_scope, game.id)
+      assert :ok = Games.archive_game(owner_scope, game.id)
+
+      assert {:error, :game_archived} =
+               Games.transfer_ownership(owner_scope, game.id, member.id, lobby_only: true)
+    end
   end
 
   describe "REQ-04 & REQ-06: scoped participant commands and crafted player_id protection" do

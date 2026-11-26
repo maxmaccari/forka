@@ -617,18 +617,52 @@ defmodule Forka.Games.Core do
     {:ok, new_game_state}
   end
 
-  @doc "Transfers ownership to a participating player in any non-archived phase when requested by the current owner."
-  @spec transfer_ownership_to_player(GameState.t(), Ecto.UUID.t(), Ecto.UUID.t()) ::
+  @doc """
+  Transfers ownership to a participating player when requested by the current owner.
+
+  By default, transfers are allowed in any non-archived phase. Pass `lobby_only: true`
+  to restrict transfers to `:lobby` status, returning `{:error, :game_not_in_lobby}` once
+  the match has started or ended.
+  """
+  @spec transfer_ownership_to_player(GameState.t(), Ecto.UUID.t(), Ecto.UUID.t(), keyword()) ::
           {:ok, GameState.t()}
-          | {:error, :game_archived | :unauthorized | :already_owner | :player_not_found}
-  def transfer_ownership_to_player(%GameState{status: :archived}, actor_id, target_player_id)
-      when is_binary(actor_id) and is_binary(target_player_id),
+          | {:error,
+             :game_archived
+             | :unauthorized
+             | :game_not_in_lobby
+             | :already_owner
+             | :player_not_found}
+  def transfer_ownership_to_player(game_state, actor_id, target_player_id, opts \\ [])
+
+  def transfer_ownership_to_player(
+        %GameState{status: :archived},
+        actor_id,
+        target_player_id,
+        opts
+      )
+      when is_binary(actor_id) and is_binary(target_player_id) and is_list(opts),
       do: {:error, :game_archived}
 
-  def transfer_ownership_to_player(%GameState{} = game_state, actor_id, target_player_id)
-      when is_binary(actor_id) and is_binary(target_player_id) do
-    with :ok <- authorize_owner(game_state, actor_id) do
+  def transfer_ownership_to_player(
+        %GameState{} = game_state,
+        actor_id,
+        target_player_id,
+        opts
+      )
+      when is_binary(actor_id) and is_binary(target_player_id) and is_list(opts) do
+    with :ok <- authorize_owner(game_state, actor_id),
+         :ok <- validate_transfer_phase(game_state, opts) do
       do_transfer_ownership(game_state, target_player_id)
+    end
+  end
+
+  defp validate_transfer_phase(%GameState{status: :lobby}, _opts), do: :ok
+
+  defp validate_transfer_phase(%GameState{}, opts) do
+    if Keyword.get(opts, :lobby_only, false) do
+      {:error, :game_not_in_lobby}
+    else
+      :ok
     end
   end
 

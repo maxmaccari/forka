@@ -524,23 +524,35 @@ defmodule Forka.Games do
 
   def guess(_invalid_scope, _game_id, _letter), do: {:error, :unauthorized}
 
-  @doc "Transfers ownership of a non-archived game to a participating player for the scoped authenticated owner."
-  @spec transfer_ownership(Scope.t() | nil, Ecto.UUID.t(), Ecto.UUID.t()) ::
+  @doc """
+  Transfers ownership of a non-archived game to a participating player for the scoped authenticated owner.
+
+  Pass `lobby_only: true` to reject transfers outside `:lobby` with `{:error, :game_not_in_lobby}`.
+  """
+  @spec transfer_ownership(Scope.t() | nil, Ecto.UUID.t(), Ecto.UUID.t(), keyword()) ::
           :ok
           | {:error,
              :unauthorized
              | :not_found
              | :game_archived
+             | :game_not_in_lobby
              | :already_owner
              | :player_not_found}
-  def transfer_ownership(%Scope{player: %AuthPlayer{}} = scope, game_id, target_player_id)
-      when is_binary(target_player_id) do
+  def transfer_ownership(scope, game_id, target_player_id, opts \\ [])
+
+  def transfer_ownership(
+        %Scope{player: %AuthPlayer{}} = scope,
+        game_id,
+        target_player_id,
+        opts
+      )
+      when is_binary(target_player_id) and is_list(opts) do
     with_scoped_game(scope, game_id, fn valid_id, actor_id ->
-      GameServer.transfer_ownership(valid_id, actor_id, target_player_id)
+      GameServer.transfer_ownership(valid_id, actor_id, target_player_id, opts)
     end)
   end
 
-  def transfer_ownership(_invalid_scope, _game_id, _target_player_id),
+  def transfer_ownership(_invalid_scope, _game_id, _target_player_id, _opts),
     do: {:error, :unauthorized}
 
   @doc "Restarts a non-playing, non-archived game back to lobby for the scoped authenticated owner."

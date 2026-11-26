@@ -98,9 +98,10 @@ defmodule Forka.Games.GameServer do
   end
 
   @doc false
-  def transfer_ownership(game_id, actor_id, target_player_id)
-      when is_binary(game_id) and is_binary(actor_id) and is_binary(target_player_id) do
-    GenServer.call(global_name(game_id), {:transfer_ownership, actor_id, target_player_id})
+  def transfer_ownership(game_id, actor_id, target_player_id, opts \\ [])
+      when is_binary(game_id) and is_binary(actor_id) and is_binary(target_player_id) and
+             is_list(opts) do
+    GenServer.call(global_name(game_id), {:transfer_ownership, actor_id, target_player_id, opts})
   end
 
   @doc false
@@ -230,8 +231,8 @@ defmodule Forka.Games.GameServer do
   end
 
   @impl true
-  def handle_call({:transfer_ownership, actor_id, target_player_id}, _from, game) do
-    case Core.transfer_ownership_to_player(game, actor_id, target_player_id) do
+  def handle_call({:transfer_ownership, actor_id, target_player_id, opts}, _from, game) do
+    case Core.transfer_ownership_to_player(game, actor_id, target_player_id, opts) do
       {:ok, new_game} ->
         saved_game = save_and_publish!(game, new_game)
         {:reply, :ok, saved_game, @timeout_ms}

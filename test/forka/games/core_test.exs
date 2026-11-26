@@ -797,6 +797,34 @@ defmodule Forka.Games.CoreTest do
       {:error, :game_archived} =
         Core.transfer_ownership_to_player(game_archived, game_archived.owner.id, player2.id)
     end
+
+    test "STALE-01: transfer_ownership_to_player/4 with lobby_only: true rejects non-lobby phases while preserving archive and owner precedence",
+         %{game: game, owner: owner, player1: player1, player2: player2} do
+      assert {:ok, transferred} =
+               Core.transfer_ownership_to_player(game, owner.id, player1.id, lobby_only: true)
+
+      assert transferred.owner.id == player1.id
+
+      for status <- [:playing, :finished, :game_over] do
+        state = %{game | status: status}
+
+        assert {:error, :game_not_in_lobby} =
+                 Core.transfer_ownership_to_player(state, owner.id, player2.id, lobby_only: true)
+
+        assert {:error, :unauthorized} =
+                 Core.transfer_ownership_to_player(state, player1.id, player2.id,
+                   lobby_only: true
+                 )
+      end
+
+      assert {:error, :game_archived} =
+               Core.transfer_ownership_to_player(
+                 %{game | status: :archived},
+                 owner.id,
+                 player1.id,
+                 lobby_only: true
+               )
+    end
   end
 
   describe "authorize_settings_update/2 and update_settings/3" do
