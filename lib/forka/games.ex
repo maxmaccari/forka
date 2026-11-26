@@ -650,25 +650,51 @@ defmodule Forka.Games do
   defp with_scoped_game(_invalid_scope, _game_id, _fun), do: {:error, :unauthorized}
 
   defp ensure_game_server_available(game_id, action) do
+    run_with_server(game_id, action, 1)
+  end
+
+  defp run_with_server(game_id, action, retries) do
     if GameServer.exists?(game_id) do
-      action.()
+      call_server_action(game_id, action, retries)
     else
-      start_and_run_game_server(game_id, action)
+      start_and_run_game_server(game_id, action, retries)
     end
   end
 
-  defp start_and_run_game_server(game_id, action) do
+  defp start_and_run_game_server(game_id, action, retries) do
     case Repository.get_game_state(game_id) do
       {:ok, %{status: :archived}} ->
         {:error, :game_archived}
 
       {:ok, _game_state} ->
         with {:ok, _pid} <- start_supervised_game(game_id) do
-          action.()
+          call_server_action(game_id, action, retries)
         end
 
       {:error, _reason} = error ->
         error
+    end
+  end
+
+  defp call_server_action(game_id, action, retries) do
+    action.()
+  catch
+    :exit, {reason, _call} when reason in [:normal, :noproc] ->
+      handle_server_shutdown_race(game_id, action, retries)
+
+    :exit, reason when reason in [:normal, :noproc] ->
+      handle_server_shutdown_race(game_id, action, retries)
+  end
+
+  defp handle_server_shutdown_race(game_id, action, retries) when retries > 0 do
+    start_and_run_game_server(game_id, action, retries - 1)
+  end
+
+  defp handle_server_shutdown_race(game_id, _action, _retries) do
+    case Repository.get_game_state(game_id) do
+      {:ok, %{status: :archived}} -> {:error, :game_archived}
+      {:ok, _game_state} -> {:error, :game_server_unavailable}
+      {:error, _reason} = error -> error
     end
   end
 
