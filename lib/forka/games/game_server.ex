@@ -35,8 +35,16 @@ defmodule Forka.Games.GameServer do
   @doc false
   def start_link(game_id) do
     with {:ok, game_state} <- Repository.get_game_state(game_id),
-         :ok <- validate_status(game_state) do
-      GenServer.start_link(__MODULE__, game_state, name: global_name(game_id))
+         {:ok, reconciled} <- reconcile_loaded_state(game_state),
+         :ok <- validate_status(reconciled) do
+      GenServer.start_link(__MODULE__, reconciled, name: global_name(game_id))
+    end
+  end
+
+  @doc false
+  def reconcile_cold_game(game_id) when is_binary(game_id) do
+    with {:ok, game_state} <- Repository.get_game_state(game_id) do
+      reconcile_loaded_state(game_state)
     end
   end
 
@@ -136,12 +144,21 @@ defmodule Forka.Games.GameServer do
   end
 
   @impl true
-  def handle_call({:get_game, opts}, _from, game) do
+  def handle_call(request, from, game) do
+    case reconcile_running_state(game) do
+      {:archived, saved} -> {:stop, :normal, archived_reply(request, saved), saved}
+      {:ok, reconciled} -> handle_reconciled_call(request, from, reconciled)
+    end
+  end
+
+  defp archived_reply({:get_game, opts}, saved), do: Core.to_game_summary(saved, opts)
+  defp archived_reply(_request, _saved), do: {:error, :game_archived}
+
+  defp handle_reconciled_call({:get_game, opts}, _from, game) do
     {:reply, Core.to_game_summary(game, opts), game, @timeout_ms}
   end
 
-  @impl true
-  def handle_call({:join_room, player_id}, _from, game) do
+  defp handle_reconciled_call({:join_room, player_id}, _from, game) do
     with %Player{} = player <- Repository.get_player(player_id),
          {:ok, status, new_game} <- Core.join_room(game, player) do
       saved_game =
@@ -160,8 +177,7 @@ defmodule Forka.Games.GameServer do
     end
   end
 
-  @impl true
-  def handle_call({:leave_game, player_id, opts}, _from, game) do
+  defp handle_reconciled_call({:leave_game, player_id, opts}, _from, game) do
     case Core.leave_game(game, player_id, opts) do
       {:ok, %GameState{status: :archived} = new_game} ->
         saved_game = save_and_publish!(game, new_game)
@@ -179,8 +195,7 @@ defmodule Forka.Games.GameServer do
     end
   end
 
-  @impl true
-  def handle_call({:update_settings, actor_id, settings}, _from, game) do
+  defp handle_reconciled_call({:update_settings, actor_id, settings}, _from, game) do
     with :ok <- Core.authorize_settings_update(game, actor_id),
          {:ok, validated} <- validate_room_settings(game, settings),
          {:ok, new_game} <- Core.update_settings(game, actor_id, validated) do
@@ -192,8 +207,7 @@ defmodule Forka.Games.GameServer do
     end
   end
 
-  @impl true
-  def handle_call({:start_game, actor_id}, _from, game) do
+  defp handle_reconciled_call({:start_game, actor_id}, _from, game) do
     case do_start_game(game, actor_id) do
       {:ok, new_game} ->
         saved_game = save_and_publish!(game, new_game)
@@ -204,8 +218,7 @@ defmodule Forka.Games.GameServer do
     end
   end
 
-  @impl true
-  def handle_call({:give_up, player_id}, _from, game) do
+  defp handle_reconciled_call({:give_up, player_id}, _from, game) do
     case Core.give_up_game(game, player_id) do
       {:ok, new_game} ->
         saved_game = save_and_publish!(game, new_game)
@@ -217,8 +230,7 @@ defmodule Forka.Games.GameServer do
     end
   end
 
-  @impl true
-  def handle_call({:guess, letter, player_id}, _from, game) do
+  defp handle_reconciled_call({:guess, letter, player_id}, _from, game) do
     case Core.guess(game, player_id, letter) do
       {:ok, new_game} ->
         saved_game = save_and_publish!(game, new_game)
@@ -230,8 +242,7 @@ defmodule Forka.Games.GameServer do
     end
   end
 
-  @impl true
-  def handle_call({:transfer_ownership, actor_id, target_player_id, opts}, _from, game) do
+  defp handle_reconciled_call({:transfer_ownership, actor_id, target_player_id, opts}, _from, game) do
     case Core.transfer_ownership_to_player(game, actor_id, target_player_id, opts) do
       {:ok, new_game} ->
         saved_game = save_and_publish!(game, new_game)
@@ -242,8 +253,7 @@ defmodule Forka.Games.GameServer do
     end
   end
 
-  @impl true
-  def handle_call({:restart_game, actor_id}, _from, game) do
+  defp handle_reconciled_call({:restart_game, actor_id}, _from, game) do
     case Core.restart_game(game, actor_id) do
       {:ok, new_game} ->
         saved_game = save_and_publish!(game, new_game)
@@ -254,8 +264,7 @@ defmodule Forka.Games.GameServer do
     end
   end
 
-  @impl true
-  def handle_call({:archive_game, actor_id}, _from, game) do
+  defp handle_reconciled_call({:archive_game, actor_id}, _from, game) do
     case Core.archive_game(game, actor_id) do
       {:ok, new_game} ->
         saved_game = save_and_publish!(game, new_game)
@@ -268,20 +277,62 @@ defmodule Forka.Games.GameServer do
 
   @impl true
   def handle_info(:timeout, game) do
-    # Server has been inactive for the timeout period, archive the game and terminate
+    case reconcile_running_state(game) do
+      {:archived, saved} -> {:stop, :normal, saved}
+      {:ok, reconciled} -> archive_idle_game(reconciled)
+    end
+  end
+
+  # Server has been inactive for the timeout period, archive the game and terminate.
+  # Even if archiving fails (a game in progress), the server still terminates.
+  defp archive_idle_game(game) do
     case Core.archive_game(game) do
-      {:ok, new_game} ->
-        saved_game = save_and_publish!(game, new_game)
-
-        {:stop, :normal, saved_game}
-
-      {:error, _error} ->
-        # Even if archiving fails, we should terminate the server
-        {:stop, :normal, game}
+      {:ok, new_game} -> {:stop, :normal, save_and_publish!(game, new_game)}
+      {:error, _error} -> {:stop, :normal, game}
     end
   end
 
   # Private Helpers
+
+  defp reconcile_loaded_state(%GameState{status: :archived} = game_state),
+    do: {:ok, game_state}
+
+  defp reconcile_loaded_state(%GameState{} = game_state) do
+    case reconcile_running_state(game_state) do
+      {:ok, reconciled} -> {:ok, reconciled}
+      {:archived, archived} -> {:ok, archived}
+    end
+  end
+
+  defp reconcile_running_state(%GameState{status: :archived} = game_state),
+    do: {:archived, game_state}
+
+  defp reconcile_running_state(%GameState{} = game_state) do
+    existing_ids =
+      game_state
+      |> referenced_player_ids()
+      |> Repository.existing_player_ids()
+
+    case Core.reconcile_missing_players(game_state, existing_ids) do
+      :unchanged ->
+        {:ok, game_state}
+
+      {:changed, %GameState{status: :archived} = archived} ->
+        {:archived, save_and_publish!(game_state, archived)}
+
+      {:changed, updated} ->
+        {:ok, save_and_publish!(game_state, updated)}
+    end
+  end
+
+  defp referenced_player_ids(%GameState{owner: owner, game_players: game_players}) do
+    seated_ids = Enum.map(game_players, fn {_idx, gp} -> gp.player.id end)
+
+    case owner do
+      %{id: owner_id} when is_binary(owner_id) -> [owner_id | seated_ids]
+      _ -> seated_ids
+    end
+  end
 
   defp topic(game_id), do: "#{@pubsub_topic_prefix}:#{game_id}"
   defp lobby_topic(game_id), do: "room_lobby:#{game_id}"

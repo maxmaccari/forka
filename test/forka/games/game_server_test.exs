@@ -1236,4 +1236,135 @@ defmodule Forka.Games.GameServerTest do
       assert_receive {:game_updated, %{game_status: :playing}}
     end
   end
+
+  describe "OWN-03: ownerless rooms and deleted players" do
+    test "OWN-03: cold room loaded after owner deletion promotes lowest seat and persists subsequent saves" do
+      owner = insert(:player, username: "lia")
+      p2 = insert(:player, username: "bruno")
+      p3 = insert(:player, username: "caio")
+
+      {:ok, game} = Repository.insert_game(owner.id, %{name: "Fria", max_players: 4})
+      {:ok, state} = Repository.get_game_state(game.id)
+      {:ok, state} = Core.join_game(state, Repository.get_player(p2.id))
+      {:ok, _state} = Repository.save_game_state(state)
+
+      # Owner deleted while no GameServer is running -> owner_id is nil in DB
+      Repo.delete!(owner)
+
+      # start_link/1 runs in the test process, which owns the sandbox connection
+      {:ok, pid} = GameServer.start_link(game.id)
+      Sandbox.allow(Repo, self(), pid)
+
+      on_exit(fn ->
+        try do
+          GenServer.stop(pid, :normal)
+        catch
+          :exit, _ -> :ok
+        end
+      end)
+
+      summary = GameServer.get_game(game.id)
+      assert summary.game_status == :lobby
+      assert summary.owner.id == p2.id
+
+      # Subsequent mutation saves cleanly without Ecto.InvalidChangesetError
+      assert {:ok, :joined} = GameServer.join_room(game.id, p3.id)
+
+      {:ok, persisted} = Repository.get_game_state(game.id)
+      assert persisted.owner.id == p2.id
+
+      assert Enum.map(persisted.game_players, fn {_, gp} -> gp.player.id end) |> Enum.sort() ==
+               Enum.sort([p2.id, p3.id])
+    end
+
+    test "OWN-03: cold room loaded after sole owner deletion archives cleanly without starting a server" do
+      owner = insert(:player, username: "lia")
+      {:ok, game} = Repository.insert_game(owner.id, %{name: "Solo Fria", max_players: 4})
+
+      Repo.delete!(owner)
+      :ok = Forka.Games.subscribe_to_game_list()
+      flush_messages()
+
+      assert {:error, :game_archived} = GameServer.start_link(game.id)
+      refute GameServer.exists?(game.id)
+
+      assert_receive {:game_list_updated, %{id: archived_id, status: :archived}}
+      assert archived_id == game.id
+
+      {:ok, persisted} = Repository.get_game_state(game.id)
+      assert persisted.status == :archived
+      assert persisted.owner == nil
+      assert persisted.game_players == %{}
+    end
+
+    test "OWN-03: running GameServer holding deleted owner promotes lowest seat and broadcasts without crashing",
+         %{game_state: game_state} do
+      owner = game_state.owner
+      p2 = insert(:player, username: "bruno")
+      p3 = insert(:player, username: "caio")
+
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, owner.id)
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, p2.id)
+      :ok = GameServer.subscribe_lobby(game_state.id)
+      flush_messages()
+
+      # Delete owner while GameServer is still alive with owner in memory
+      Repo.delete!(Repo.get!(Forka.Players.Player, owner.id))
+
+      # Next operation must reconcile instead of raising FK InvalidChangesetError
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, p3.id)
+
+      assert_receive {:room_lobby_updated, %{owner_id: promoted_id, owner_username: "bruno"}}
+      assert promoted_id == p2.id
+
+      summary = GameServer.get_game(game_state.id)
+      assert summary.owner.id == p2.id
+      assert summary.players[0].player.id == p2.id
+      assert summary.players[1].player.id == p3.id
+
+      assert :ok = GameServer.update_settings(game_state.id, p2.id, %{name: "Do Bruno"})
+      assert GameServer.get_game(game_state.id).name == "Do Bruno"
+    end
+
+    test "OWN-03: running GameServer holding deleted sole owner archives room, stops server, and returns :game_archived",
+         %{game_state: game_state, pid: pid} do
+      owner = game_state.owner
+      joiner = insert(:player, username: "bruno")
+
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, owner.id)
+      :ok = GameServer.subscribe_lobby(game_state.id)
+      flush_messages()
+
+      Repo.delete!(Repo.get!(Forka.Players.Player, owner.id))
+      ref = Process.monitor(pid)
+
+      assert {:error, :game_archived} = GameServer.join_room(game_state.id, joiner.id)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+      assert_receive {:room_lobby_updated, %{status: :archived, player_count: 0}}
+
+      {:ok, persisted} = Repository.get_game_state(game_state.id)
+      assert persisted.status == :archived
+      assert persisted.owner == nil
+    end
+
+    test "OWN-03: running GameServer holding deleted non-owner drops deleted player and saves cleanly",
+         %{game_state: game_state} do
+      owner = game_state.owner
+      guest = insert(:player, username: "bruno")
+
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, owner.id)
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, guest.id)
+      flush_messages()
+
+      Repo.delete!(guest)
+
+      assert :ok = GameServer.update_settings(game_state.id, owner.id, %{name: "Ainda Viva"})
+
+      summary = GameServer.get_game(game_state.id)
+      assert summary.name == "Ainda Viva"
+      assert summary.owner.id == owner.id
+      assert Map.keys(summary.players) == [0]
+      assert summary.players[0].player.id == owner.id
+    end
+  end
 end

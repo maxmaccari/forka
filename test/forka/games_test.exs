@@ -2,6 +2,7 @@ defmodule Forka.GamesTest do
   use Forka.DataCase
 
   alias Forka.Games
+  alias Forka.Games.Core
   alias Forka.Games.GameServer
   alias Forka.Games.Repository
   alias Forka.Games.Schemas.Event
@@ -1881,6 +1882,61 @@ defmodule Forka.GamesTest do
       assert {:ok, playing_lobby} = Games.get_room_lobby(owner_scope, game.id)
       assert playing_lobby.status == :playing
       assert playing_lobby.word_availability == nil
+    end
+  end
+
+  describe "OWN-04: cold-read reconciliation for ownerless rooms" do
+    test "OWN-04: get_room_invite/1 and list_directory_rooms_page/1 promote next seat without starting GameServer and archive empty ownerless rooms" do
+      owner1 = insert(:player, username: "lia")
+      p2 = insert(:player, username: "bruno")
+      owner2 = insert(:player, username: "caio")
+
+      {:ok, shared_game} = Repository.insert_game(owner1.id, %{name: "Com Bruno", max_players: 4})
+      {:ok, shared_state} = Repository.get_game_state(shared_game.id)
+      {:ok, shared_state} = Core.join_game(shared_state, Repository.get_player(p2.id))
+      {:ok, _} = Repository.save_game_state(shared_state)
+
+      {:ok, solo_game} = Repository.insert_game(owner2.id, %{name: "Solo Orfa", max_players: 4})
+
+      Repo.delete!(owner1)
+      Repo.delete!(owner2)
+
+      # Invite preview heals shared room without starting GameServer
+      assert {:ok, %Forka.Games.RoomInvite{owner_username: "bruno", player_count: 1}} =
+               Games.get_room_invite(shared_game.id)
+
+      assert GameServer.whereis(shared_game.id) == nil
+
+      # Invite preview archives empty ownerless room without starting GameServer
+      assert {:error, :game_archived} = Games.get_room_invite(solo_game.id)
+      assert GameServer.whereis(solo_game.id) == nil
+
+      # Directory shows promoted owner and excludes archived empty ownerless room
+      owner3 = insert(:player, username: "duda")
+      {:ok, solo_game2} = Repository.insert_game(owner3.id, %{name: "Solo Dir", max_players: 4})
+      Repo.delete!(owner3)
+
+      %{rooms: rooms} = Games.list_directory_rooms_page()
+      ids = Enum.map(rooms, & &1.id)
+      assert shared_game.id in ids
+      refute solo_game.id in ids
+      refute solo_game2.id in ids
+      assert Enum.find(rooms, &(&1.id == shared_game.id)).owner_username == "bruno"
+      assert {:ok, %{status: :archived}} = Repository.get_game_state(solo_game2.id)
+    end
+
+    test "OWN-04: get_room_lobby/2 reconciles a running GameServer whose sole owner was deleted and returns :game_archived" do
+      owner = insert(:player, username: "lia")
+      outsider = insert(:player, username: "bruno")
+      {:ok, game} = Games.create_room(Scope.for_player(owner), %{name: "Running Solo", max_players: 4})
+      pid = GameServer.whereis(game.id)
+      ref = Process.monitor(pid)
+
+      Repo.delete!(owner)
+
+      assert {:error, :game_archived} = Games.get_room_lobby(Scope.for_player(outsider), game.id)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+      assert {:error, :game_archived} = Games.get_room_invite(game.id)
     end
   end
 end

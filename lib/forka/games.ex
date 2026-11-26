@@ -22,6 +22,8 @@ defmodule Forka.Games do
 
   import Ecto.Query
 
+  alias Forka.Games.Core
+  alias Forka.Games.Core.GameState
   alias Forka.Games.GameListNotifier
   alias Forka.Games.GameServer
   alias Forka.Games.GameSummary
@@ -134,23 +136,8 @@ defmodule Forka.Games do
         }
   def list_directory_rooms_page(opts \\ []) do
     limit = opts |> Keyword.get(:limit, @directory_limit) |> cap_directory_limit()
-    visible_statuses = RoomListItem.visible_statuses()
-
-    rows =
-      from(g in Game,
-        left_join: gp in assoc(g, :game_players),
-        left_join: o in assoc(g, :owner),
-        where: g.status in ^visible_statuses,
-        group_by: [g.id, o.id],
-        order_by: [desc: g.inserted_at, desc: g.id],
-        limit: ^(limit + 1),
-        select: %{
-          game: g,
-          owner_username: o.username,
-          player_count: count(gp.id)
-        }
-      )
-      |> Repo.all()
+    rows = fetch_directory_rows(limit)
+    rows = if heal_ownerless_rows(rows), do: fetch_directory_rows(limit), else: rows
 
     {page_rows, extra_rows} = Enum.split(rows, limit)
 
@@ -174,6 +161,33 @@ defmodule Forka.Games do
       end)
 
     %{rooms: rooms, has_more?: extra_rows != []}
+  end
+
+  defp fetch_directory_rows(limit) do
+    visible_statuses = RoomListItem.visible_statuses()
+
+    from(g in Game,
+      left_join: gp in assoc(g, :game_players),
+      left_join: o in assoc(g, :owner),
+      where: g.status in ^visible_statuses,
+      group_by: [g.id, o.id],
+      order_by: [desc: g.inserted_at, desc: g.id],
+      limit: ^(limit + 1),
+      select: %{
+        game: g,
+        owner_username: o.username,
+        player_count: count(gp.id)
+      }
+    )
+    |> Repo.all()
+  end
+
+  # Returns true when at least one ownerless room was reconciled, so the caller re-reads.
+  # Visible statuses never include :archived, so every ownerless row here needs healing.
+  defp heal_ownerless_rows(rows) do
+    ownerless_ids = for %{game: %Game{id: id, owner_id: nil}} <- rows, do: id
+    Enum.each(ownerless_ids, &reconcile_ownerless_room/1)
+    ownerless_ids != []
   end
 
   defp cap_directory_limit(limit) when is_integer(limit) and limit > 0,
@@ -297,22 +311,38 @@ defmodule Forka.Games do
           {:ok, RoomInvite.t()} | {:error, :not_found | :game_archived}
   def get_room_invite(game_id) do
     with {:ok, valid_id} <- Ecto.UUID.cast(game_id),
-         %{game: game, owner_username: owner_username, player_count: player_count} <-
-           fetch_persisted_room_invite_row(valid_id) do
-      if game.status == :archived do
-        {:error, :game_archived}
-      else
-        category_names =
-          game.word_options
-          |> extract_category_ids()
-          |> Words.list_categories_by_ids()
-          |> Enum.map(& &1.name)
-
-        {:ok, RoomInvite.from_game(game, player_count, owner_username, category_names)}
-      end
+         %{} = row <- fetch_persisted_room_invite_row(valid_id),
+         {:ok, %{} = healed_row} <- heal_ownerless_row(row) do
+      build_room_invite(healed_row)
     else
+      {:error, :game_archived} -> {:error, :game_archived}
       _ -> {:error, :not_found}
     end
+  end
+
+  defp heal_ownerless_row(%{game: %Game{id: id, status: status, owner_id: nil}})
+       when status != :archived do
+    with {:ok, %GameSummary{}} <- reconcile_ownerless_room(id) do
+      {:ok, fetch_persisted_room_invite_row(id)}
+    end
+  end
+
+  defp heal_ownerless_row(row), do: {:ok, row}
+
+  defp build_room_invite(%{game: %Game{status: :archived}}), do: {:error, :game_archived}
+
+  defp build_room_invite(%{
+         game: game,
+         owner_username: owner_username,
+         player_count: player_count
+       }) do
+    category_names =
+      game.word_options
+      |> extract_category_ids()
+      |> Words.list_categories_by_ids()
+      |> Enum.map(& &1.name)
+
+    {:ok, RoomInvite.from_game(game, player_count, owner_username, category_names)}
   end
 
   defp fetch_persisted_room_invite_row(game_id) do
@@ -640,6 +670,28 @@ defmodule Forka.Games do
   @spec unsubscribe_from_game(Ecto.UUID.t()) :: :ok | {:error, term()}
   def unsubscribe_from_game(game_id) do
     ensure_game_server_available(game_id, fn -> GameServer.unsubscribe(game_id) end)
+  end
+
+  defp reconcile_ownerless_room(game_id) do
+    if GameServer.exists?(game_id),
+      do: reconcile_running_room(game_id),
+      else: reconcile_cold_room(game_id)
+  end
+
+  defp reconcile_running_room(game_id) do
+    case call_server_action(game_id, fn -> {:ok, GameServer.get_game(game_id)} end, 1) do
+      {:ok, %GameSummary{game_status: :archived}} -> {:error, :game_archived}
+      {:ok, %GameSummary{} = summary} -> {:ok, summary}
+      {:error, _} = error -> error
+    end
+  end
+
+  defp reconcile_cold_room(game_id) do
+    case GameServer.reconcile_cold_game(game_id) do
+      {:ok, %GameState{status: :archived}} -> {:error, :game_archived}
+      {:ok, %GameState{} = state} -> {:ok, Core.to_game_summary(state)}
+      {:error, _} = error -> error
+    end
   end
 
   defp fetch_game_summary(game_id) do
