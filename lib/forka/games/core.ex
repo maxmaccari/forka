@@ -178,6 +178,10 @@ defmodule Forka.Games.Core do
   @doc """
   Removes a participating player from the game state while in lobby state.
 
+  When the leaving player is the current owner and other players remain,
+  ownership transfers automatically to the remaining player with the lowest
+  seat position. When the last player leaves, the room is archived on the same tick.
+
   ## Parameters
     - game_state: The GameState struct
     - player_id: The ID of the participating player to remove
@@ -201,16 +205,13 @@ defmodule Forka.Games.Core do
 
       {_idx, %{player: left_player}} ->
         if game_state.status == :lobby do
-          new_game_players =
-            game_state.game_players
-            |> Map.values()
-            |> Enum.reject(&(&1.player.id == player_id))
-            |> indexed_map()
+          new_game_players = remove_game_player(game_state.game_players, player_id)
 
           new_game_state =
             %{game_state | game_players: new_game_players}
             |> increment_tick()
             |> push_event(:player_left, left_player)
+            |> handle_post_leave(left_player)
 
           {:ok, new_game_state}
         else
@@ -218,6 +219,35 @@ defmodule Forka.Games.Core do
         end
     end
   end
+
+  defp remove_game_player(game_players, player_id) do
+    game_players
+    |> Enum.sort_by(fn {pos, _gp} -> pos end)
+    |> Enum.map(fn {_pos, gp} -> gp end)
+    |> Enum.reject(&(&1.player.id == player_id))
+    |> indexed_map()
+  end
+
+  defp handle_post_leave(%GameState{game_players: game_players} = game_state, _left_player)
+       when map_size(game_players) == 0 do
+    do_archive(game_state)
+  end
+
+  defp handle_post_leave(
+         %GameState{owner: %{id: owner_id}, game_players: game_players} = game_state,
+         %{id: left_id}
+       )
+       when owner_id == left_id do
+    %{player: new_owner} = Map.fetch!(game_players, 0)
+
+    %{game_state | owner: new_owner}
+    |> push_event(:ownership_transferred_to, %{
+      from_player_id: left_id,
+      to_player_id: new_owner.id
+    })
+  end
+
+  defp handle_post_leave(%GameState{} = game_state, _left_player), do: game_state
 
   @doc """
   Sets the words for the game state.
@@ -481,11 +511,16 @@ defmodule Forka.Games.Core do
 
   def archive_game(%GameState{} = game_state) do
     new_game_state =
-      %GameState{game_state | status: :archived}
+      game_state
       |> increment_tick()
-      |> push_event(:game_archived)
+      |> do_archive()
 
     {:ok, new_game_state}
+  end
+
+  defp do_archive(%GameState{} = game_state) do
+    %GameState{game_state | status: :archived}
+    |> push_event(:game_archived)
   end
 
   @doc "Archives a non-playing, non-archived game when requested by its owner."

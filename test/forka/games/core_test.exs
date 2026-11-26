@@ -101,11 +101,20 @@ defmodule Forka.Games.CoreTest do
       {:ok, game: game_with_player, player: player}
     end
 
-    test "removes player successfully when in lobby", %{game: game, player: player} do
-      {:ok, updated_game} = Core.leave_game(game, player.id)
-      assert map_size(updated_game.game_players) == 0
+    test "removes non-last player successfully when in lobby", %{
+      owner: owner,
+      game: game,
+      player: player
+    } do
+      {:ok, game_with_two} = Core.join_game(game, owner)
 
-      assert updated_game.tick == game.tick + 1
+      {:ok, updated_game} = Core.leave_game(game_with_two, player.id)
+      assert updated_game.status == :lobby
+      assert updated_game.owner.id == owner.id
+      assert map_size(updated_game.game_players) == 1
+      assert %{0 => %{player: %{id: owner_id}}} = updated_game.game_players
+      assert owner_id == owner.id
+      assert updated_game.tick == game_with_two.tick + 1
 
       assert assert_last_events(updated_game, [
                %{type: :player_left, payload: %{player_id: player.id}}
@@ -125,6 +134,94 @@ defmodule Forka.Games.CoreTest do
       assert map_size(updated_game.game_players) == 2
       assert %{0 => %{player: %{username: "Player 1"}}} = updated_game.game_players
       assert %{1 => %{player: %{username: "Player 3"}}} = updated_game.game_players
+    end
+
+    test "REQ-04 & EDGE-01: transfers ownership automatically to lowest remaining seat when owner leaves in lobby",
+         %{owner: owner} do
+      p1 = build_games_player("Bruno")
+      p2 = build_games_player("Caio")
+
+      # Case 1: owner at seat 0 -> seat 1 (Bruno) becomes owner
+      game_owner_first =
+        Core.new(owner, "Sala da Lia", 4)
+        |> then(fn g -> {:ok, g} = Core.join_game(g, owner); g end)
+        |> then(fn g -> {:ok, g} = Core.join_game(g, p1); g end)
+        |> then(fn g -> {:ok, g} = Core.join_game(g, p2); g end)
+
+      assert {:ok, after_first} = Core.leave_game(game_owner_first, owner.id)
+      assert after_first.status == :lobby
+      assert after_first.owner.id == p1.id
+      assert after_first.owner.username == "Bruno"
+      assert after_first.tick == game_owner_first.tick + 1
+      assert map_size(after_first.game_players) == 2
+      assert %{0 => %{player: %{id: id0}}, 1 => %{player: %{id: id1}}} = after_first.game_players
+      assert {id0, id1} == {p1.id, p2.id}
+
+      assert assert_last_events(after_first, [
+               %{
+                 type: :ownership_transferred_to,
+                 payload: %{from_player_id: owner.id, to_player_id: p1.id}
+               },
+               %{type: :player_left, payload: %{player_id: owner.id}}
+             ])
+
+      # Case 2: owner at seat 1 (non-zero) -> seat 0 (Bruno) becomes owner, seat 2 (Caio) shifts to 1
+      game_owner_middle =
+        Core.new(owner, "Sala Meio", 4)
+        |> then(fn g -> {:ok, g} = Core.join_game(g, p1); g end)
+        |> then(fn g -> {:ok, g} = Core.join_game(g, owner); g end)
+        |> then(fn g -> {:ok, g} = Core.join_game(g, p2); g end)
+
+      assert {:ok, after_middle} = Core.leave_game(game_owner_middle, owner.id)
+      assert after_middle.status == :lobby
+      assert after_middle.owner.id == p1.id
+      assert %{0 => %{player: %{id: m0}}, 1 => %{player: %{id: m1}}} = after_middle.game_players
+      assert {m0, m1} == {p1.id, p2.id}
+    end
+
+    test "REQ-05: archives room when last player leaves in lobby", %{owner: owner} do
+      {:ok, solo_owner_game} = Core.new(owner, "Sala Solo", 4) |> Core.join_game(owner)
+
+      assert {:ok, archived} = Core.leave_game(solo_owner_game, owner.id)
+      assert archived.status == :archived
+      assert archived.owner.id == owner.id
+      assert map_size(archived.game_players) == 0
+      assert archived.tick == solo_owner_game.tick + 1
+
+      assert assert_last_events(archived, [
+               %{type: :game_archived, payload: nil},
+               %{type: :player_left, payload: %{player_id: owner.id}}
+             ])
+    end
+
+    property "EDGE-01: owner leaving a 2..6 player lobby always transfers ownership to lowest remaining seat and preserves order" do
+      check all(
+              roster_size <- integer(2..6),
+              owner_seat <- integer(0..(roster_size - 1))
+            ) do
+        players = for idx <- 0..(roster_size - 1), do: build_games_player("Player#{idx}")
+        owner = Enum.at(players, owner_seat)
+
+        game =
+          Enum.reduce(players, Core.new(owner, "Prop Room", 6), fn p, acc ->
+            {:ok, next} = Core.join_game(acc, p)
+            next
+          end)
+
+        expected_remaining = List.delete_at(players, owner_seat)
+        expected_owner = hd(expected_remaining)
+
+        assert {:ok, updated} = Core.leave_game(game, owner.id)
+        assert updated.status == :lobby
+        assert updated.owner.id == expected_owner.id
+
+        actual_ids =
+          updated.game_players
+          |> Enum.sort_by(fn {pos, _gp} -> pos end)
+          |> Enum.map(fn {_pos, gp} -> gp.player.id end)
+
+        assert actual_ids == Enum.map(expected_remaining, & &1.id)
+      end
     end
 
     test "REQ-01: returns {:error, :not_a_participant} when non-member tries to leave in lobby or playing",
