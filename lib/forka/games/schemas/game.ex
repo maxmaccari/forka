@@ -159,7 +159,7 @@ defmodule Forka.Games.Schemas.Game do
 
   defp common_changeset(changeset, player_changeset) do
     changeset
-    |> validate_required([:owner_id])
+    |> validate_owner_required()
     |> validate_settings()
     |> foreign_key_constraint(:owner_id)
     |> cast_assoc(:events)
@@ -167,6 +167,14 @@ defmodule Forka.Games.Schemas.Game do
     |> cast_assoc(:game_players, with: player_changeset)
     |> cast_embed(:word_options)
     |> validate_number(:tick, greater_than_or_equal_to: 0)
+  end
+
+  defp validate_owner_required(changeset) do
+    if get_field(changeset, :status) == :archived do
+      changeset
+    else
+      validate_required(changeset, [:owner_id])
+    end
   end
 
   defp validate_settings(changeset) do

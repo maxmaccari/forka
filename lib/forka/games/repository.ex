@@ -1,6 +1,8 @@
 defmodule Forka.Games.Repository do
   @moduledoc "Loads and persists game state, players, and dictionary words for the Games context."
 
+  import Ecto.Query
+
   alias Forka.Games.Core.GameState
   alias Forka.Games.Schemas.Game
   alias Forka.Games.Schemas.Player
@@ -89,6 +91,17 @@ defmodule Forka.Games.Repository do
   @spec get_player(Ecto.UUID.t()) :: Player.t() | nil
   def get_player(id) do
     Repo.get(Player, id)
+  end
+
+  @doc "Returns the subset of `player_ids` that still exist in persistence."
+  @spec existing_player_ids([Ecto.UUID.t()]) :: [Ecto.UUID.t()]
+  def existing_player_ids([]), do: []
+
+  def existing_player_ids(player_ids) when is_list(player_ids) do
+    ids = Enum.uniq(player_ids)
+
+    from(p in Player, where: p.id in ^ids, select: p.id)
+    |> Repo.all()
   end
 
   @doc """

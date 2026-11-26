@@ -482,6 +482,27 @@ defmodule Forka.Games.RepositoryTest do
       assert saved_playing_state.owner.id == player3.id
       assert saved_playing_state.status == :playing
     end
+
+    test "OWN-01: allows saving an archived game with nil owner after owner deletion while still requiring owner_id for non-archived games" do
+      owner = insert(:player, username: "lia")
+      game = insert(:game, owner: owner, status: :lobby)
+
+      Repo.delete!(owner)
+      {:ok, ownerless_state} = Repository.get_game_state(game.id)
+      assert ownerless_state.owner == nil
+
+      # Non-archived save with nil owner still fails validation
+      assert {:error, non_archived_cs} =
+               Repository.save_game_state(%{ownerless_state | name: "Still Lobby"})
+
+      assert "can't be blank" in errors_on(non_archived_cs).owner_id
+
+      # Archiving an ownerless game succeeds so empty rooms can be closed cleanly
+      {:ok, archived_state} = Core.archive_game(ownerless_state)
+      assert {:ok, saved} = Repository.save_game_state(archived_state)
+      assert saved.status == :archived
+      assert saved.owner == nil
+    end
   end
 
   describe "save_game_state!/1" do
@@ -555,6 +576,21 @@ defmodule Forka.Games.RepositoryTest do
       # Assert we receive the broadcast
       assert_receive {"backpex:updated", %{id: ^game_id} = broadcasted_game}
       assert broadcasted_game.name == "Updated Game Name"
+    end
+  end
+
+  describe "existing_player_ids/1" do
+    test "OWN-01: returns only player IDs that still exist in persistence" do
+      kept = insert(:player)
+      deleted = insert(:player)
+      missing_id = Ecto.UUID.generate()
+
+      Repo.delete!(deleted)
+
+      assert Repository.existing_player_ids([]) == []
+
+      result = Repository.existing_player_ids([kept.id, deleted.id, missing_id, kept.id])
+      assert result == [kept.id]
     end
   end
 
