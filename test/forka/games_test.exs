@@ -6,6 +6,7 @@ defmodule Forka.GamesTest do
   alias Forka.Games.Repository
   alias Forka.Games.Schemas.Event
   alias Forka.Games.Schemas.WordOptions
+  alias Forka.Scope
 
   import Forka.TestHelpers
 
@@ -71,13 +72,14 @@ defmodule Forka.GamesTest do
     assert %{last_events: [%{type: :game_started}, %{type: :player_guessed}]} =
              Games.get_game_summary(game.id, load_all_events: true)
 
-    assert :ok = Games.join_game(game.id, owner.id)
+    assert {:ok, :joined} = Games.join_room(Scope.for_player(owner), game.id)
     assert %{last_events: [%{type: :player_joined, tick: 4}]} = Games.get_game_summary(game.id)
   end
 
   test "retrying a lobby leave does not republish the previous event" do
     owner = insert(:player)
     guest = insert(:player)
+    guest_scope = Scope.for_player(guest)
     {:ok, game} = Games.create_game(owner.id, %{name: "Retry a leave", max_players: 2})
 
     on_exit(fn ->
@@ -86,17 +88,18 @@ defmodule Forka.GamesTest do
       end
     end)
 
-    assert :ok = Games.join_game(game.id, guest.id)
+    assert {:ok, :joined} = Games.join_room(guest_scope, game.id)
     assert :ok = Games.subscribe_to_game(game.id)
-    assert :ok = Games.leave_game(game.id, guest.id)
+    assert :ok = Games.leave_game(guest_scope, game.id)
     assert_receive {:game_updated, %{last_events: [%{type: :player_left, tick: 2}]}}
-    assert :ok = Games.leave_game(game.id, guest.id)
+    assert {:error, :not_a_participant} = Games.leave_game(guest_scope, game.id)
     refute_received {:game_updated, _}
   end
 
   @tag audit_f04: true
   test "F-04 exposes the saved event for each consecutive public command" do
     owner = insert(:player)
+    guest = insert(:player)
     {:ok, game} = Games.create_game(owner.id, %{name: "Event counter", max_players: 2})
 
     on_exit(fn ->
@@ -105,9 +108,14 @@ defmodule Forka.GamesTest do
       end
     end)
 
-    assert :ok = Games.join_game(game.id, owner.id)
+    assert {:ok, :joined} = Games.join_room(Scope.for_player(guest), game.id)
     assert [%{tick: 1, type: :player_joined}] = Games.get_game_summary(game.id).last_events
-    assert :ok = Games.update_settings(game.id, owner.id, %{name: "Updated counter"})
+
+    assert :ok =
+             Games.update_room_settings(Scope.for_player(owner), game.id, %{
+               name: "Updated counter"
+             })
+
     assert [%{tick: 2, type: :settings_updated}] = Games.get_game_summary(game.id).last_events
 
     assert {:ok, %{tick: 2, events: events}} = Repository.get_game_state(game.id)
@@ -132,7 +140,7 @@ defmodule Forka.GamesTest do
       end
     end)
 
-    assert :ok = Games.join_game(game.id, owner.id)
+    assert {:ok, :joined} = Games.join_room(Scope.for_player(owner), game.id)
     assert [%{tick: 5, type: :player_joined}] = Games.get_game_summary(game.id).last_events
     assert {:ok, %{tick: 5, events: events}} = Repository.get_game_state(game.id)
     assert Enum.map(events, &{&1.tick, &1.type}) == [{5, :player_joined}, {4, :settings_updated}]
@@ -140,7 +148,8 @@ defmodule Forka.GamesTest do
 
   @tag audit_f09: true
   test "F-09 finishing a game updates the list and an ordinary correct guess stays room-only" do
-    {game, _owner, _other} = start_list_audit_game()
+    {game, owner, other} = start_list_audit_game()
+    scopes = %{owner.id => Scope.for_player(owner), other.id => Scope.for_player(other)}
     assert :ok = Games.subscribe_to_game_list()
     assert :ok = Games.subscribe_to_game(game.id)
     game_id = game.id
@@ -148,19 +157,19 @@ defmodule Forka.GamesTest do
     {:ok, persisted} = Repository.get_game_state(game_id)
     [l1, l2] = String.graphemes(persisted.game_words[0].word.text)
 
-    assert :ok = Games.guess(game_id, current, l1)
+    assert :ok = Games.guess(scopes[current], game_id, l1)
 
     assert_receive {:game_updated,
                     %{game_status: :playing, current_word_letters: [{:found, ^l1}, :hidden]}}
 
     refute_receive {:game_list_updated, %{id: ^game_id}}, 50
 
-    assert :ok = Games.guess(game_id, current, l2)
+    assert :ok = Games.guess(scopes[current], game_id, l2)
 
     for idx <- 1..3 do
       [w1, w2] = String.graphemes(persisted.game_words[idx].word.text)
-      assert :ok = Games.guess(game_id, current, w1)
-      assert :ok = Games.guess(game_id, current, w2)
+      assert :ok = Games.guess(scopes[current], game_id, w1)
+      assert :ok = Games.guess(scopes[current], game_id, w2)
     end
 
     assert_receive {:game_list_updated, %{id: ^game_id, status: :finished, action: :updated}}
@@ -169,33 +178,36 @@ defmodule Forka.GamesTest do
   @tag audit_f09: true
   test "F-09 the game list observes a surrender ending the round and its restart" do
     {game, owner, other} = start_list_audit_game()
+    scopes = %{owner.id => Scope.for_player(owner), other.id => Scope.for_player(other)}
     assert :ok = Games.subscribe_to_game_list()
     game_id = game.id
     current = Games.get_game_summary(game_id).current_player_id
     next = Enum.find([owner.id, other.id], &(&1 != current))
 
-    assert :ok = Games.give_up_game(game_id, current)
+    assert :ok = Games.give_up_game(scopes[current], game_id)
     refute_receive {:game_list_updated, %{id: ^game_id}}, 50
-    assert :ok = Games.give_up_game(game_id, next)
+    assert :ok = Games.give_up_game(scopes[next], game_id)
     assert_receive {:game_list_updated, %{id: ^game_id, status: :game_over, action: :updated}}
 
-    assert :ok = Games.restart_game(game_id)
+    assert :ok = Games.restart_game(Forka.Scope.for_player(owner), game_id)
     assert_receive {:game_list_updated, %{id: ^game_id, status: :lobby, action: :updated}}
   end
 
   @tag audit_f09: true
   test "F-09 the game list observes an ownership transfer exactly once" do
-    {game, _owner, other} = start_list_audit_game()
+    {game, owner, other} = start_list_audit_game()
     assert :ok = Games.subscribe_to_game_list()
     game_id = game.id
     other_id = other.id
 
-    assert :ok = Games.transfer_ownership(game_id, other_id)
+    assert :ok = Games.transfer_ownership(Forka.Scope.for_player(owner), game_id, other_id)
 
     assert_receive {:game_list_updated,
                     %{id: ^game_id, owner: %{id: ^other_id}, status: :playing, action: :updated}}
 
-    assert {:error, :already_owner} = Games.transfer_ownership(game_id, other_id)
+    assert {:error, :already_owner} =
+             Games.transfer_ownership(Forka.Scope.for_player(other), game_id, other_id)
+
     refute_receive {:game_list_updated, %{id: ^game_id}}, 50
   end
 
@@ -217,9 +229,8 @@ defmodule Forka.GamesTest do
       end
     end)
 
-    assert :ok = Games.join_game(game.id, owner.id)
-    assert :ok = Games.join_game(game.id, other.id)
-    assert :ok = Games.start_game(game.id)
+    assert {:ok, :joined} = Games.join_room(Scope.for_player(other), game.id)
+    assert :ok = Games.start_game(Forka.Scope.for_player(owner), game.id)
     {game, owner, other}
   end
 
@@ -293,8 +304,7 @@ defmodule Forka.GamesTest do
           word_options: %{language: "pt", category_ids: [cat_music.id, cat_games.id]}
         })
 
-      :ok = Games.join_game(lobby_game.id, owner.id)
-      :ok = Games.join_game(lobby_game.id, guest.id)
+      {:ok, :joined} = Games.join_room(Scope.for_player(guest), lobby_game.id)
 
       playing_game =
         insert(:game,
@@ -520,8 +530,8 @@ defmodule Forka.GamesTest do
     } do
       p2 = insert(:player)
       p3 = insert(:player)
-      :ok = Games.join_game(game.id, p2.id)
-      :ok = Games.join_game(game.id, p3.id)
+      {:ok, :joined} = Games.join_room(Scope.for_player(p2), game.id)
+      {:ok, :joined} = Games.join_room(Scope.for_player(p3), game.id)
 
       assert {:error, %Ecto.Changeset{} = cs} =
                Games.update_room_settings(owner_scope, game.id, %{max_players: 2})
@@ -590,9 +600,9 @@ defmodule Forka.GamesTest do
       owner_scope: owner_scope
     } do
       player1 = insert(:player)
-      :ok = Games.join_game(game.id, player1.id)
+      {:ok, :joined} = Games.join_room(Scope.for_player(player1), game.id)
       insert_list(4, :word)
-      :ok = Games.start_game(game.id)
+      :ok = Games.start_game(owner_scope, game.id)
 
       assert {:error, :game_not_in_lobby} =
                Games.update_room_settings(owner_scope, game.id, %{name: "New Name"})
@@ -608,36 +618,8 @@ defmodule Forka.GamesTest do
           word_options: %Forka.Games.Schemas.WordOptions{language: "es", category_ids: []}
         )
 
-      assert :ok = Games.join_game(legacy_game.id, guest.id)
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(guest), legacy_game.id)
       assert Games.get_game_summary(legacy_game.id).word_options.language == "es"
-    end
-  end
-
-  describe "join_game/2" do
-    setup do
-      owner = insert(:player)
-      {:ok, game} = Games.create_game(owner.id, %{name: "Test Game", max_players: 4})
-      %{game: game}
-    end
-
-    test "adds player to game successfully", %{game: game} do
-      player = insert(:player)
-      assert :ok = Games.join_game(game.id, player.id)
-
-      # Verify player was added
-      game_state = Games.get_game_summary(game.id)
-      assert Enum.any?(game_state.players, fn {_, p} -> p.player.id == player.id end)
-    end
-
-    test "returns error when game is full", %{game: game} do
-      # Fill game to max capacity
-      for _ <- 1..game.max_players do
-        player = insert(:player)
-        Games.join_game(game.id, player.id)
-      end
-
-      extra_player = insert(:player)
-      assert {:error, :maximum_players} = Games.join_game(game.id, extra_player.id)
     end
   end
 
@@ -646,19 +628,19 @@ defmodule Forka.GamesTest do
       owner = insert(:player)
       {:ok, game} = Games.create_game(owner.id, params_for(:game))
       player = insert(:player)
-      :ok = Games.join_game(game.id, player.id)
+      {:ok, :joined} = Games.join_room(Scope.for_player(player), game.id)
       %{game: game, player: player}
     end
 
     test "removes player from game", %{game: game, player: player} do
-      assert :ok = Games.leave_game(game.id, player.id)
+      assert :ok = Games.leave_game(Scope.for_player(player), game.id)
 
       game_state = Games.get_game_summary(game.id)
       refute Enum.any?(game_state.players, fn {_, p} -> p.player.id == player.id end)
     end
   end
 
-  describe "start_game/1" do
+  describe "start_game/2" do
     setup do
       owner = insert(:player)
       {:ok, game} = Games.create_game(owner.id, params_for(:game))
@@ -666,29 +648,29 @@ defmodule Forka.GamesTest do
       player1 = insert(:player)
       player2 = insert(:player)
 
-      :ok = Games.join_game(game.id, player1.id)
-      :ok = Games.join_game(game.id, player2.id)
+      {:ok, :joined} = Games.join_room(Scope.for_player(player1), game.id)
+      {:ok, :joined} = Games.join_room(Scope.for_player(player2), game.id)
 
       insert_list(6, :word)
 
-      %{game: game, players: [player1, player2]}
+      %{game: game, owner: owner, players: [player1, player2]}
     end
 
-    test "starts game successfully", %{game: game} do
-      assert :ok = Games.start_game(game.id)
+    test "starts game successfully", %{game: game, owner: owner} do
+      assert :ok = Games.start_game(Forka.Scope.for_player(owner), game.id)
 
       game_summary = Games.get_game_summary(game.id)
       assert game_summary.game_status == :playing
       assert game_summary.current_player_id != nil
     end
 
-    test "returns error with insufficient players", %{game: game, players: players} do
+    test "returns error with insufficient players", %{game: game, owner: owner, players: players} do
       # Remove all players except owner
       Enum.each(players, fn player ->
-        Games.leave_game(game.id, player.id)
+        Games.leave_game(Scope.for_player(player), game.id)
       end)
 
-      assert {:error, :game_not_ready} = Games.start_game(game.id)
+      assert {:error, :game_not_ready} = Games.start_game(Forka.Scope.for_player(owner), game.id)
     end
   end
 
@@ -700,34 +682,41 @@ defmodule Forka.GamesTest do
       player1 = insert(:player)
       player2 = insert(:player)
 
-      :ok = Games.join_game(game.id, player1.id)
-      :ok = Games.join_game(game.id, player2.id)
+      {:ok, :joined} = Games.join_room(Scope.for_player(player1), game.id)
+      {:ok, :joined} = Games.join_room(Scope.for_player(player2), game.id)
 
       for text <- ~w(banana papaia goiaba manga laranja amora), do: insert(:word, text: text)
 
-      :ok = Games.start_game(game.id)
-      %{game: game, players: [player1, player2]}
+      :ok = Games.start_game(Forka.Scope.for_player(owner), game.id)
+
+      %{
+        game: game,
+        owner: owner,
+        players: [player1, player2],
+        all_players: [owner, player1, player2]
+      }
     end
 
-    test "processes valid guess", %{game: game} do
+    test "processes valid guess", %{game: game, all_players: all_players} do
       game_summary = Games.get_game_summary(game.id)
-      current_player_id = game_summary.current_player_id
+      current_player = Enum.find(all_players, &(&1.id == game_summary.current_player_id))
 
-      assert :ok = Games.guess(game.id, current_player_id, "a")
+      assert :ok = Games.guess(Scope.for_player(current_player), game.id, "a")
 
       updated_state = Games.get_game_summary(game.id)
       assert "a" in Enum.map(updated_state.guesses, & &1.letter)
     end
 
-    test "returns error for invalid player turn", %{game: game, players: players} do
+    test "returns error for invalid player turn", %{game: game, all_players: all_players} do
       game_summary = Games.get_game_summary(game.id)
 
       non_current_player =
-        Enum.find(players, fn player ->
+        Enum.find(all_players, fn player ->
           player.id != game_summary.current_player_id
         end)
 
-      assert {:error, :not_player_turn} = Games.guess(game.id, non_current_player.id, "a")
+      assert {:error, :not_player_turn} =
+               Games.guess(Scope.for_player(non_current_player), game.id, "a")
     end
   end
 
@@ -742,10 +731,10 @@ defmodule Forka.GamesTest do
       player1 = insert(:player)
       player2 = insert(:player)
 
-      :ok = Games.join_game(game.id, player1.id)
-      :ok = Games.join_game(game.id, player2.id)
+      {:ok, :joined} = Games.join_room(Scope.for_player(player1), game.id)
+      {:ok, :joined} = Games.join_room(Scope.for_player(player2), game.id)
 
-      :ok = Games.start_game(game.id)
+      :ok = Games.start_game(Forka.Scope.for_player(owner), game.id)
 
       %{game: game, owner: owner, player1: player1, player2: player2}
     end
@@ -756,18 +745,26 @@ defmodule Forka.GamesTest do
       player1: player1,
       player2: player2
     } do
-      :ok = Games.give_up_game(game.id, owner.id)
-      :ok = Games.give_up_game(game.id, player1.id)
-      :ok = Games.give_up_game(game.id, player2.id)
+      :ok = Games.give_up_game(Scope.for_player(owner), game.id)
+      :ok = Games.give_up_game(Scope.for_player(player1), game.id)
+      :ok = Games.give_up_game(Scope.for_player(player2), game.id)
 
       game_summary = Games.get_game_summary(game.id)
       assert game_summary.game_status == :game_over
       assert game_summary.current_player_id == nil
     end
 
-    test "game finishes when all words completed", %{game: game} do
+    test "game finishes when all words completed", %{
+      game: game,
+      owner: owner,
+      player1: player1,
+      player2: player2
+    } do
       {:ok, persisted} = Repository.get_game_state(game.id)
-      current_player_id = Games.get_game_summary(game.id).current_player_id
+      game_summary = Games.get_game_summary(game.id)
+
+      current_player =
+        Enum.find([owner, player1, player2], &(&1.id == game_summary.current_player_id))
 
       for idx <- 0..5 do
         unique_letters =
@@ -777,7 +774,7 @@ defmodule Forka.GamesTest do
           |> Enum.uniq()
 
         for letter <- unique_letters do
-          assert :ok = Games.guess(game.id, current_player_id, letter)
+          assert :ok = Games.guess(Scope.for_player(current_player), game.id, letter)
         end
       end
 
@@ -793,24 +790,24 @@ defmodule Forka.GamesTest do
       owner = insert(:player)
       {:ok, game} = Games.create_game(owner.id, params_for(:game))
       :ok = Games.subscribe_to_game(game.id)
-      %{game: game}
+      %{game: game, owner: owner}
     end
 
     test "subscribers receive updates on game changes", %{game: game} do
       player = insert(:player)
-      :ok = Games.join_game(game.id, player.id)
+      {:ok, :joined} = Games.join_room(Scope.for_player(player), game.id)
 
       assert_receive {:game_updated, game_summary}
       assert game_summary.players[1].player.id == player.id
     end
 
-    test "subscribers receive game state changes", %{game: game} do
-      :ok = Games.join_game(game.id, insert(:player).id)
-      :ok = Games.join_game(game.id, insert(:player).id)
+    test "subscribers receive game state changes", %{game: game, owner: owner} do
+      {:ok, :joined} = Games.join_room(Scope.for_player(insert(:player)), game.id)
+      {:ok, :joined} = Games.join_room(Scope.for_player(insert(:player)), game.id)
 
       flush_messages()
 
-      :ok = Games.start_game(game.id)
+      :ok = Games.start_game(Forka.Scope.for_player(owner), game.id)
 
       assert_receive {:game_updated, game_summary}
       assert game_summary.game_status == :playing
@@ -819,7 +816,7 @@ defmodule Forka.GamesTest do
     test "subscribers can unsubscribe from game updates", %{game: game} do
       :ok = Games.unsubscribe_from_game(game.id)
       player = insert(:player)
-      :ok = Games.join_game(game.id, player.id)
+      {:ok, :joined} = Games.join_room(Scope.for_player(player), game.id)
 
       refute_receive {:game_updated, _}
     end
@@ -853,7 +850,7 @@ defmodule Forka.GamesTest do
       assert_receive {:game_list_updated, _}
 
       # Join a player
-      :ok = Games.join_game(game.id, player.id)
+      {:ok, :joined} = Games.join_room(Scope.for_player(player), game.id)
 
       assert_receive {:game_list_updated, game_list_data}
       assert game_list_data.id == game.id
@@ -867,8 +864,8 @@ defmodule Forka.GamesTest do
       {:ok, game} = Games.create_game(owner.id, params_for(:game))
       player1 = insert(:player)
       player2 = insert(:player)
-      :ok = Games.join_game(game.id, player1.id)
-      :ok = Games.join_game(game.id, player2.id)
+      {:ok, :joined} = Games.join_room(Scope.for_player(player1), game.id)
+      {:ok, :joined} = Games.join_room(Scope.for_player(player2), game.id)
 
       # Add words so the game can start
       insert_list(6, :word)
@@ -877,7 +874,7 @@ defmodule Forka.GamesTest do
       flush_messages()
 
       # Start the game
-      :ok = Games.start_game(game.id)
+      :ok = Games.start_game(Forka.Scope.for_player(owner), game.id)
 
       assert_receive {:game_list_updated, game_list_data}
       assert game_list_data.id == game.id
@@ -893,7 +890,7 @@ defmodule Forka.GamesTest do
       assert_receive {:game_list_updated, _}
 
       # Archive the game
-      :ok = Games.archive_game(game.id)
+      :ok = Games.archive_game(Forka.Scope.for_player(owner), game.id)
 
       # Sleep to ensure the message has time to propagate
       Process.sleep(10)
@@ -937,7 +934,7 @@ defmodule Forka.GamesTest do
       assert created_item.category_names == ["Cinema"]
 
       :ok =
-        Games.update_settings(game.id, owner.id, %{
+        Games.update_room_settings(Forka.Scope.for_player(owner), game.id, %{
           word_options: %{language: "pt", category_ids: [cat_sports.id, cat_cinema.id]}
         })
 
@@ -1001,7 +998,7 @@ defmodule Forka.GamesTest do
 
       pid = GameServer.whereis(game.id)
       ref = Process.monitor(pid)
-      assert :ok = Games.archive_game(game.id)
+      assert :ok = Games.archive_game(Forka.Scope.for_player(owner), game.id)
       assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
 
       assert {:error, :game_archived} = Games.get_room_lobby(owner_scope, game.id)
@@ -1110,7 +1107,7 @@ defmodule Forka.GamesTest do
       outsider = insert(:player)
       insert_list(4, :word)
       assert {:ok, :joined} = Games.join_room(Forka.Scope.for_player(p2), game.id)
-      assert :ok = Games.start_game(game.id)
+      assert :ok = Games.start_game(Forka.Scope.for_player(owner), game.id)
 
       assert {:ok, :returning_participant} =
                Games.join_room(Forka.Scope.for_player(owner), game.id)
@@ -1128,6 +1125,72 @@ defmodule Forka.GamesTest do
       assert {:error, :unauthorized} = Games.join_room(nil, Ecto.UUID.generate())
       assert {:error, :not_found} = Games.join_room(scope, "not-a-uuid")
       assert {:error, :not_found} = Games.join_room(scope, Ecto.UUID.generate())
+    end
+
+    test "REQ-07: simultaneous joins to the last seat yield exactly one :joined and :maximum_players for the rest" do
+      owner = insert(:player)
+
+      {:ok, game} =
+        Games.create_room(Forka.Scope.for_player(owner), %{name: "Última Vaga", max_players: 2})
+
+      contenders = insert_list(5, :player)
+
+      on_exit(fn ->
+        if pid = GameServer.whereis(game.id) do
+          DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
+        end
+      end)
+
+      game_pid = GameServer.whereis(game.id)
+      task_supervisor = start_supervised!(Task.Supervisor)
+      :ok = :sys.suspend(game_pid)
+
+      tasks =
+        try do
+          Enum.map(contenders, fn player ->
+            scope = Forka.Scope.for_player(player)
+
+            task =
+              Task.Supervisor.async_nolink(task_supervisor, fn ->
+                receive do
+                  :go -> {player.id, Games.join_room(scope, game.id)}
+                end
+              end)
+
+            :erlang.trace(task.pid, true, [:send])
+            send(task.pid, :go)
+            caller = task.pid
+
+            assert_receive {:trace, ^caller, :send, {:"$gen_call", _, {:join_room, _}}, _}, 1_000
+
+            :erlang.trace(task.pid, false, [:send])
+            task
+          end)
+        after
+          :sys.resume(game_pid)
+        end
+
+      results = Enum.map(tasks, &Task.await(&1, 5_000))
+      joined = Enum.filter(results, fn {_id, res} -> res == {:ok, :joined} end)
+      rejected = Enum.filter(results, fn {_id, res} -> res == {:error, :maximum_players} end)
+
+      assert length(joined) == 1
+      assert length(rejected) == length(contenders) - 1
+
+      [{winner_id, {:ok, :joined}}] = joined
+      summary = Games.get_game_summary(game.id)
+      assert map_size(summary.players) == 2
+
+      summary_ids = summary.players |> Map.values() |> Enum.map(& &1.player.id) |> MapSet.new()
+      assert summary_ids == MapSet.new([owner.id, winner_id])
+
+      assert {:ok, persisted} = Repository.get_game_state(game.id)
+      assert map_size(persisted.game_players) == 2
+
+      persisted_ids =
+        persisted.game_players |> Map.values() |> Enum.map(& &1.player.id) |> MapSet.new()
+
+      assert persisted_ids == MapSet.new([owner.id, winner_id])
     end
   end
 
@@ -1160,11 +1223,11 @@ defmodule Forka.GamesTest do
       p2 = insert(:player)
       insert_list(4, :word)
       {:ok, full_game} = Games.create_game(owner.id, %{name: "Cheia", max_players: 2})
-      :ok = Games.join_game(full_game.id, p2.id)
+      {:ok, :joined} = Games.join_room(Scope.for_player(p2), full_game.id)
 
       assert {:ok, %{availability_state: :full}} = Games.get_room_invite(full_game.id)
 
-      :ok = Games.start_game(full_game.id)
+      :ok = Games.start_game(Forka.Scope.for_player(owner), full_game.id)
       assert {:ok, %{availability_state: :playing}} = Games.get_room_invite(full_game.id)
 
       assert {:error, :not_found} = Games.get_room_invite("bad-id")
@@ -1184,6 +1247,264 @@ defmodule Forka.GamesTest do
                Games.get_room_invite(cold_game.id)
 
       assert :global.whereis_name({Forka.Games.GameServer, cold_game.id}) == :undefined
+    end
+  end
+
+  describe "REQ-04 & REQ-05: scoped owner commands and stale command rejection" do
+    setup do
+      owner = insert(:player, username: "dona")
+      member = insert(:player, username: "membro")
+      outsider = insert(:player, username: "visitante")
+      for text <- ~w(ab cd ef gh), do: insert(:word, text: text)
+
+      {:ok, game} =
+        Games.create_room(Forka.Scope.for_player(owner), %{name: "Sala Dono", max_players: 4})
+
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(member), game.id)
+
+      on_exit(fn ->
+        if pid = GameServer.whereis(game.id) do
+          DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
+        end
+      end)
+
+      %{
+        game: game,
+        owner: owner,
+        member: member,
+        outsider: outsider,
+        owner_scope: Forka.Scope.for_player(owner),
+        member_scope: Forka.Scope.for_player(member),
+        outsider_scope: Forka.Scope.for_player(outsider)
+      }
+    end
+
+    test "REQ-04: rejects nil and empty scope with {:error, :unauthorized}, invalid game_id with {:error, :not_found}, and removes unscoped update_settings/3",
+         %{game: game, owner_scope: owner_scope, member: member} do
+      refute function_exported?(Games, :update_settings, 3)
+
+      for bad_scope <- [nil, %Forka.Scope{player: nil}] do
+        assert {:error, :unauthorized} = Games.start_game(bad_scope, game.id)
+        assert {:error, :unauthorized} = Games.transfer_ownership(bad_scope, game.id, member.id)
+        assert {:error, :unauthorized} = Games.restart_game(bad_scope, game.id)
+        assert {:error, :unauthorized} = Games.archive_game(bad_scope, game.id)
+
+        assert {:error, :unauthorized} =
+                 Games.update_room_settings(bad_scope, game.id, %{name: "X"})
+      end
+
+      assert {:error, :not_found} = Games.start_game(owner_scope, "not-a-uuid")
+      assert {:error, :not_found} = Games.transfer_ownership(owner_scope, "not-a-uuid", member.id)
+      assert {:error, :not_found} = Games.restart_game(owner_scope, "not-a-uuid")
+      assert {:error, :not_found} = Games.archive_game(owner_scope, "not-a-uuid")
+      assert {:error, :not_found} = Games.start_game(owner_scope, Ecto.UUID.generate())
+    end
+
+    test "REQ-04 & REQ-06: non-owner cannot invoke owner commands or spoof owner_id/player_id in settings params",
+         %{
+           game: game,
+           owner: owner,
+           member: member,
+           member_scope: member_scope,
+           outsider_scope: outsider_scope
+         } do
+      :ok = Games.subscribe_to_game(game.id)
+
+      for scope <- [member_scope, outsider_scope] do
+        assert {:error, :unauthorized} = Games.start_game(scope, game.id)
+        assert {:error, :unauthorized} = Games.transfer_ownership(scope, game.id, member.id)
+        assert {:error, :unauthorized} = Games.restart_game(scope, game.id)
+        assert {:error, :unauthorized} = Games.archive_game(scope, game.id)
+
+        assert {:error, :unauthorized} =
+                 Games.update_room_settings(scope, game.id, %{
+                   "name" => "Hijacked",
+                   "owner_id" => owner.id,
+                   "player_id" => owner.id
+                 })
+      end
+
+      refute_receive {:game_updated, _}
+      summary = Games.get_game_summary(game.id)
+      assert summary.name == "Sala Dono"
+      assert summary.owner.id == owner.id
+      assert summary.game_status == :lobby
+    end
+
+    test "REQ-05: stale commands from old owner are rejected after ownership transfer while new owner succeeds",
+         %{
+           game: game,
+           owner_scope: owner_scope,
+           member: member,
+           member_scope: member_scope,
+           outsider: outsider
+         } do
+      assert :ok = Games.transfer_ownership(owner_scope, game.id, member.id)
+      :ok = Games.subscribe_to_game(game.id)
+
+      # Stale lobby commands from old owner are rejected
+      assert {:error, :unauthorized} =
+               Games.update_room_settings(owner_scope, game.id, %{name: "Stale Edit"})
+
+      assert {:error, :unauthorized} = Games.start_game(owner_scope, game.id)
+      assert {:error, :unauthorized} = Games.transfer_ownership(owner_scope, game.id, outsider.id)
+      assert {:error, :unauthorized} = Games.restart_game(owner_scope, game.id)
+      assert {:error, :unauthorized} = Games.archive_game(owner_scope, game.id)
+      refute_receive {:game_updated, _}
+
+      # New owner can edit and start; old owner stays rejected in playing and non-playing phases
+      assert :ok = Games.update_room_settings(member_scope, game.id, %{name: "Sala do Membro"})
+      assert :ok = Games.start_game(member_scope, game.id)
+      assert {:error, :unauthorized} = Games.restart_game(owner_scope, game.id)
+      assert {:error, :unauthorized} = Games.archive_game(owner_scope, game.id)
+      assert {:error, :game_in_progress} = Games.restart_game(member_scope, game.id)
+      assert {:error, :game_in_progress} = Games.archive_game(member_scope, game.id)
+
+      # Transfer works in playing phase too, and only to a participant
+      assert {:error, :player_not_found} =
+               Games.transfer_ownership(member_scope, game.id, outsider.id)
+
+      assert {:error, :already_owner} = Games.transfer_ownership(member_scope, game.id, member.id)
+    end
+
+    test "REQ-05: stale lobby-only commands are rejected after game starts",
+         %{
+           game: game,
+           owner_scope: owner_scope,
+           member_scope: member_scope,
+           outsider_scope: outsider_scope
+         } do
+      assert :ok = Games.start_game(owner_scope, game.id)
+      :ok = Games.subscribe_to_game(game.id)
+
+      assert {:error, :game_not_in_lobby} =
+               Games.update_room_settings(owner_scope, game.id, %{name: "Tarde Demais"})
+
+      assert {:error, :game_already_initialized} = Games.start_game(owner_scope, game.id)
+      assert {:error, :unauthorized} = Games.start_game(member_scope, game.id)
+      assert {:error, :game_in_progress} = Games.restart_game(owner_scope, game.id)
+      assert {:error, :game_in_progress} = Games.archive_game(owner_scope, game.id)
+      assert {:error, :game_already_started} = Games.join_room(outsider_scope, game.id)
+      assert {:ok, :returning_participant} = Games.join_room(member_scope, game.id)
+
+      refute_receive {:game_updated, _}
+      assert Games.get_game_summary(game.id).game_status == :playing
+    end
+  end
+
+  describe "REQ-04 & REQ-06: scoped participant commands and crafted player_id protection" do
+    setup do
+      owner = insert(:player, username: "dona")
+      member = insert(:player, username: "membro")
+      outsider = insert(:player, username: "visitante")
+      for text <- ~w(ab cd ef gh), do: insert(:word, text: text)
+
+      {:ok, game} =
+        Games.create_room(Forka.Scope.for_player(owner), %{name: "Sala Jogo", max_players: 3})
+
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(member), game.id)
+
+      on_exit(fn ->
+        if pid = GameServer.whereis(game.id) do
+          DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
+        end
+      end)
+
+      %{
+        game: game,
+        owner: owner,
+        member: member,
+        outsider: outsider,
+        owner_scope: Forka.Scope.for_player(owner),
+        member_scope: Forka.Scope.for_player(member),
+        outsider_scope: Forka.Scope.for_player(outsider)
+      }
+    end
+
+    test "REQ-04: rejects nil/empty scope with {:error, :unauthorized}, invalid game_id with {:error, :not_found}, and removes unscoped join_game/2",
+         %{game: game, member_scope: member_scope} do
+      refute function_exported?(Games, :join_game, 2)
+
+      for bad_scope <- [nil, %Forka.Scope{player: nil}] do
+        assert {:error, :unauthorized} = Games.leave_game(bad_scope, game.id)
+        assert {:error, :unauthorized} = Games.give_up_game(bad_scope, game.id)
+        assert {:error, :unauthorized} = Games.guess(bad_scope, game.id, "a")
+      end
+
+      assert {:error, :not_found} = Games.leave_game(member_scope, "not-a-uuid")
+      assert {:error, :not_found} = Games.give_up_game(member_scope, "not-a-uuid")
+      assert {:error, :not_found} = Games.guess(member_scope, "not-a-uuid", "a")
+      assert {:error, :not_found} = Games.leave_game(member_scope, Ecto.UUID.generate())
+    end
+
+    test "REQ-04 & REQ-05: enforces membership on leave_game/2, give_up_game/2, and guess/3 in lobby and playing phases",
+         %{
+           game: game,
+           owner: owner,
+           member: member,
+           owner_scope: owner_scope,
+           member_scope: member_scope,
+           outsider_scope: outsider_scope
+         } do
+      :ok = Games.subscribe_to_game(game.id)
+
+      # Lobby: outsider rejected with :not_a_participant; seated member cannot guess/give_up in lobby
+      assert {:error, :not_a_participant} = Games.leave_game(outsider_scope, game.id)
+      assert {:error, :not_a_participant} = Games.give_up_game(outsider_scope, game.id)
+      assert {:error, :not_a_participant} = Games.guess(outsider_scope, game.id, "a")
+      assert {:error, :game_not_playing} = Games.give_up_game(member_scope, game.id)
+      assert {:error, :game_not_playing} = Games.guess(member_scope, game.id, "a")
+      refute_receive {:game_updated, _}
+
+      # Start game: stale leave_game rejected for seated member; outsider rejected on all three
+      assert :ok = Games.start_game(owner_scope, game.id)
+      flush_messages()
+
+      assert {:error, :game_already_started} = Games.leave_game(member_scope, game.id)
+      assert {:error, :not_a_participant} = Games.leave_game(outsider_scope, game.id)
+      assert {:error, :not_a_participant} = Games.give_up_game(outsider_scope, game.id)
+      assert {:error, :not_a_participant} = Games.guess(outsider_scope, game.id, "a")
+      refute_receive {:game_updated, _}
+
+      # Only the current turn player's own scope can guess; the other seated player gets :not_player_turn
+      summary = Games.get_game_summary(game.id)
+      scopes = %{owner.id => owner_scope, member.id => member_scope}
+      current_id = summary.current_player_id
+      other_id = Enum.find([owner.id, member.id], &(&1 != current_id))
+
+      assert {:error, :not_player_turn} = Games.guess(scopes[other_id], game.id, "a")
+      assert :ok = Games.guess(scopes[current_id], game.id, "a")
+    end
+
+    test "REQ-06: crafted raw player_id cannot act for another player on leave, give_up, or guess",
+         %{
+           game: game,
+           owner: owner,
+           member: member,
+           owner_scope: owner_scope,
+           member_scope: member_scope
+         } do
+      # Passing raw (game.id, member.id) as if calling old unscoped APIs is rejected as :unauthorized
+      assert {:error, :unauthorized} = Games.leave_game(game.id, member.id)
+      assert {:error, :unauthorized} = Games.give_up_game(game.id, member.id)
+      assert {:error, :unauthorized} = Games.guess(game.id, owner.id, "a")
+
+      # Acting with member_scope affects ONLY member (never owner)
+      assert :ok = Games.leave_game(member_scope, game.id)
+      after_leave = Games.get_game_summary(game.id)
+      player_ids = after_leave.players |> Map.values() |> Enum.map(& &1.player.id)
+      assert player_ids == [owner.id]
+      assert {:error, :not_a_participant} = Games.leave_game(member_scope, game.id)
+
+      # Re-join member, start, and prove give_up_game only marks the scoped actor dead
+      assert {:ok, :joined} = Games.join_room(member_scope, game.id)
+      assert :ok = Games.start_game(owner_scope, game.id)
+      assert :ok = Games.give_up_game(member_scope, game.id)
+
+      after_give_up = Games.get_game_summary(game.id)
+      players_by_id = Map.new(after_give_up.players, fn {_pos, gp} -> {gp.player.id, gp} end)
+      assert players_by_id[member.id].status == :dead
+      assert players_by_id[owner.id].status == :alive
     end
   end
 
@@ -1222,14 +1543,14 @@ defmodule Forka.GamesTest do
       assert lobby_1.word_availability.has_category_filter? == true
 
       # 2nd player joins -> 4 available >= 4 required -> ready
-      assert :ok = Games.join_game(game.id, p2.id)
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(p2), game.id)
       assert_receive {:room_lobby_updated, payload_2}
       assert {:ok, lobby_2} = Games.room_lobby_from_payload(owner_scope, payload_2)
       assert lobby_2.word_availability.status == :ready
       assert lobby_2.word_availability.ready? == true
 
       # 3rd player joins -> 4 available < 6 required -> insufficient_words
-      assert :ok = Games.join_game(game.id, p3.id)
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(p3), game.id)
       assert_receive {:room_lobby_updated, payload_3}
       assert {:ok, lobby_3} = Games.room_lobby_from_payload(owner_scope, payload_3)
       assert lobby_3.word_availability.status == :insufficient_words
@@ -1264,7 +1585,7 @@ defmodule Forka.GamesTest do
       assert lobby_deleted.word_availability.status == :insufficient_words
 
       assert {:error, {:insufficient_words, %{available: 0, required: 6}}} =
-               Games.start_game(game.id)
+               Games.start_game(owner_scope, game.id)
     end
 
     test "EDGE-03: lobby projection of a started room omits word_availability" do
@@ -1286,8 +1607,8 @@ defmodule Forka.GamesTest do
           word_options: %{language: "pt", category_ids: [cat_pt.id]}
         })
 
-      :ok = Games.join_game(game.id, p2.id)
-      :ok = Games.start_game(game.id)
+      {:ok, :joined} = Games.join_room(Scope.for_player(p2), game.id)
+      :ok = Games.start_game(owner_scope, game.id)
 
       assert {:ok, playing_lobby} = Games.get_room_lobby(owner_scope, game.id)
       assert playing_lobby.status == :playing

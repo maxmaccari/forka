@@ -71,8 +71,8 @@ defmodule ForkaWeb.RoomInviteLiveTest do
       p2 = insert(:player)
       insert_list(4, :word)
       {:ok, game} = Games.create_game(owner.id, %{name: "Em Jogo", max_players: 2})
-      :ok = Games.join_game(game.id, p2.id)
-      :ok = Games.start_game(game.id)
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(p2), game.id)
+      :ok = Games.start_game(Forka.Scope.for_player(owner), game.id)
 
       assert {:error, {:live_redirect, %{to: redirect_to}}} =
                conn |> log_in_player(p2) |> live(~p"/rooms/#{game.id}/join")
@@ -90,7 +90,7 @@ defmodule ForkaWeb.RoomInviteLiveTest do
       insert_list(4, :word)
 
       {:ok, full_game} = Games.create_game(owner.id, %{name: "Sala Cheia", max_players: 2})
-      :ok = Games.join_game(full_game.id, p2.id)
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(p2), full_game.id)
 
       {:ok, lv_full, html_full} =
         conn |> log_in_player(outsider) |> live(~p"/rooms/#{full_game.id}/join")
@@ -98,7 +98,7 @@ defmodule ForkaWeb.RoomInviteLiveTest do
       assert visible_text(html_full) =~ "Sala cheia"
       assert has_element?(lv_full, ~s|#invite-directory-link[href="/"]|)
 
-      :ok = Games.start_game(full_game.id)
+      :ok = Games.start_game(Forka.Scope.for_player(owner), full_game.id)
 
       {:ok, lv_playing, html_playing} =
         conn |> log_in_player(outsider) |> live(~p"/rooms/#{full_game.id}/join")
@@ -124,7 +124,7 @@ defmodule ForkaWeb.RoomInviteLiveTest do
       insert_list(4, :word)
 
       {:ok, game} = Games.create_game(owner.id, %{name: "Sala Cheia", max_players: 2})
-      :ok = Games.join_game(game.id, p2.id)
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(p2), game.id)
 
       encoded = URI.encode_www_form("/rooms/#{game.id}/join")
       {:ok, lv_full, _html} = live(conn, ~p"/rooms/#{game.id}/join")
@@ -136,7 +136,7 @@ defmodule ForkaWeb.RoomInviteLiveTest do
 
       assert has_element?(lv_full, ~s|#invite-directory-link[href="/"]|)
 
-      :ok = Games.start_game(game.id)
+      :ok = Games.start_game(Forka.Scope.for_player(owner), game.id)
       {:ok, lv_playing, _html} = live(conn, ~p"/rooms/#{game.id}/join")
 
       assert has_element?(
@@ -145,6 +145,31 @@ defmodule ForkaWeb.RoomInviteLiveTest do
              )
 
       assert has_element?(lv_playing, ~s|#invite-directory-link[href="/"]|)
+    end
+
+    test "REQ-06: crafted player_id in invite join_room event joins only the authenticated actor",
+         %{conn: conn} do
+      owner = insert(:player)
+      actor = insert(:player)
+      victim = insert(:player)
+
+      {:ok, game} =
+        Games.create_room(Forka.Scope.for_player(owner), %{
+          name: "Sala Convite Segura",
+          max_players: 4
+        })
+
+      {:ok, lv, _html} = conn |> log_in_player(actor) |> live(~p"/rooms/#{game.id}/join")
+
+      assert {:error, {:live_redirect, %{to: redirect_to}}} =
+               render_hook(lv, "join_room", %{"player_id" => victim.id})
+
+      assert redirect_to == ~p"/rooms/#{game.id}"
+
+      summary = Games.get_game_summary(game.id)
+      player_ids = summary.players |> Map.values() |> Enum.map(& &1.player.id)
+      assert actor.id in player_ids
+      refute victim.id in player_ids
     end
   end
 end

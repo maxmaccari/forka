@@ -15,7 +15,7 @@ defmodule Forka.Games.GameSupervisionTest do
     archived_ref = Process.monitor(archived_pid)
     sibling_ref = Process.monitor(sibling_pid)
 
-    assert :ok = GameServer.archive_game(archived.id)
+    assert :ok = GameServer.archive_game(archived.id, archived.owner_id)
     assert_receive {:DOWN, ^archived_ref, :process, ^archived_pid, :normal}
     refute_receive {:DOWN, ^sibling_ref, :process, ^sibling_pid, _reason}, 1_000
 

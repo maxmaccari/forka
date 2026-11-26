@@ -73,9 +73,9 @@ defmodule ForkaWeb.RoomLiveTest do
       guest = insert(:player, username: "bruno")
 
       {:ok, game} = Games.create_game(owner.id, %{name: "Sala jogando", max_players: 4})
-      :ok = Games.join_game(game.id, guest.id)
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(guest), game.id)
       insert_list(4, :word)
-      :ok = Games.start_game(game.id)
+      :ok = Games.start_game(Forka.Scope.for_player(owner), game.id)
 
       {:ok, lv, _html} = conn |> log_in_player(owner) |> live(~p"/rooms/#{game.id}")
       refute has_element?(lv, "#edit-room-settings")
@@ -101,7 +101,7 @@ defmodule ForkaWeb.RoomLiveTest do
 
       pid = GameServer.whereis(game.id)
       ref = Process.monitor(pid)
-      :ok = Games.archive_game(game.id)
+      :ok = Games.archive_game(Forka.Scope.for_player(owner), game.id)
       assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
 
       assert {:error,
@@ -158,14 +158,14 @@ defmodule ForkaWeb.RoomLiveTest do
           word_options: %{language: "pt", category_ids: [cat_small.id]}
         })
 
-      :ok = Games.join_game(game.id, p2.id)
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(p2), game.id)
 
       {:ok, lv, html} = conn |> log_in_player(owner) |> live(~p"/rooms/#{game.id}")
       assert visible_text(html) =~ "2 de 6 · 4 palavras (2 por jogador)"
       refute has_element?(lv, "#room-word-availability-alert")
 
       # 3rd player joins -> required rises to 6 while pool has 4 -> alert appears with owner link
-      :ok = Games.join_game(game.id, p3.id)
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(p3), game.id)
       joined_text = lv |> render() |> visible_text()
       assert joined_text =~ "3 de 6 · 6 palavras (2 por jogador)"
       assert has_element?(lv, "#room-word-availability-alert")
@@ -179,13 +179,13 @@ defmodule ForkaWeb.RoomLiveTest do
              )
 
       # 3rd player leaves -> required returns to 4 -> alert disappears
-      :ok = Games.leave_game(game.id, p3.id)
+      :ok = Games.leave_game(Forka.Scope.for_player(p3), game.id)
       left_text = lv |> render() |> visible_text()
       assert left_text =~ "2 de 6 · 4 palavras (2 por jogador)"
       refute has_element?(lv, "#room-word-availability-alert")
 
       # 3rd player rejoins, then owner broadens categories -> alert disappears
-      :ok = Games.join_game(game.id, p3.id)
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(p3), game.id)
       assert has_element?(lv, "#room-word-availability-alert")
 
       :ok =
@@ -234,10 +234,10 @@ defmodule ForkaWeb.RoomLiveTest do
           word_options: %{language: "pt", category_ids: [cat.id]}
         })
 
-      :ok = Games.join_game(game.id, guest.id)
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(guest), game.id)
 
       assert {:error, {:insufficient_words, %{available: 3, required: 4}}} =
-               Games.start_game(game.id)
+               Games.start_game(Forka.Scope.for_player(owner), game.id)
 
       {:ok, lv, html} = conn |> log_in_player(owner) |> live(~p"/rooms/#{game.id}")
       text = visible_text(html)
