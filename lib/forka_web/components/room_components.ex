@@ -316,6 +316,180 @@ defmodule ForkaWeb.RoomComponents do
     "#{player_count} de #{max_players} · #{required_words} palavras (2 por jogador)"
   end
 
+  @doc "Renders the lobby invite link card with read-only URL, copy button, and progressive share button."
+  attr :id, :string, default: "room-invite-card"
+  attr :invite_url, :string, required: true
+  attr :room_name, :string, required: true
+
+  def lobby_invite_card(assigns) do
+    ~H"""
+    <section
+      id={@id}
+      aria-labelledby={"#{@id}-heading"}
+      phx-hook="ShareInvite"
+      phx-update="ignore"
+      data-url={@invite_url}
+      data-title={@room_name}
+      class="rounded-lg bg-surface p-4 text-ink shadow-2 ring-1 ring-line dark:shadow-none sm:p-6"
+    >
+      <div class="flex flex-col gap-3">
+        <div class="flex flex-col gap-1">
+          <h2 id={"#{@id}-heading"} class="text-base font-extrabold text-ink">
+            Chame a turma pelo link
+          </h2>
+          <p class="text-sm text-ink-subtle">
+            Envie este endereço para convidar amigos para a sala.
+          </p>
+        </div>
+
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <label for="room-invite-url" class="sr-only">Link de convite da sala</label>
+          <input
+            id="room-invite-url"
+            type="text"
+            readonly
+            value={@invite_url}
+            class="min-h-11 min-w-0 flex-1 rounded-md bg-sunken px-3 py-2 text-sm font-semibold text-ink ring-1 ring-inset ring-line-strong"
+          />
+          <div class="flex shrink-0 items-center gap-2">
+            <.button
+              id="copy-invite-link"
+              type="button"
+              variant="secondary"
+              size="sm"
+              data-copy-invite
+            >
+              <.icon name="hero-clipboard-document-mini" class="size-5" /> Copiar link
+            </.button>
+            <.button
+              id="share-invite-link"
+              type="button"
+              variant="secondary"
+              size="sm"
+              data-share-invite
+              class="hidden"
+            >
+              <.icon name="hero-share-mini" class="size-5" /> Compartilhar
+            </.button>
+          </div>
+        </div>
+
+        <p
+          id="copy-invite-status"
+          data-share-status
+          aria-live="polite"
+          class="min-h-6 text-sm font-bold text-success-ink"
+        >
+        </p>
+      </div>
+    </section>
+    """
+  end
+
+  @doc "Renders the lobby player roster, owner badge, viewer marker, word requirement, and open seats."
+  attr :players, :list, required: true
+  attr :owner_id, :string, default: nil
+  attr :current_player_id, :string, required: true
+  attr :empty_seats, :integer, required: true
+  attr :player_count, :integer, required: true
+  attr :max_players, :integer, required: true
+  attr :word_availability, :any, default: nil
+
+  def lobby_roster(assigns) do
+    ~H"""
+    <section aria-labelledby="room-lobby-players-heading" class="flex flex-col gap-3">
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id="room-lobby-players-heading" class="font-display text-xl font-bold text-ink">
+          Jogadores
+        </h2>
+        <p
+          :if={@word_availability}
+          id="room-lobby-words-requirement"
+          class="text-sm font-bold text-ink-muted tabular-nums"
+        >
+          {room_words_requirement_label(
+            @player_count,
+            @max_players,
+            @word_availability.required_words
+          )}
+        </p>
+      </div>
+
+      <.card id="room-lobby-roster-card" padding="sm" bordered>
+        <ul id="room-lobby-players" class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <li
+            :for={{player, idx} <- Enum.with_index(@players)}
+            :key={player.id}
+            id={"room-lobby-player-#{player.id}"}
+            class="flex min-h-12 items-center gap-3 rounded-md bg-sunken px-3 py-2"
+          >
+            <.avatar name={player.username} player_index={idx + 1} size="sm" />
+            <span class="min-w-0 flex-1 truncate text-sm font-extrabold text-ink">
+              {player.username}<span
+                :if={player.id == @current_player_id}
+                class="font-normal text-ink-subtle"
+              > · você</span>
+            </span>
+            <.badge :if={player.id == @owner_id} tone="accent">
+              Anfitrião
+            </.badge>
+          </li>
+
+          <li
+            :for={seat <- Range.new(1, @empty_seats, 1)}
+            :key={"empty-#{seat}"}
+            id={"room-lobby-empty-seat-#{seat}"}
+            class="flex min-h-12 items-center gap-3 rounded-md px-3 py-2 ring-2 ring-inset ring-line"
+          >
+            <span
+              aria-hidden="true"
+              class="inline-flex size-8 shrink-0 rounded-full border-2 border-dashed border-line-strong"
+            />
+            <span class="text-sm italic text-ink-subtle">Lugar livre</span>
+          </li>
+        </ul>
+      </.card>
+    </section>
+    """
+  end
+
+  @doc "Renders the role-aware lobby waiting/readiness status box."
+  attr :is_owner?, :boolean, required: true
+  attr :owner_username, :string, required: true
+  attr :player_count, :integer, required: true
+  attr :word_availability, :any, default: nil
+
+  def lobby_waiting_status(assigns) do
+    ~H"""
+    <p
+      id="room-waiting-status"
+      role="status"
+      class="flex min-h-12 items-center justify-center gap-3 rounded-md bg-sunken px-4 py-3 text-center text-sm font-extrabold text-ink-muted ring-2 ring-inset ring-line"
+    >
+      <%= cond do %>
+        <% not @is_owner? -> %>
+          <span>Esperando {@owner_username} começar</span>
+          <span class="forka-dots inline-flex items-center gap-1" aria-hidden="true">
+            <i /><i /><i />
+          </span>
+        <% @player_count < 2 -> %>
+          <span>Aguardando pelo menos mais 1 jogador para começar</span>
+          <span class="forka-dots inline-flex items-center gap-1" aria-hidden="true">
+            <i /><i /><i />
+          </span>
+        <% @word_availability != nil and not @word_availability.enough_words? -> %>
+          <span>Ajuste as configurações para ter palavras suficientes.</span>
+        <% true -> %>
+          <span>
+            Sala pronta com {@player_count} jogadores ({(@word_availability &&
+                                                           @word_availability.required_words) ||
+              @player_count * 2} palavras).
+          </span>
+      <% end %>
+    </p>
+    """
+  end
+
   defp valid_words_count_label(1), do: "1 palavra válida"
   defp valid_words_count_label(count), do: "#{count} palavras válidas"
 

@@ -4,6 +4,7 @@ defmodule ForkaWeb.RoomInviteLiveTest do
   import Phoenix.LiveViewTest
 
   alias Forka.Games
+  alias Forka.Games.GameServer
 
   describe "GET /rooms/:id/join" do
     test "REQ-01: renders room details and sign-in/register links with return_to for unauthenticated guests",
@@ -170,6 +171,57 @@ defmodule ForkaWeb.RoomInviteLiveTest do
       player_ids = summary.players |> Map.values() |> Enum.map(& &1.player.id)
       assert actor.id in player_ids
       refute victim.id in player_ids
+    end
+
+    test "REQ-05: invite join queued behind final owner leave renders archived state instead of crashing",
+         %{conn: conn} do
+      owner = insert(:player, username: "bia")
+      joiner = insert(:player, username: "carlos")
+      owner_scope = Forka.Scope.for_player(owner)
+
+      {:ok, game} = Games.create_room(owner_scope, %{name: "Sala Encerrando", max_players: 4})
+      {:ok, lv, _html} = conn |> log_in_player(joiner) |> live(~p"/rooms/#{game.id}/join")
+
+      game_pid = GameServer.whereis(game.id)
+      ref = Process.monitor(game_pid)
+      task_supervisor = start_supervised!(Task.Supervisor)
+      owner_id = owner.id
+      joiner_id = joiner.id
+
+      :ok = :sys.suspend(game_pid)
+
+      {leave_task, join_task} =
+        try do
+          :erlang.trace(game_pid, true, [:receive])
+
+          leave_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.leave_game(owner_scope, game.id, confirm: :archive)
+            end)
+
+          assert_receive {:trace, ^game_pid, :receive, {:"$gen_call", _, msg}}, 1_000
+          assert elem(msg, 0) == :leave_game and elem(msg, 1) == owner_id
+
+          join_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              lv |> element("#invite-join-button") |> render_click()
+            end)
+
+          assert_receive {:trace, ^game_pid, :receive, {:"$gen_call", _, join_msg}}, 1_000
+          assert elem(join_msg, 0) == :join_room and elem(join_msg, 1) == joiner_id
+
+          {leave_task, join_task}
+        after
+          :erlang.trace(game_pid, false, [:receive])
+          :sys.resume(game_pid)
+        end
+
+      assert :ok = Task.await(leave_task, 5_000)
+      assert_receive {:DOWN, ^ref, :process, ^game_pid, :normal}
+
+      html = Task.await(join_task, 5_000)
+      assert visible_text(html) =~ "Esta sala foi arquivada"
+      assert has_element?(lv, ~s|#invite-directory-link[href="/"]|)
     end
   end
 end

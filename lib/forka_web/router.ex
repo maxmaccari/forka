@@ -63,6 +63,7 @@ defmodule ForkaWeb.Router do
       on_mount: [{ForkaWeb.PlayerAuth, :ensure_authenticated}] do
       live "/rooms/new", RoomFormLive, :new
       live "/rooms/:id", RoomLive, :show
+      live "/rooms/:id/match", MatchLive, :show
       live "/rooms/:id/settings", RoomFormLive, :edit
       live "/players/settings", PlayerSettingsLive, :edit
       live "/players/settings/confirm_email/:token", PlayerSettingsLive, :confirm_email

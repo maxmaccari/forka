@@ -70,8 +70,9 @@ defmodule Forka.Games.GameServer do
   end
 
   @doc false
-  def leave_game(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
-    GenServer.call(global_name(game_id), {:leave_game, player_id})
+  def leave_game(game_id, player_id, opts \\ [])
+      when is_binary(game_id) and is_binary(player_id) and is_list(opts) do
+    GenServer.call(global_name(game_id), {:leave_game, player_id, opts})
   end
 
   @doc false
@@ -159,12 +160,18 @@ defmodule Forka.Games.GameServer do
   end
 
   @impl true
-  def handle_call({:leave_game, player_id}, _from, game) do
-    case Core.leave_game(game, player_id) do
+  def handle_call({:leave_game, player_id, opts}, _from, game) do
+    case Core.leave_game(game, player_id, opts) do
+      {:ok, %GameState{status: :archived} = new_game} ->
+        saved_game = save_and_publish!(game, new_game)
+        {:stop, :normal, :ok, saved_game}
+
       {:ok, new_game} ->
         saved_game = save_and_publish!(game, new_game)
-
         {:reply, :ok, saved_game, @timeout_ms}
+
+      {:error, :confirmation_required} ->
+        {:reply, {:error, {:confirmation_required, build_lobby_payload(game)}}, game, @timeout_ms}
 
       {:error, error} ->
         {:reply, {:error, error}, game, @timeout_ms}
@@ -284,6 +291,11 @@ defmodule Forka.Games.GameServer do
   end
 
   defp broadcast_lobby!(%GameState{id: game_id} = game_state) do
+    payload = build_lobby_payload(game_state)
+    PubSub.broadcast!(Forka.PubSub, lobby_topic(game_id), {:room_lobby_updated, payload})
+  end
+
+  defp build_lobby_payload(%GameState{} = game_state) do
     word_options = WordOptions.normalize(game_state.word_options)
 
     category_names =
@@ -298,8 +310,7 @@ defmodule Forka.Games.GameServer do
         nil
       end
 
-    payload = RoomLobby.payload(game_state, category_names, available_words)
-    PubSub.broadcast!(Forka.PubSub, lobby_topic(game_id), {:room_lobby_updated, payload})
+    RoomLobby.payload(game_state, category_names, available_words)
   end
 
   defp validate_room_settings(game, settings) do

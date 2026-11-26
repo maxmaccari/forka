@@ -9,13 +9,15 @@ import { initThemeToggle } from "./theme"
 import GameKeyboard from "./hooks/game_keyboard"
 import RopeFeedback from "./hooks/rope_feedback"
 import SegmentedControl from "./hooks/segmented_control"
+import ShareInvite from "./hooks/share_invite"
 
 initThemeToggle()
 
 const Hooks = {
   GameKeyboard,
   RopeFeedback,
-  SegmentedControl
+  SegmentedControl,
+  ShareInvite
 }
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")

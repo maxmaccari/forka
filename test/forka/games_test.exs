@@ -638,6 +638,256 @@ defmodule Forka.GamesTest do
       game_state = Games.get_game_summary(game.id)
       refute Enum.any?(game_state.players, fn {_, p} -> p.player.id == player.id end)
     end
+
+    test "REQ-04 & REQ-05: owner leave transfers controls to lowest seat and last-player leave archives room" do
+      owner = insert(:player, username: "lia")
+      p2 = insert(:player, username: "bruno")
+      p3 = insert(:player, username: "caio")
+      owner_scope = Scope.for_player(owner)
+      p2_scope = Scope.for_player(p2)
+      p3_scope = Scope.for_player(p3)
+
+      {:ok, game} = Games.create_room(owner_scope, %{name: "Sala Handoff", max_players: 4})
+      assert {:ok, :joined} = Games.join_room(p2_scope, game.id)
+      assert {:ok, :joined} = Games.join_room(p3_scope, game.id)
+
+      assert :ok = Games.subscribe_to_room_lobby(p2_scope, game.id)
+      assert :ok = Games.subscribe_to_game_list()
+      flush_messages()
+
+      # Owner leaves -> p2 (lowest remaining seat) becomes owner
+      assert :ok = Games.leave_game(owner_scope, game.id)
+      assert_receive {:room_lobby_updated, payload}
+      assert {:ok, p2_lobby} = Games.room_lobby_from_payload(p2_scope, payload)
+      assert p2_lobby.owner_username == "bruno"
+      assert p2_lobby.can_edit_settings? == true
+      assert_receive {:game_list_updated, %{id: id, owner_username: "bruno", player_count: 2}}
+      assert id == game.id
+
+      # Former owner loses settings permission; new owner gains it
+      assert {:error, :unauthorized} =
+               Games.update_room_settings(owner_scope, game.id, %{name: "Bloqueado"})
+
+      assert :ok = Games.update_room_settings(p2_scope, game.id, %{name: "Sala do Bruno"})
+      flush_messages()
+
+      # p3 leaves, then p2 leaves as last player -> room archives and GameServer stops
+      assert :ok = Games.leave_game(p3_scope, game.id)
+      flush_messages()
+
+      pid = GameServer.whereis(game.id)
+      ref = Process.monitor(pid)
+      assert :ok = Games.leave_game(p2_scope, game.id)
+
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+      assert_receive {:room_lobby_updated, %{status: :archived, player_count: 0}}
+      assert_receive {:game_list_updated, %{id: archived_id, status: :archived}}
+      assert archived_id == game.id
+      assert {:error, :game_archived} = Games.get_room_lobby(p2_scope, game.id)
+    end
+
+    test "REQ-04: leave_game/3 verifies confirmed consequence against current GameServer state via Scope API" do
+      owner = insert(:player, username: "lia")
+      guest = insert(:player, username: "bruno")
+      owner_scope = Scope.for_player(owner)
+      guest_scope = Scope.for_player(guest)
+
+      {:ok, game} = Games.create_room(owner_scope, %{name: "Sala Confirm", max_players: 4})
+      assert {:ok, :joined} = Games.join_room(guest_scope, game.id)
+
+      assert {:error, {:confirmation_required, %Forka.Games.RoomLobby{} = lobby}} =
+               Games.leave_game(owner_scope, game.id, confirm: false)
+
+      assert lobby.is_owner? == true
+      assert lobby.owner_id == owner.id
+      assert lobby.player_count == 2
+
+      # Confirming :archive while guest is present fails without mutating
+      assert {:error, {:confirmation_required, %Forka.Games.RoomLobby{player_count: 2}}} =
+               Games.leave_game(owner_scope, game.id, confirm: :archive)
+
+      assert :ok = Games.leave_game(guest_scope, game.id, confirm: false)
+
+      # Confirming stale {:handoff, guest.id} after guest left fails without archiving
+      assert {:error, {:confirmation_required, %Forka.Games.RoomLobby{} = solo_lobby}} =
+               Games.leave_game(owner_scope, game.id, confirm: {:handoff, guest.id})
+
+      assert solo_lobby.player_count == 1
+      assert GameServer.whereis(game.id) != nil
+
+      assert :ok = Games.leave_game(owner_scope, game.id, confirm: :archive)
+      assert {:error, :game_archived} = Games.get_room_lobby(owner_scope, game.id)
+    end
+
+    test "REQ-05: calls queued behind final leave_game stop return {:error, :game_archived} instead of exiting" do
+      owner = insert(:player, username: "lia")
+      joiner = insert(:player, username: "bruno")
+      owner_scope = Scope.for_player(owner)
+      joiner_scope = Scope.for_player(joiner)
+
+      {:ok, game} = Games.create_room(owner_scope, %{name: "Sala Shutdown", max_players: 4})
+      game_pid = GameServer.whereis(game.id)
+      ref = Process.monitor(game_pid)
+      task_supervisor = start_supervised!(Task.Supervisor)
+      owner_id = owner.id
+      joiner_id = joiner.id
+
+      queued_calls = [
+        {:join_room, fn -> Games.join_room(joiner_scope, game.id) end},
+        {:get_game, fn -> Games.get_room_lobby(joiner_scope, game.id) end},
+        {:get_game, fn -> Games.subscribe_to_room_lobby(joiner_scope, game.id) end},
+        {:get_game, fn -> Games.get_room_settings_for_edit(owner_scope, game.id) end},
+        {:update_settings,
+         fn -> Games.update_room_settings(owner_scope, game.id, %{name: "Tarde"}) end},
+        {:leave_game, fn -> Games.leave_game(joiner_scope, game.id) end},
+        {:start_game, fn -> Games.start_game(owner_scope, game.id) end},
+        {:give_up, fn -> Games.give_up_game(owner_scope, game.id) end},
+        {:guess, fn -> Games.guess(owner_scope, game.id, "a") end},
+        {:transfer_ownership,
+         fn -> Games.transfer_ownership(owner_scope, game.id, joiner_id) end},
+        {:restart_game, fn -> Games.restart_game(owner_scope, game.id) end},
+        {:archive_game, fn -> Games.archive_game(owner_scope, game.id) end}
+      ]
+
+      :ok = :sys.suspend(game_pid)
+
+      {leave_task, queued_tasks} =
+        try do
+          :erlang.trace(game_pid, true, [:receive])
+
+          leave_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.leave_game(owner_scope, game.id, confirm: :archive)
+            end)
+
+          assert_receive {:trace, ^game_pid, :receive, {:"$gen_call", _, msg}}, 1_000
+          assert elem(msg, 0) == :leave_game and elem(msg, 1) == owner_id
+
+          queued_tasks =
+            Enum.map(queued_calls, fn {tag, fun} ->
+              task = Task.Supervisor.async_nolink(task_supervisor, fun)
+
+              assert_receive {:trace, ^game_pid, :receive, {:"$gen_call", _, queued_msg}}, 1_000
+              assert elem(queued_msg, 0) == tag
+
+              {tag, task}
+            end)
+
+          {leave_task, queued_tasks}
+        after
+          :erlang.trace(game_pid, false, [:receive])
+          :sys.resume(game_pid)
+        end
+
+      assert :ok = Task.await(leave_task, 5_000)
+      assert_receive {:DOWN, ^ref, :process, ^game_pid, :normal}
+
+      for {tag, task} <- queued_tasks do
+        assert {:error, :game_archived} == Task.await(task, 5_000),
+               "expected #{tag} queued behind final leave to return {:error, :game_archived}"
+      end
+
+      assert {:error, :game_archived} = Games.join_room(joiner_scope, game.id)
+      assert {:error, :game_archived} = Games.get_room_lobby(joiner_scope, game.id)
+    end
+
+    test "REQ-05: calls queued behind archive_game stop return {:error, :game_archived} instead of exiting" do
+      owner = insert(:player, username: "lia")
+      joiner = insert(:player, username: "bruno")
+      owner_scope = Scope.for_player(owner)
+      joiner_scope = Scope.for_player(joiner)
+
+      {:ok, game} = Games.create_room(owner_scope, %{name: "Sala Archive Race", max_players: 4})
+      game_pid = GameServer.whereis(game.id)
+      ref = Process.monitor(game_pid)
+      task_supervisor = start_supervised!(Task.Supervisor)
+      owner_id = owner.id
+      joiner_id = joiner.id
+
+      :ok = :sys.suspend(game_pid)
+
+      {archive_task, join_task, lobby_task} =
+        try do
+          :erlang.trace(game_pid, true, [:receive])
+
+          archive_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.archive_game(owner_scope, game.id)
+            end)
+
+          assert_receive {:trace, ^game_pid, :receive, {:"$gen_call", _, msg}}, 1_000
+          assert elem(msg, 0) == :archive_game and elem(msg, 1) == owner_id
+
+          join_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.join_room(joiner_scope, game.id)
+            end)
+
+          assert_receive {:trace, ^game_pid, :receive, {:"$gen_call", _, join_msg}}, 1_000
+          assert elem(join_msg, 0) == :join_room and elem(join_msg, 1) == joiner_id
+
+          lobby_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.get_room_lobby(joiner_scope, game.id)
+            end)
+
+          assert_receive {:trace, ^game_pid, :receive, {:"$gen_call", _, lobby_msg}}, 1_000
+          assert elem(lobby_msg, 0) == :get_game
+
+          {archive_task, join_task, lobby_task}
+        after
+          :erlang.trace(game_pid, false, [:receive])
+          :sys.resume(game_pid)
+        end
+
+      assert :ok = Task.await(archive_task, 5_000)
+      assert_receive {:DOWN, ^ref, :process, ^game_pid, :normal}
+      assert {:error, :game_archived} = Task.await(join_task, 5_000)
+      assert {:error, :game_archived} = Task.await(lobby_task, 5_000)
+    end
+
+    test "REQ-05: calls queued behind idle timeout on a playing game recover by reopening the server" do
+      {game, owner, _other} = start_list_audit_game()
+      owner_scope = Scope.for_player(owner)
+      game_pid = GameServer.whereis(game.id)
+      ref = Process.monitor(game_pid)
+      task_supervisor = start_supervised!(Task.Supervisor)
+
+      :ok = :sys.suspend(game_pid)
+
+      {lobby_task, join_task} =
+        try do
+          :erlang.trace(game_pid, true, [:receive])
+
+          send(game_pid, :timeout)
+          assert_receive {:trace, ^game_pid, :receive, :timeout}, 1_000
+
+          lobby_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.get_room_lobby(owner_scope, game.id)
+            end)
+
+          assert_receive {:trace, ^game_pid, :receive, {:"$gen_call", _, lobby_msg}}, 1_000
+          assert elem(lobby_msg, 0) == :get_game
+
+          join_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.join_room(owner_scope, game.id)
+            end)
+
+          assert_receive {:trace, ^game_pid, :receive, {:"$gen_call", _, join_msg}}, 1_000
+          assert elem(join_msg, 0) == :join_room
+
+          {lobby_task, join_task}
+        after
+          :erlang.trace(game_pid, false, [:receive])
+          :sys.resume(game_pid)
+        end
+
+      assert_receive {:DOWN, ^ref, :process, ^game_pid, :normal}
+      assert {:ok, %Forka.Games.RoomLobby{status: :playing}} = Task.await(lobby_task, 5_000)
+      assert {:ok, :returning_participant} = Task.await(join_task, 5_000)
+    end
   end
 
   describe "start_game/2" do

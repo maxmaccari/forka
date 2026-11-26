@@ -18,11 +18,16 @@ defmodule Forka.Games.RoomLobby do
           status: GameState.status(),
           max_players: integer(),
           player_count: non_neg_integer(),
+          empty_seats: non_neg_integer(),
           language: String.t(),
           category_names: [String.t()],
+          owner_id: Ecto.UUID.t() | nil,
           owner_username: String.t(),
           players: [player_entry()],
+          is_owner?: boolean(),
+          participant?: boolean(),
           can_edit_settings?: boolean(),
+          can_leave?: boolean(),
           word_availability: WordAvailability.t() | nil
         }
 
@@ -32,11 +37,16 @@ defmodule Forka.Games.RoomLobby do
     :status,
     :max_players,
     :player_count,
+    :empty_seats,
     :language,
     :category_names,
+    :owner_id,
     :owner_username,
     :players,
+    :is_owner?,
+    :participant?,
     :can_edit_settings?,
+    :can_leave?,
     :word_availability
   ]
 
@@ -65,17 +75,27 @@ defmodule Forka.Games.RoomLobby do
   @doc "Projects a `%RoomLobby{}` from a lobby PubSub payload for the given viewer scope."
   @spec from_payload(Scope.t(), map()) :: t()
   def from_payload(%Scope{player: %AuthPlayer{id: viewer_id}}, payload) when is_map(payload) do
+    owner_id = payload.owner_id
+    players = payload.players
+    is_owner? = not is_nil(owner_id) and owner_id == viewer_id
+    participant? = participant_in_entries?(players, viewer_id)
+
     %__MODULE__{
       id: payload.id,
       name: payload.name,
       status: payload.status,
       max_players: payload.max_players,
       player_count: payload.player_count,
+      empty_seats: max(payload.max_players - payload.player_count, 0),
       language: payload.language,
       category_names: payload.category_names,
+      owner_id: owner_id,
       owner_username: payload.owner_username,
-      players: payload.players,
-      can_edit_settings?: payload.status == :lobby and payload.owner_id == viewer_id,
+      players: players,
+      is_owner?: is_owner?,
+      participant?: participant?,
+      can_edit_settings?: payload.status == :lobby and is_owner?,
+      can_leave?: payload.status == :lobby and participant?,
       word_availability:
         build_word_availability(
           payload.status,
@@ -106,6 +126,10 @@ defmodule Forka.Games.RoomLobby do
       when is_list(category_names) do
     word_options = WordOptions.normalize(summary.word_options)
     player_count = map_size(summary.players)
+    players = players_from_map(summary.players)
+    owner_id = summary.owner && summary.owner.id
+    is_owner? = not is_nil(owner_id) and owner_id == viewer_id
+    participant? = participant_in_entries?(players, viewer_id)
 
     %__MODULE__{
       id: game_id,
@@ -113,13 +137,16 @@ defmodule Forka.Games.RoomLobby do
       status: summary.game_status,
       max_players: summary.max_players,
       player_count: player_count,
+      empty_seats: max(summary.max_players - player_count, 0),
       language: word_options.language,
       category_names: category_names,
+      owner_id: owner_id,
       owner_username: (summary.owner && summary.owner.username) || "",
-      players: players_from_map(summary.players),
-      can_edit_settings?:
-        summary.game_status == :lobby and not is_nil(summary.owner) and
-          summary.owner.id == viewer_id,
+      players: players,
+      is_owner?: is_owner?,
+      participant?: participant?,
+      can_edit_settings?: summary.game_status == :lobby and is_owner?,
+      can_leave?: summary.game_status == :lobby and participant?,
       word_availability:
         build_word_availability(
           summary.game_status,
@@ -130,6 +157,10 @@ defmodule Forka.Games.RoomLobby do
           word_options.category_ids != []
         )
     }
+  end
+
+  defp participant_in_entries?(players, viewer_id) do
+    Enum.any?(players, &(&1.id == viewer_id))
   end
 
   defp build_word_availability(

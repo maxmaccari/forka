@@ -173,6 +173,91 @@ defmodule Forka.Games.GameServerTest do
                player_state.player.id == player.id
              end)
     end
+
+    test "REQ-04: owner leaving persists automatic handoff to lowest seat and broadcasts updated owner",
+         %{game_state: game_state} do
+      owner = game_state.owner
+      p2 = insert(:player, username: "bruno")
+      p3 = insert(:player, username: "caio")
+
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, owner.id)
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, p2.id)
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, p3.id)
+      :ok = GameServer.subscribe_lobby(game_state.id)
+      flush_messages()
+
+      assert :ok = GameServer.leave_game(game_state.id, owner.id)
+
+      assert_receive {:game_updated, game_summary}
+      assert game_summary.game_status == :lobby
+      assert game_summary.owner.id == p2.id
+      assert Map.keys(game_summary.players) |> Enum.sort() == [0, 1]
+      assert game_summary.players[0].player.id == p2.id
+      assert game_summary.players[1].player.id == p3.id
+
+      assert_receive {:room_lobby_updated, lobby_payload}
+      assert lobby_payload.owner_id == p2.id
+      assert lobby_payload.owner_username == "bruno"
+      assert lobby_payload.player_count == 2
+
+      {:ok, persisted} = Repository.get_game_state(game_state.id)
+      assert persisted.status == :lobby
+      assert persisted.owner.id == p2.id
+    end
+
+    test "REQ-05: last player leaving persists archival, broadcasts updates, and stops the server",
+         %{game_state: game_state, pid: pid} do
+      owner = game_state.owner
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, owner.id)
+      :ok = GameServer.subscribe_lobby(game_state.id)
+      flush_messages()
+
+      ref = Process.monitor(pid)
+      assert :ok = GameServer.leave_game(game_state.id, owner.id)
+
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+      assert_receive {:game_updated, %{game_status: :archived, players: players}}
+      assert players == %{}
+      assert_receive {:room_lobby_updated, %{status: :archived, player_count: 0}}
+
+      {:ok, persisted} = Repository.get_game_state(game_state.id)
+      assert persisted.status == :archived
+      assert persisted.game_players == %{}
+    end
+
+    test "REQ-04: leave_game/3 checks confirmed consequence and returns confirmation_required payload on mismatch without mutating or stopping server",
+         %{game_state: game_state, pid: pid} do
+      owner = game_state.owner
+      guest = insert(:player, username: "bruno")
+
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, owner.id)
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, guest.id)
+      :ok = GameServer.subscribe_lobby(game_state.id)
+      flush_messages()
+
+      assert {:error, {:confirmation_required, payload}} =
+               GameServer.leave_game(game_state.id, owner.id, confirm: false)
+
+      assert payload.owner_id == owner.id
+      assert payload.player_count == 2
+      assert payload.status == :lobby
+
+      assert {:error, {:confirmation_required, ^payload}} =
+               GameServer.leave_game(game_state.id, owner.id, confirm: :archive)
+
+      refute_receive {:game_updated, _}
+      refute_receive {:room_lobby_updated, _}
+      assert Process.alive?(pid)
+
+      assert :ok = GameServer.leave_game(game_state.id, guest.id, confirm: false)
+      flush_messages()
+
+      assert {:error, {:confirmation_required, solo_payload}} =
+               GameServer.leave_game(game_state.id, owner.id, confirm: {:handoff, guest.id})
+
+      assert solo_payload.player_count == 1
+      assert Process.alive?(pid)
+    end
   end
 
   describe "update_settings/3" do
