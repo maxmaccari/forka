@@ -71,7 +71,8 @@ defmodule ForkaWeb.RoomLive do
      |> assign(:lobby, lobby)
      |> assign(:invite_url, url(~p"/rooms/#{lobby.id}/join"))
      |> assign(:lobby_notice, nil)
-     |> assign(:confirm_leave?, false)}
+     |> assign(:confirm_leave?, false)
+     |> assign(:transfer_target, nil)}
   end
 
   @impl true
@@ -83,6 +84,104 @@ defmodule ForkaWeb.RoomLive do
 
   def handle_event("cancel_leave_room", _params, socket),
     do: {:noreply, assign(socket, :confirm_leave?, false)}
+
+  def handle_event("open_transfer_sheet", %{"player_id" => target_id}, socket)
+      when is_binary(target_id) do
+    lobby = socket.assigns.lobby
+
+    cond do
+      not lobby.can_transfer_ownership? ->
+        {:noreply, socket}
+
+      target_id == lobby.owner_id ->
+        {:noreply, socket}
+
+      true ->
+        case find_transfer_target(lobby, target_id) do
+          nil ->
+            {:noreply,
+             socket
+             |> assign(:transfer_target, nil)
+             |> assign(:lobby_notice, "Esse jogador não está mais na sala.")}
+
+          target ->
+            {:noreply,
+             socket
+             |> assign(:confirm_leave?, false)
+             |> assign(:transfer_target, target)}
+        end
+    end
+  end
+
+  def handle_event("open_transfer_sheet", _params, socket), do: {:noreply, socket}
+
+  def handle_event("cancel_transfer_ownership", _params, socket),
+    do: {:noreply, assign(socket, :transfer_target, nil)}
+
+  def handle_event("confirm_transfer_ownership", %{"player_id" => target_id}, socket)
+      when is_binary(target_id) do
+    game_id = socket.assigns.lobby.id
+    target_username = lookup_target_username(socket.assigns, target_id)
+
+    case Games.transfer_ownership(
+           socket.assigns.current_scope,
+           game_id,
+           target_id,
+           lobby_only: true
+         ) do
+      :ok ->
+        {:noreply, assign(socket, :transfer_target, nil)}
+
+      {:error, :player_not_found} ->
+        notice =
+          if is_binary(target_username) and target_username != "" do
+            "#{target_username} saiu da sala."
+          else
+            "Esse jogador não está mais na sala."
+          end
+
+        {:noreply,
+         socket
+         |> assign(:transfer_target, nil)
+         |> assign(:lobby_notice, notice)}
+
+      {:error, :already_owner} ->
+        {:noreply,
+         socket
+         |> assign(:transfer_target, nil)
+         |> assign(:lobby_notice, "Você já comanda esta sala.")}
+
+      {:error, :unauthorized} ->
+        {:noreply,
+         socket
+         |> assign(:transfer_target, nil)
+         |> assign(:lobby_notice, "Apenas quem comanda a sala pode passar a posse.")}
+
+      {:error, :game_not_in_lobby} ->
+        {:noreply,
+         socket
+         |> assign(:transfer_target, nil)
+         |> put_flash(:info, "A partida já começou.")
+         |> push_navigate(to: ~p"/rooms/#{game_id}/match")}
+
+      {:error, :game_archived} ->
+        {:noreply,
+         socket
+         |> assign(:transfer_target, nil)
+         |> put_flash(:error, "Esta sala foi arquivada.")
+         |> push_navigate(to: ~p"/")}
+
+      {:error, _reason} ->
+        {:noreply,
+         socket
+         |> assign(:transfer_target, nil)
+         |> put_flash(:error, "Sala não encontrada.")
+         |> push_navigate(to: ~p"/")}
+    end
+  end
+
+  def handle_event("confirm_transfer_ownership", _params, socket),
+    do: {:noreply, assign(socket, :transfer_target, nil)}
 
   defp parse_confirmed_consequence(%{"consequence" => "archive"}), do: :archive
 
@@ -154,6 +253,7 @@ defmodule ForkaWeb.RoomLive do
         {:noreply,
          socket
          |> apply_lobby_update(lobby)
+         |> reconcile_transfer_target(lobby)
          |> assign(:confirm_leave?, socket.assigns.confirm_leave? and lobby.is_owner?)}
 
       {:error, _reason} ->
@@ -188,6 +288,49 @@ defmodule ForkaWeb.RoomLive do
   end
 
   defp ownership_change_notice(_previous, _current), do: nil
+
+  defp find_transfer_target(%RoomLobby{players: players}, target_id) do
+    players
+    |> Enum.with_index(1)
+    |> Enum.find_value(fn
+      {%{id: ^target_id, username: username}, idx} ->
+        %{id: target_id, username: username, player_index: idx}
+
+      _ ->
+        nil
+    end)
+  end
+
+  defp lookup_target_username(%{transfer_target: %{id: target_id, username: username}}, target_id),
+    do: username
+
+  defp lookup_target_username(%{lobby: %RoomLobby{players: players}}, target_id) do
+    Enum.find_value(players, fn
+      %{id: ^target_id, username: username} -> username
+      _ -> nil
+    end)
+  end
+
+  defp reconcile_transfer_target(%{assigns: %{transfer_target: nil}} = socket, _lobby),
+    do: socket
+
+  defp reconcile_transfer_target(
+         %{assigns: %{transfer_target: %{id: target_id, username: username}}} = socket,
+         %RoomLobby{} = lobby
+       ) do
+    cond do
+      not lobby.can_transfer_ownership? ->
+        assign(socket, :transfer_target, nil)
+
+      fresh_target = find_transfer_target(lobby, target_id) ->
+        assign(socket, :transfer_target, fresh_target)
+
+      true ->
+        socket
+        |> assign(:transfer_target, nil)
+        |> assign(:lobby_notice, "#{username} saiu da sala.")
+    end
+  end
 
   @impl true
   def render(assigns) do
@@ -233,6 +376,7 @@ defmodule ForkaWeb.RoomLive do
           players={@lobby.players}
           owner_id={@lobby.owner_id}
           current_player_id={@current_scope.player.id}
+          can_transfer_ownership?={@lobby.can_transfer_ownership?}
           empty_seats={@lobby.empty_seats}
           player_count={@lobby.player_count}
           max_players={@lobby.max_players}
@@ -320,6 +464,7 @@ defmodule ForkaWeb.RoomLive do
           :if={@confirm_leave?}
           next_owner={next_owner(@lobby, @current_scope.player.id)}
         />
+        <.transfer_confirm_sheet :if={@transfer_target} target={@transfer_target} />
       </aside>
     </div>
     """
@@ -366,6 +511,47 @@ defmodule ForkaWeb.RoomLive do
         </.button>
       </:actions>
     </.modal>
+    """
+  end
+
+  defp transfer_confirm_sheet(assigns) do
+    ~H"""
+    <.bottom_sheet
+      id="transfer-ownership-sheet"
+      show
+      tone="light"
+      on_cancel={JS.push("cancel_transfer_ownership")}
+    >
+      <:title>Passar a sala para {@target.username}?</:title>
+      <div class="flex items-start gap-3">
+        <.avatar name={@target.username} player_index={@target.player_index} size="md" />
+        <p class="text-base text-ink-muted">
+          {@target.username} passa a mudar as configurações e a começar a partida. Você continua na sala como participante.
+        </p>
+      </div>
+      <:actions>
+        <.button
+          id="confirm-transfer-ownership"
+          type="button"
+          variant="primary"
+          phx-click="confirm_transfer_ownership"
+          phx-value-player_id={@target.id}
+          phx-disable-with="Passando..."
+          full
+        >
+          Passar a posse
+        </.button>
+        <.button
+          id="cancel-transfer-ownership"
+          type="button"
+          variant="secondary"
+          phx-click="cancel_transfer_ownership"
+          full
+        >
+          Cancelar
+        </.button>
+      </:actions>
+    </.bottom_sheet>
     """
   end
 end
