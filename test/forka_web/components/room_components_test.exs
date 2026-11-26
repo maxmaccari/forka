@@ -255,10 +255,27 @@ defmodule ForkaWeb.RoomComponentsTest do
         })
 
       doc = LazyHTML.from_fragment(html)
-      card = LazyHTML.query(doc, ~s|#room-invite-card[phx-hook="ShareInvite"]|)
+
+      card =
+        LazyHTML.query(doc, ~s|#room-invite-card[phx-hook="ShareInvite"][phx-update="ignore"]|)
+
       assert Enum.count(card) == 1
       assert LazyHTML.attribute(card, "data-url") == ["http://localhost:4000/rooms/room-1/join"]
       assert LazyHTML.attribute(card, "data-title") == ["Noite de palavras"]
+
+      assert Enum.count(
+               LazyHTML.query(
+                 doc,
+                 ~s|#room-invite-card[phx-update="ignore"] #share-invite-link[data-share-invite].hidden|
+               )
+             ) == 1
+
+      assert Enum.count(
+               LazyHTML.query(
+                 doc,
+                 ~s|#room-invite-card[phx-update="ignore"] #copy-invite-status[data-share-status][aria-live="polite"]|
+               )
+             ) == 1
 
       input = LazyHTML.query(doc, "#room-invite-url[readonly]")
       assert Enum.count(input) == 1

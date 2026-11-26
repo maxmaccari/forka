@@ -327,6 +327,7 @@ defmodule ForkaWeb.RoomComponents do
       id={@id}
       aria-labelledby={"#{@id}-heading"}
       phx-hook="ShareInvite"
+      phx-update="ignore"
       data-url={@invite_url}
       data-title={@room_name}
       class="rounded-lg bg-surface p-4 text-ink shadow-2 ring-1 ring-line dark:shadow-none sm:p-6"

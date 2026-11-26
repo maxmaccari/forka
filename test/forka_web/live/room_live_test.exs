@@ -141,6 +141,52 @@ defmodule ForkaWeb.RoomLiveTest do
       assert text =~ "Cinema"
     end
 
+    test "REQ-02 & REQ-06: invite card keeps ShareInvite DOM under phx-update=ignore and updates data-title on rename",
+         %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      owner_scope = Forka.Scope.for_player(owner)
+
+      {:ok, game} = Games.create_game(owner.id, %{name: "Sala Inicial", max_players: 4})
+      {:ok, lv, _html} = conn |> log_in_player(owner) |> live(~p"/rooms/#{game.id}")
+
+      assert has_element?(
+               lv,
+               ~s|#room-invite-card[phx-hook="ShareInvite"][phx-update="ignore"][data-title="Sala Inicial"][data-url$="/rooms/#{game.id}/join"]|
+             )
+
+      assert has_element?(
+               lv,
+               ~s|#room-invite-card[phx-update="ignore"] #share-invite-link[data-share-invite]|
+             )
+
+      assert has_element?(
+               lv,
+               ~s|#room-invite-card[phx-update="ignore"] #copy-invite-status[data-share-status]|
+             )
+
+      :ok =
+        Games.update_room_settings(owner_scope, game.id, %{
+          name: "Sala Renomeada"
+        })
+
+      _ = render(lv)
+
+      assert has_element?(
+               lv,
+               ~s|#room-invite-card[phx-hook="ShareInvite"][phx-update="ignore"][data-title="Sala Renomeada"][data-url$="/rooms/#{game.id}/join"]|
+             )
+
+      assert has_element?(
+               lv,
+               ~s|#room-invite-card[phx-update="ignore"] #share-invite-link[data-share-invite]|
+             )
+
+      assert has_element?(
+               lv,
+               ~s|#room-invite-card[phx-update="ignore"] #copy-invite-status[data-share-status]|
+             )
+    end
+
     test "REQ-05 & REQ-06: shows word requirement and updates broadening alert live on join, leave, and settings change",
          %{conn: conn} do
       owner = insert(:player, username: "lia")

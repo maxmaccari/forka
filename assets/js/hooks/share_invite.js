@@ -54,6 +54,16 @@ const ShareInvite = {
     }
   },
 
+  updated() {
+    if (this._inputEl && this.el.dataset.url) {
+      this._inputEl.value = this.el.dataset.url
+    }
+
+    if (this._shareBtn && typeof navigator.share === "function") {
+      this._shareBtn.classList.remove("hidden")
+    }
+  },
+
   destroyed() {
     if (this._copyBtn && this._onCopy) {
       this._copyBtn.removeEventListener("click", this._onCopy)
@@ -65,7 +75,7 @@ const ShareInvite = {
   },
 
   _inviteUrl() {
-    return (this._inputEl && this._inputEl.value) || this.el.dataset.url || ""
+    return this.el.dataset.url || (this._inputEl && this._inputEl.value) || ""
   },
 
   _fallbackCopy() {
