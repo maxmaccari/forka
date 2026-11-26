@@ -1325,6 +1325,7 @@ defmodule Forka.Games.CoreTest do
         |> Enum.map(&{&1.type, &1.payload})
 
       assert {:player_left, %{player_id: owner.id}} in tick_types
+
       assert {:ownership_transferred_to, %{from_player_id: owner.id, to_player_id: p2.id}} in tick_types
     end
 
@@ -1370,7 +1371,10 @@ defmodule Forka.Games.CoreTest do
 
       # Case B: p3 (index 2) was current turn when owner (index 0) was deleted -> p3 stays current turn at new index 1
       playing_p3_turn = %{playing | current_game_player_index: 2}
-      assert {:changed, reconciled_b} = Core.reconcile_missing_players(playing_p3_turn, [p2.id, p3.id])
+
+      assert {:changed, reconciled_b} =
+               Core.reconcile_missing_players(playing_p3_turn, [p2.id, p3.id])
+
       assert reconciled_b.status == :playing
       assert reconciled_b.owner.id == p2.id
       assert reconciled_b.current_game_player_index == 1
@@ -1406,7 +1410,9 @@ defmodule Forka.Games.CoreTest do
       {:ok, g2} = Core.join_game(g1, p2)
 
       assert :unchanged = Core.reconcile_missing_players(g2, [owner.id, p2.id])
-      assert :unchanged = Core.reconcile_missing_players(%{g2 | status: :archived, owner: nil}, [])
+
+      assert :unchanged =
+               Core.reconcile_missing_players(%{g2 | status: :archived, owner: nil}, [])
 
       # Healthy game with empty game_players (e.g. insert(:game)) stays unchanged when owner exists
       assert :unchanged = Core.reconcile_missing_players(Core.new(owner, "Nova", 4), [owner.id])

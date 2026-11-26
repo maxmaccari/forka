@@ -1928,7 +1928,10 @@ defmodule Forka.GamesTest do
     test "OWN-04: get_room_lobby/2 reconciles a running GameServer whose sole owner was deleted and returns :game_archived" do
       owner = insert(:player, username: "lia")
       outsider = insert(:player, username: "bruno")
-      {:ok, game} = Games.create_room(Scope.for_player(owner), %{name: "Running Solo", max_players: 4})
+
+      {:ok, game} =
+        Games.create_room(Scope.for_player(owner), %{name: "Running Solo", max_players: 4})
+
       pid = GameServer.whereis(game.id)
       ref = Process.monitor(pid)
 

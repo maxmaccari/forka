@@ -250,7 +250,7 @@ defmodule ForkaWeb.RoomFormLive do
 
       {:ok, %RoomLobby{is_owner?: false, id: id, owner_username: owner_username}} ->
         notice =
-          if is_binary(owner_username) and owner_username != "" do
+          if owner_username != "" do
             "Agora #{owner_username} comanda a sala."
           else
             "Você não comanda mais esta sala."

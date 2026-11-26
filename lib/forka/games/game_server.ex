@@ -242,7 +242,11 @@ defmodule Forka.Games.GameServer do
     end
   end
 
-  defp handle_reconciled_call({:transfer_ownership, actor_id, target_player_id, opts}, _from, game) do
+  defp handle_reconciled_call(
+         {:transfer_ownership, actor_id, target_player_id, opts},
+         _from,
+         game
+       ) do
     case Core.transfer_ownership_to_player(game, actor_id, target_player_id, opts) do
       {:ok, new_game} ->
         saved_game = save_and_publish!(game, new_game)

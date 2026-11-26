@@ -87,30 +87,7 @@ defmodule ForkaWeb.RoomLive do
 
   def handle_event("open_transfer_sheet", %{"player_id" => target_id}, socket)
       when is_binary(target_id) do
-    lobby = socket.assigns.lobby
-
-    cond do
-      not lobby.can_transfer_ownership? ->
-        {:noreply, socket}
-
-      target_id == lobby.owner_id ->
-        {:noreply, socket}
-
-      true ->
-        case find_transfer_target(lobby, target_id) do
-          nil ->
-            {:noreply,
-             socket
-             |> assign(:transfer_target, nil)
-             |> assign(:lobby_notice, "Esse jogador não está mais na sala.")}
-
-          target ->
-            {:noreply,
-             socket
-             |> assign(:confirm_leave?, false)
-             |> assign(:transfer_target, target)}
-        end
-    end
+    open_transfer_sheet(socket, target_id)
   end
 
   def handle_event("open_transfer_sheet", _params, socket), do: {:noreply, socket}
@@ -120,6 +97,34 @@ defmodule ForkaWeb.RoomLive do
 
   def handle_event("confirm_transfer_ownership", %{"player_id" => target_id}, socket)
       when is_binary(target_id) do
+    perform_transfer_ownership(socket, target_id)
+  end
+
+  def handle_event("confirm_transfer_ownership", _params, socket),
+    do: {:noreply, assign(socket, :transfer_target, nil)}
+
+  defp open_transfer_sheet(socket, target_id) do
+    lobby = socket.assigns.lobby
+
+    cond do
+      not lobby.can_transfer_ownership? or target_id == lobby.owner_id ->
+        {:noreply, socket}
+
+      target = find_transfer_target(lobby, target_id) ->
+        {:noreply,
+         socket
+         |> assign(:confirm_leave?, false)
+         |> assign(:transfer_target, target)}
+
+      true ->
+        {:noreply,
+         socket
+         |> assign(:transfer_target, nil)
+         |> assign(:lobby_notice, "Esse jogador não está mais na sala.")}
+    end
+  end
+
+  defp perform_transfer_ownership(socket, target_id) do
     game_id = socket.assigns.lobby.id
     target_username = lookup_target_username(socket.assigns, target_id)
 
@@ -133,17 +138,10 @@ defmodule ForkaWeb.RoomLive do
         {:noreply, assign(socket, :transfer_target, nil)}
 
       {:error, :player_not_found} ->
-        notice =
-          if is_binary(target_username) and target_username != "" do
-            "#{target_username} saiu da sala."
-          else
-            "Esse jogador não está mais na sala."
-          end
-
         {:noreply,
          socket
          |> assign(:transfer_target, nil)
-         |> assign(:lobby_notice, notice)}
+         |> assign(:lobby_notice, player_not_found_notice(target_username))}
 
       {:error, :already_owner} ->
         {:noreply,
@@ -180,8 +178,10 @@ defmodule ForkaWeb.RoomLive do
     end
   end
 
-  def handle_event("confirm_transfer_ownership", _params, socket),
-    do: {:noreply, assign(socket, :transfer_target, nil)}
+  defp player_not_found_notice(username) when is_binary(username) and username != "",
+    do: "#{username} saiu da sala."
+
+  defp player_not_found_notice(_username), do: "Esse jogador não está mais na sala."
 
   defp parse_confirmed_consequence(%{"consequence" => "archive"}), do: :archive
 
@@ -301,8 +301,11 @@ defmodule ForkaWeb.RoomLive do
     end)
   end
 
-  defp lookup_target_username(%{transfer_target: %{id: target_id, username: username}}, target_id),
-    do: username
+  defp lookup_target_username(
+         %{transfer_target: %{id: target_id, username: username}},
+         target_id
+       ),
+       do: username
 
   defp lookup_target_username(%{lobby: %RoomLobby{players: players}}, target_id) do
     Enum.find_value(players, fn

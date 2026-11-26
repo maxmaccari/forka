@@ -979,8 +979,12 @@ defmodule ForkaWeb.RoomLiveTest do
       refute has_element?(owner_lv, "#transfer-ownership-#{third.id}")
       assert has_element?(owner_lv, "#room-waiting-status", "Esperando bruno começar")
       assert has_element?(owner_lv, "#room-lobby-notice", "Agora bruno comanda a sala.")
-      assert visible_text(element(owner_lv, "#room-lobby-player-#{target.id}") |> render()) =~ "Anfitrião"
-      refute visible_text(element(owner_lv, "#room-lobby-player-#{owner.id}") |> render()) =~ "Anfitrião"
+
+      assert visible_text(element(owner_lv, "#room-lobby-player-#{target.id}") |> render()) =~
+               "Anfitrião"
+
+      refute visible_text(element(owner_lv, "#room-lobby-player-#{owner.id}") |> render()) =~
+               "Anfitrião"
 
       # New owner gains edit and transfer controls immediately
       assert has_element?(target_lv, ~s|#edit-room-settings[href="/rooms/#{game.id}/settings"]|)
@@ -1015,7 +1019,12 @@ defmodule ForkaWeb.RoomLiveTest do
       refute has_element?(guest_lv, "#transfer-ownership-sheet")
 
       render_hook(guest_lv, "confirm_transfer_ownership", %{"player_id" => guest.id})
-      assert has_element?(guest_lv, "#room-lobby-notice", "Apenas quem comanda a sala pode passar a posse.")
+
+      assert has_element?(
+               guest_lv,
+               "#room-lobby-notice",
+               "Apenas quem comanda a sala pode passar a posse."
+             )
 
       # Owner forged self-target rejected cleanly
       render_hook(owner_lv, "open_transfer_sheet", %{"player_id" => owner.id})
@@ -1104,7 +1113,9 @@ defmodule ForkaWeb.RoomLiveTest do
             end)
 
           assert_receive {:trace, ^game_pid, :receive, {:"$gen_call", _, transfer_msg}}, 1_000
-          assert elem(transfer_msg, 0) == :transfer_ownership and elem(transfer_msg, 1) == owner_id
+
+          assert elem(transfer_msg, 0) == :transfer_ownership and
+                   elem(transfer_msg, 1) == owner_id
 
           {start_task, confirm_task}
         after
@@ -1118,7 +1129,9 @@ defmodule ForkaWeb.RoomLiveTest do
       assert Games.get_game_summary(game.id).owner.id == owner.id
 
       # Second room: confirm raced behind archive_game redirects to directory with unified flash
-      {:ok, archived_game} = Games.create_game(owner.id, %{name: "Sala Corrida Arch", max_players: 4})
+      {:ok, archived_game} =
+        Games.create_game(owner.id, %{name: "Sala Corrida Arch", max_players: 4})
+
       {:ok, :joined} = Games.join_room(Forka.Scope.for_player(target), archived_game.id)
 
       owner_conn2 = build_conn() |> log_in_player(owner)
@@ -1177,7 +1190,9 @@ defmodule ForkaWeb.RoomLiveTest do
 
       {:ok, lv, _html} = conn |> log_in_player(member) |> live(~p"/rooms/#{shared.id}")
       assert has_element?(lv, ~s|#edit-room-settings[href="/rooms/#{shared.id}/settings"]|)
-      assert visible_text(element(lv, "#room-lobby-player-#{member.id}") |> render()) =~ "Anfitrião"
+
+      assert visible_text(element(lv, "#room-lobby-player-#{member.id}") |> render()) =~
+               "Anfitrião"
 
       solo_owner = insert(:player, username: "caio")
       {:ok, solo} = Games.create_game(solo_owner.id, %{name: "Sala Orfa Vazia", max_players: 4})
