@@ -210,8 +210,6 @@ defmodule Forka.Games do
   @spec create_room(Scope.t() | nil, map()) ::
           {:ok, Game.t()}
           | {:error, Ecto.Changeset.t() | :unauthorized | term()}
-          | :ignore
-          | {:ok, pid(), term()}
   def create_room(scope, params \\ %{})
 
   def create_room(%Scope{player: %AuthPlayer{id: owner_id}}, params) when is_map(params) do
@@ -234,7 +232,7 @@ defmodule Forka.Games do
     - `{:error, reason}` if creation failed
   """
   @spec create_game(Ecto.UUID.t(), map()) ::
-          {:ok, Game.t()} | {:error, term()} | :ignore | {:ok, pid(), term()}
+          {:ok, Game.t()} | {:error, term()}
   def create_game(owner_id, params \\ %{}) do
     {norm_lang, valid_uuids} =
       RoomSettings.extract_lookup_inputs(
@@ -261,10 +259,28 @@ defmodule Forka.Games do
     end
   end
 
-  defp start_supervised_game(game_id) do
+  defp start_supervised_game(game_id, retries \\ 1) do
     case DynamicSupervisor.start_child(Forka.GamesSupervisor, {GameServer, game_id}) do
-      {:error, {:already_started, pid}} -> {:ok, pid}
-      result -> result
+      {:ok, pid} ->
+        GameServer.await_ready(pid, game_id)
+
+      {:ok, pid, _info} ->
+        GameServer.await_ready(pid, game_id)
+
+      {:error, {:already_started, pid}} ->
+        case GameServer.await_ready(pid, game_id) do
+          {:error, :game_server_unavailable} when retries > 0 ->
+            start_supervised_game(game_id, retries - 1)
+
+          result ->
+            result
+        end
+
+      :ignore ->
+        {:error, :game_server_unavailable}
+
+      {:error, _reason} = error ->
+        error
     end
   end
 
@@ -275,8 +291,8 @@ defmodule Forka.Games do
              Ecto.Changeset.t() | :unauthorized | :game_not_in_lobby | :game_archived | :not_found}
   def update_room_settings(%Scope{player: %AuthPlayer{}} = scope, game_id, settings)
       when is_map(settings) do
-    with_scoped_game(scope, game_id, fn valid_id, actor_id ->
-      GameServer.update_settings(valid_id, actor_id, settings)
+    with_scoped_game(scope, game_id, fn pid, actor_id ->
+      GameServer.update_settings(pid, actor_id, settings)
     end)
   end
 
@@ -461,8 +477,8 @@ defmodule Forka.Games do
              | :game_ended
              | :player_not_found}
   def join_room(scope, game_id) do
-    with_scoped_game(scope, game_id, fn valid_id, actor_id ->
-      GameServer.join_room(valid_id, actor_id)
+    with_scoped_game(scope, game_id, fn pid, actor_id ->
+      GameServer.join_room(pid, actor_id)
     end)
   end
 
@@ -479,8 +495,8 @@ defmodule Forka.Games do
   def leave_game(scope, game_id, opts \\ [])
 
   def leave_game(scope, game_id, opts) when is_list(opts) do
-    with_scoped_game(scope, game_id, fn valid_id, actor_id ->
-      case GameServer.leave_game(valid_id, actor_id, opts) do
+    with_scoped_game(scope, game_id, fn pid, actor_id ->
+      case GameServer.leave_game(pid, actor_id, opts) do
         {:error, {:confirmation_required, payload}} ->
           {:error, {:confirmation_required, RoomLobby.from_payload(scope, payload)}}
 
@@ -525,8 +541,8 @@ defmodule Forka.Games do
   end
 
   defp remove_player_from_game(game_id, player_id) do
-    case ensure_game_server_available(game_id, fn ->
-           GameServer.remove_player(game_id, player_id)
+    case ensure_game_server_available(game_id, fn pid ->
+           GameServer.remove_player(pid, player_id)
          end) do
       :ok -> :ok
       {:error, reason} when reason in [:game_archived, :not_found] -> :ok
@@ -548,8 +564,8 @@ defmodule Forka.Games do
              | :too_many_players
              | {:insufficient_words, %{available: non_neg_integer(), required: pos_integer()}}}
   def start_game(scope, game_id) do
-    with_scoped_game(scope, game_id, fn valid_id, actor_id ->
-      GameServer.start_game(valid_id, actor_id)
+    with_scoped_game(scope, game_id, fn pid, actor_id ->
+      GameServer.start_game(pid, actor_id)
     end)
   end
 
@@ -563,8 +579,8 @@ defmodule Forka.Games do
              | :not_a_participant
              | :game_not_playing}
   def give_up_game(scope, game_id) do
-    with_scoped_game(scope, game_id, fn valid_id, actor_id ->
-      GameServer.give_up_game(valid_id, actor_id)
+    with_scoped_game(scope, game_id, fn pid, actor_id ->
+      GameServer.give_up_game(pid, actor_id)
     end)
   end
 
@@ -580,8 +596,8 @@ defmodule Forka.Games do
              | :not_player_turn
              | :letter_already_guessed}
   def guess(%Scope{player: %AuthPlayer{}} = scope, game_id, letter) when is_binary(letter) do
-    with_scoped_game(scope, game_id, fn valid_id, actor_id ->
-      GameServer.guess(valid_id, actor_id, letter)
+    with_scoped_game(scope, game_id, fn pid, actor_id ->
+      GameServer.guess(pid, actor_id, letter)
     end)
   end
 
@@ -610,8 +626,8 @@ defmodule Forka.Games do
         opts
       )
       when is_binary(target_player_id) and is_list(opts) do
-    with_scoped_game(scope, game_id, fn valid_id, actor_id ->
-      GameServer.transfer_ownership(valid_id, actor_id, target_player_id, opts)
+    with_scoped_game(scope, game_id, fn pid, actor_id ->
+      GameServer.transfer_ownership(pid, actor_id, target_player_id, opts)
     end)
   end
 
@@ -622,8 +638,8 @@ defmodule Forka.Games do
   @spec restart_game(Scope.t() | nil, Ecto.UUID.t()) ::
           :ok | {:error, :unauthorized | :not_found | :game_archived | :game_in_progress}
   def restart_game(scope, game_id) do
-    with_scoped_game(scope, game_id, fn valid_id, actor_id ->
-      GameServer.restart_game(valid_id, actor_id)
+    with_scoped_game(scope, game_id, fn pid, actor_id ->
+      GameServer.restart_game(pid, actor_id)
     end)
   end
 
@@ -631,8 +647,8 @@ defmodule Forka.Games do
   @spec archive_game(Scope.t() | nil, Ecto.UUID.t()) ::
           :ok | {:error, :unauthorized | :not_found | :game_archived | :game_in_progress}
   def archive_game(scope, game_id) do
-    with_scoped_game(scope, game_id, fn valid_id, actor_id ->
-      GameServer.archive_game(valid_id, actor_id)
+    with_scoped_game(scope, game_id, fn pid, actor_id ->
+      GameServer.archive_game(pid, actor_id)
     end)
   end
 
@@ -650,7 +666,7 @@ defmodule Forka.Games do
   """
   @spec get_game_summary(Ecto.UUID.t(), keyword()) :: GameSummary.t() | nil
   def get_game_summary(game_id, opts \\ []) do
-    ensure_game_server_available_with_nil(game_id, fn -> GameServer.get_game(game_id, opts) end)
+    ensure_game_server_available_with_nil(game_id, fn pid -> GameServer.get_game(pid, opts) end)
   end
 
   @doc """
@@ -687,7 +703,7 @@ defmodule Forka.Games do
   """
   @spec subscribe_to_game(Ecto.UUID.t()) :: :ok | {:error, term()}
   def subscribe_to_game(game_id) do
-    ensure_game_server_available(game_id, fn -> GameServer.subscribe(game_id) end)
+    ensure_game_server_available(game_id, fn _pid -> GameServer.subscribe(game_id) end)
   end
 
   @doc """
@@ -702,11 +718,11 @@ defmodule Forka.Games do
   """
   @spec unsubscribe_from_game(Ecto.UUID.t()) :: :ok | {:error, term()}
   def unsubscribe_from_game(game_id) do
-    ensure_game_server_available(game_id, fn -> GameServer.unsubscribe(game_id) end)
+    ensure_game_server_available(game_id, fn _pid -> GameServer.unsubscribe(game_id) end)
   end
 
   defp fetch_game_summary(game_id) do
-    case ensure_game_server_available(game_id, fn -> {:ok, GameServer.get_game(game_id)} end) do
+    case ensure_game_server_available(game_id, fn pid -> {:ok, GameServer.get_game(pid)} end) do
       {:ok, %GameSummary{game_status: :archived}} -> {:error, :game_archived}
       other -> other
     end
@@ -715,7 +731,7 @@ defmodule Forka.Games do
   defp with_scoped_game(%Scope{player: %AuthPlayer{id: actor_id}}, game_id, fun) do
     case Ecto.UUID.cast(game_id) do
       {:ok, valid_id} ->
-        ensure_game_server_available(valid_id, fn -> fun.(valid_id, actor_id) end)
+        ensure_game_server_available(valid_id, fn pid -> fun.(pid, actor_id) end)
 
       :error ->
         {:error, :not_found}
@@ -729,21 +745,24 @@ defmodule Forka.Games do
   end
 
   defp run_with_server(game_id, action, retries) do
-    if GameServer.exists?(game_id) do
-      call_server_action(game_id, action, retries)
-    else
-      start_and_run_game_server(game_id, action, retries)
+    case GameServer.whereis(game_id) do
+      pid when is_pid(pid) ->
+        await_and_call_server(pid, game_id, action, retries)
+
+      nil ->
+        start_and_run_game_server(game_id, action, retries)
     end
   end
 
   defp start_and_run_game_server(game_id, action, retries) do
-    case Repository.get_game_state(game_id) do
-      {:ok, %{status: :archived}} ->
+    case Repository.get_game_status(game_id) do
+      {:ok, :archived} ->
         {:error, :game_archived}
 
-      {:ok, _game_state} ->
-        with {:ok, _pid} <- start_supervised_game(game_id) do
-          call_server_action(game_id, action, retries)
+      {:ok, _status} ->
+        case start_supervised_game(game_id, retries) do
+          {:ok, ready_pid} -> call_server_action(ready_pid, game_id, action, retries)
+          {:error, _reason} = error -> error
         end
 
       {:error, _reason} = error ->
@@ -751,8 +770,21 @@ defmodule Forka.Games do
     end
   end
 
-  defp call_server_action(game_id, action, retries) do
-    action.()
+  defp await_and_call_server(pid, game_id, action, retries) do
+    case GameServer.await_ready(pid, game_id) do
+      {:ok, ready_pid} ->
+        call_server_action(ready_pid, game_id, action, retries)
+
+      {:error, :game_server_unavailable} when retries > 0 ->
+        start_and_run_game_server(game_id, action, retries - 1)
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp call_server_action(ready_pid, game_id, action, retries) do
+    action.(ready_pid)
   catch
     :exit, {reason, _call} when reason in [:normal, :noproc] ->
       handle_server_shutdown_race(game_id, action, retries)
@@ -766,9 +798,9 @@ defmodule Forka.Games do
   end
 
   defp handle_server_shutdown_race(game_id, _action, _retries) do
-    case Repository.get_game_state(game_id) do
-      {:ok, %{status: :archived}} -> {:error, :game_archived}
-      {:ok, _game_state} -> {:error, :game_server_unavailable}
+    case Repository.get_game_status(game_id) do
+      {:ok, :archived} -> {:error, :game_archived}
+      {:ok, _status} -> {:error, :game_server_unavailable}
       {:error, _reason} = error -> error
     end
   end

@@ -2206,4 +2206,244 @@ defmodule Forka.GamesTest do
       assert summary.players[0].player.id == p2.id
     end
   end
+
+  describe "F-12: isolated per-room startup and readiness" do
+    @tag sandbox: :auto
+    test "F-12: holding room A's row lock does not block room B startup and callers on A wait past 5s for readiness" do
+      owner_a = insert(:player, username: "f12_lia")
+      joiner_a = insert(:player, username: "f12_bruno")
+      owner_b = insert(:player, username: "f12_caio")
+      joiner_b = insert(:player, username: "f12_duda")
+
+      {:ok, game_a} = Repository.insert_game(owner_a.id, %{name: "Sala A", max_players: 4})
+      {:ok, game_b} = Repository.insert_game(owner_b.id, %{name: "Sala B", max_players: 4})
+
+      on_exit(fn ->
+        for id <- [game_a.id, game_b.id] do
+          if pid = GameServer.whereis(id) do
+            DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
+          end
+        end
+
+        cleanup_unboxed_records([game_a.id, game_b.id], [
+          owner_a.id,
+          joiner_a.id,
+          owner_b.id,
+          joiner_b.id
+        ])
+      end)
+
+      task_supervisor = start_supervised!(Task.Supervisor)
+      {lock_holder, holder_pid, holder_pg_pid} = hold_game_row_lock(task_supervisor, game_a.id)
+
+      on_exit(fn -> send(holder_pid, :release_lock) end)
+
+      {task_a1, task_a2} =
+        try do
+          task_a1 =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.join_room(Scope.for_player(joiner_a), game_a.id)
+            end)
+
+          # Room A registers its child promptly and blocks on its DB row lock inside handle_continue/2
+          child_a = wait_for_registered_game_server(game_a.id, 2_000)
+          wait_for_pg_blocker(holder_pg_pid, 2_000)
+
+          # Unrelated cold room B starts and serves requests before room A is released
+          assert {:ok, :joined} = Games.join_room(Scope.for_player(joiner_b), game_b.id)
+          assert is_pid(GameServer.whereis(game_b.id))
+          summary_b = Games.get_game_summary(game_b.id)
+
+          assert summary_b.players |> Map.values() |> Enum.map(& &1.player.id) |> Enum.sort() ==
+                   Enum.sort([owner_b.id, joiner_b.id])
+
+          # Issue a second operation on room A through the already-registered branch while A is blocked
+          :erlang.trace(child_a, true, [:receive])
+
+          task_a2 =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.get_room_lobby(Scope.for_player(owner_a), game_a.id)
+            end)
+
+          assert_receive {:trace, ^child_a, :receive,
+                          {:"$gen_call", {caller_pid, _}, :ensure_ready}},
+                         2_000
+
+          assert caller_pid == task_a2.pid
+
+          # Hold past the default 5_000ms GenServer.call timeout, then release
+          Process.send_after(holder_pid, :release_lock, 5_200)
+
+          {task_a1, task_a2}
+        after
+          :erlang.trace(:all, false, [:receive])
+        end
+
+      assert :ok = Task.await(lock_holder, 10_000)
+      assert {:ok, :joined} = Task.await(task_a1, 10_000)
+
+      assert {:ok, %Forka.Games.RoomLobby{owner_id: owner_a_id}} = Task.await(task_a2, 10_000)
+      assert owner_a_id == owner_a.id
+    end
+
+    @tag sandbox: :auto
+    test "F-12: empty cold orphan stops normally with :game_archived and leaves sibling room running" do
+      orphan_owner = insert(:player, username: "f12_orfa")
+      sibling_owner = insert(:player, username: "f12_irma")
+      outsider = insert(:player, username: "f12_visitante")
+
+      {:ok, orphan} = Repository.insert_game(orphan_owner.id, %{name: "Orfa F12", max_players: 4})
+
+      {:ok, sibling} =
+        Games.create_room(Scope.for_player(sibling_owner), %{name: "Irma F12", max_players: 4})
+
+      sibling_pid = GameServer.whereis(sibling.id)
+      sibling_ref = Process.monitor(sibling_pid)
+
+      on_exit(fn ->
+        for id <- [orphan.id, sibling.id] do
+          if pid = GameServer.whereis(id) do
+            DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
+          end
+        end
+
+        cleanup_unboxed_records([orphan.id, sibling.id], [
+          orphan_owner.id,
+          sibling_owner.id,
+          outsider.id
+        ])
+      end)
+
+      Repo.delete!(orphan_owner)
+
+      task_supervisor = start_supervised!(Task.Supervisor)
+      {lock_holder, holder_pid, holder_pg_pid} = hold_game_row_lock(task_supervisor, orphan.id)
+
+      on_exit(fn -> send(holder_pid, :release_lock) end)
+
+      {task_join, task_lobby, orphan_pid, orphan_ref} =
+        try do
+          task_join =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.join_room(Scope.for_player(outsider), orphan.id)
+            end)
+
+          orphan_pid = wait_for_registered_game_server(orphan.id, 2_000)
+          orphan_ref = Process.monitor(orphan_pid)
+          wait_for_pg_blocker(holder_pg_pid, 2_000)
+
+          :erlang.trace(orphan_pid, true, [:receive])
+
+          task_lobby =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.get_room_lobby(Scope.for_player(outsider), orphan.id)
+            end)
+
+          assert_receive {:trace, ^orphan_pid, :receive,
+                          {:"$gen_call", {caller_pid, _}, :ensure_ready}},
+                         2_000
+
+          assert caller_pid == task_lobby.pid
+
+          send(holder_pid, :release_lock)
+          {task_join, task_lobby, orphan_pid, orphan_ref}
+        after
+          :erlang.trace(:all, false, [:receive])
+        end
+
+      assert :ok = Task.await(lock_holder, 5_000)
+      assert {:error, :game_archived} = Task.await(task_join, 5_000)
+      assert {:error, :game_archived} = Task.await(task_lobby, 5_000)
+      assert_receive {:DOWN, ^orphan_ref, :process, ^orphan_pid, :normal}, 2_000
+      assert GameServer.whereis(orphan.id) == nil
+      assert {:ok, %{status: :archived, owner: nil}} = Repository.get_game_state(orphan.id)
+
+      refute_receive {:DOWN, ^sibling_ref, :process, ^sibling_pid, _}, 100
+      assert GameServer.whereis(sibling.id) == sibling_pid
+      assert Games.get_game_summary(sibling.id).game_status == :lobby
+    end
+  end
+
+  defp hold_game_row_lock(task_supervisor, game_id) do
+    test_pid = self()
+    {:ok, uuid_bin} = Ecto.UUID.dump(game_id)
+
+    task =
+      Task.Supervisor.async_nolink(task_supervisor, fn ->
+        {:ok, :ok} =
+          Repo.transaction(
+            fn ->
+              %{rows: [[pg_pid]]} = Repo.query!("SELECT pg_backend_pid()", [])
+              Repo.query!("SELECT id FROM games WHERE id = $1 FOR UPDATE", [uuid_bin])
+              send(test_pid, {:row_locked, self(), pg_pid})
+
+              receive do
+                :release_lock -> :ok
+              end
+            end,
+            timeout: :infinity
+          )
+
+        :ok
+      end)
+
+    receive do
+      {:row_locked, holder_pid, pg_pid} -> {task, holder_pid, pg_pid}
+    after
+      2_000 -> flunk("could not acquire PostgreSQL FOR UPDATE lock on game #{game_id}")
+    end
+  end
+
+  defp wait_for_registered_game_server(game_id, timeout_ms) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    do_wait_for_registered_game_server(game_id, deadline)
+  end
+
+  defp do_wait_for_registered_game_server(game_id, deadline) do
+    case GameServer.whereis(game_id) do
+      pid when is_pid(pid) ->
+        pid
+
+      nil ->
+        if System.monotonic_time(:millisecond) >= deadline do
+          flunk("GameServer for #{game_id} did not register before timeout")
+        else
+          receive do
+          after
+            10 -> do_wait_for_registered_game_server(game_id, deadline)
+          end
+        end
+    end
+  end
+
+  defp wait_for_pg_blocker(holder_pg_pid, timeout_ms) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    do_wait_for_pg_blocker(holder_pg_pid, deadline)
+  end
+
+  defp do_wait_for_pg_blocker(holder_pg_pid, deadline) do
+    %{rows: [[count]]} =
+      Repo.query!(
+        "SELECT count(*) FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))",
+        [holder_pg_pid]
+      )
+
+    if count > 0 do
+      :ok
+    else
+      if System.monotonic_time(:millisecond) >= deadline do
+        flunk("no PostgreSQL backend blocked on lock holder #{holder_pg_pid}")
+      else
+        receive do
+        after
+          10 -> do_wait_for_pg_blocker(holder_pg_pid, deadline)
+        end
+      end
+    end
+  end
+
+  defp cleanup_unboxed_records(game_ids, player_ids) do
+    from(g in Forka.Games.Schemas.Game, where: g.id in ^game_ids) |> Repo.delete_all()
+    from(p in Forka.Players.Player, where: p.id in ^player_ids) |> Repo.delete_all()
+  end
 end

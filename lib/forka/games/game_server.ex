@@ -34,24 +34,53 @@ defmodule Forka.Games.GameServer do
 
   @doc false
   def start_link(game_id) when is_binary(game_id) do
-    case whereis(game_id) do
-      pid when is_pid(pid) ->
-        {:error, {:already_started, pid}}
-
-      nil ->
-        with {:ok, game_state} <- load_and_reconcile_game(game_id),
-             :ok <- validate_status(game_state) do
-          GenServer.start_link(__MODULE__, game_state, name: global_name(game_id))
-        end
-    end
+    GenServer.start_link(__MODULE__, game_id, name: global_name(game_id))
   end
 
-  defp validate_status(%{status: :archived}), do: {:error, :game_archived}
-  defp validate_status(_), do: :ok
+  @doc false
+  def await_ready(pid, game_id) when is_pid(pid) and is_binary(game_id) do
+    if ready?(pid, game_id) do
+      {:ok, pid}
+    else
+      :ok = GenServer.call(pid, :ensure_ready, :infinity)
+      {:ok, pid}
+    end
+  catch
+    :exit, {{:shutdown, {:load_error, reason}}, _call} ->
+      {:error, reason}
+
+    :exit, {:shutdown, {:load_error, reason}} ->
+      {:error, reason}
+
+    :exit, {reason, _call} when reason in [:normal, :noproc] ->
+      classify_stopped_game(game_id)
+
+    :exit, reason when reason in [:normal, :noproc] ->
+      classify_stopped_game(game_id)
+  end
+
+  defp classify_stopped_game(game_id) do
+    case Repository.get_game_status(game_id) do
+      {:ok, :archived} -> {:error, :game_archived}
+      {:ok, _status} -> {:error, :game_server_unavailable}
+      {:error, :not_found} -> {:error, :not_found}
+    end
+  end
 
   defp global_name(game_id) when is_binary(game_id) do
     {:global, {__MODULE__, game_id}}
   end
+
+  defp ready_key(game_id) when is_binary(game_id) do
+    {__MODULE__, :ready, game_id}
+  end
+
+  defp ready?(pid, game_id) when is_pid(pid) and is_binary(game_id) do
+    GenServer.whereis({:global, ready_key(game_id)}) == pid
+  end
+
+  defp server_ref(pid) when is_pid(pid), do: pid
+  defp server_ref(game_id) when is_binary(game_id), do: global_name(game_id)
 
   @doc false
   def exists?(game_id) when is_binary(game_id) do
@@ -66,63 +95,72 @@ defmodule Forka.Games.GameServer do
   end
 
   @doc false
-  def get_game(game_id, opts \\ []) when is_binary(game_id) do
-    GenServer.call(global_name(game_id), {:get_game, opts})
+  def get_game(server, opts \\ []) when is_pid(server) or is_binary(server) do
+    GenServer.call(server_ref(server), {:get_game, opts})
   end
 
   @doc false
-  def join_room(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
-    GenServer.call(global_name(game_id), {:join_room, player_id})
+  def join_room(server, player_id)
+      when (is_pid(server) or is_binary(server)) and is_binary(player_id) do
+    GenServer.call(server_ref(server), {:join_room, player_id})
   end
 
   @doc false
-  def leave_game(game_id, player_id, opts \\ [])
-      when is_binary(game_id) and is_binary(player_id) and is_list(opts) do
-    GenServer.call(global_name(game_id), {:leave_game, player_id, opts})
+  def leave_game(server, player_id, opts \\ [])
+      when (is_pid(server) or is_binary(server)) and is_binary(player_id) and is_list(opts) do
+    GenServer.call(server_ref(server), {:leave_game, player_id, opts})
   end
 
   @doc false
-  def remove_player(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
-    GenServer.call(global_name(game_id), {:remove_player, player_id})
+  def remove_player(server, player_id)
+      when (is_pid(server) or is_binary(server)) and is_binary(player_id) do
+    GenServer.call(server_ref(server), {:remove_player, player_id})
   end
 
   @doc false
-  def update_settings(game_id, actor_id, settings)
-      when is_binary(game_id) and is_binary(actor_id) and is_map(settings) do
-    GenServer.call(global_name(game_id), {:update_settings, actor_id, settings})
+  def update_settings(server, actor_id, settings)
+      when (is_pid(server) or is_binary(server)) and is_binary(actor_id) and is_map(settings) do
+    GenServer.call(server_ref(server), {:update_settings, actor_id, settings})
   end
 
   @doc false
-  def start_game(game_id, actor_id) when is_binary(game_id) and is_binary(actor_id) do
-    GenServer.call(global_name(game_id), {:start_game, actor_id})
+  def start_game(server, actor_id)
+      when (is_pid(server) or is_binary(server)) and is_binary(actor_id) do
+    GenServer.call(server_ref(server), {:start_game, actor_id})
   end
 
   @doc false
-  def give_up_game(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
-    GenServer.call(global_name(game_id), {:give_up, player_id})
+  def give_up_game(server, player_id)
+      when (is_pid(server) or is_binary(server)) and is_binary(player_id) do
+    GenServer.call(server_ref(server), {:give_up, player_id})
   end
 
   @doc false
-  def guess(game_id, player_id, letter)
-      when is_binary(game_id) and is_binary(letter) and is_binary(player_id) do
-    GenServer.call(global_name(game_id), {:guess, letter, player_id})
+  def guess(server, player_id, letter)
+      when (is_pid(server) or is_binary(server)) and is_binary(letter) and is_binary(player_id) do
+    GenServer.call(server_ref(server), {:guess, letter, player_id})
   end
 
   @doc false
-  def transfer_ownership(game_id, actor_id, target_player_id, opts \\ [])
-      when is_binary(game_id) and is_binary(actor_id) and is_binary(target_player_id) and
-             is_list(opts) do
-    GenServer.call(global_name(game_id), {:transfer_ownership, actor_id, target_player_id, opts})
+  def transfer_ownership(server, actor_id, target_player_id, opts \\ [])
+      when (is_pid(server) or is_binary(server)) and is_binary(actor_id) and
+             is_binary(target_player_id) and is_list(opts) do
+    GenServer.call(
+      server_ref(server),
+      {:transfer_ownership, actor_id, target_player_id, opts}
+    )
   end
 
   @doc false
-  def restart_game(game_id, actor_id) when is_binary(game_id) and is_binary(actor_id) do
-    GenServer.call(global_name(game_id), {:restart_game, actor_id})
+  def restart_game(server, actor_id)
+      when (is_pid(server) or is_binary(server)) and is_binary(actor_id) do
+    GenServer.call(server_ref(server), {:restart_game, actor_id})
   end
 
   @doc false
-  def archive_game(game_id, actor_id) when is_binary(game_id) and is_binary(actor_id) do
-    GenServer.call(global_name(game_id), {:archive_game, actor_id})
+  def archive_game(server, actor_id)
+      when (is_pid(server) or is_binary(server)) and is_binary(actor_id) do
+    GenServer.call(server_ref(server), {:archive_game, actor_id})
   end
 
   @doc false
@@ -142,11 +180,33 @@ defmodule Forka.Games.GameServer do
 
   # Callbacks
   @impl true
-  def init(%GameState{} = game_state) do
-    {:ok, game_state, @timeout_ms}
+  def init(game_id) when is_binary(game_id) do
+    {:ok, {:loading, game_id}, {:continue, :load}}
   end
 
   @impl true
+  def handle_continue(:load, {:loading, game_id}) do
+    case load_and_reconcile_game(game_id) do
+      {:ok, %GameState{status: :archived} = archived} ->
+        {:stop, :normal, archived}
+
+      {:ok, %GameState{} = game_state} ->
+        :global.re_register_name(ready_key(game_id), self())
+        {:noreply, game_state, @timeout_ms}
+
+      {:error, :not_found} ->
+        {:stop, :normal, {:loading, game_id}}
+
+      {:error, reason} ->
+        {:stop, {:shutdown, {:load_error, reason}}, {:loading, game_id}}
+    end
+  end
+
+  @impl true
+  def handle_call(:ensure_ready, _from, %GameState{} = game) do
+    {:reply, :ok, game, @timeout_ms}
+  end
+
   def handle_call(request, from, game) do
     case reconcile_running_state(game) do
       {:archived, saved} -> {:stop, :normal, archived_reply(request, saved), saved}
@@ -335,6 +395,8 @@ defmodule Forka.Games.GameServer do
       {:error, reason} ->
         {:error, reason}
     end
+  rescue
+    error in [DBConnection.ConnectionError, Postgrex.Error] -> {:error, error}
   end
 
   defp reconcile_running_state(%GameState{status: :archived} = game_state),

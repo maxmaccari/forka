@@ -633,6 +633,17 @@ defmodule Forka.Games.RepositoryTest do
     end
   end
 
+  describe "get_game_status/1" do
+    test "returns the persisted game status or :not_found without preloading associations" do
+      game = insert(:game, status: :lobby)
+      archived = insert(:game, status: :archived)
+
+      assert {:ok, :lobby} = Repository.get_game_status(game.id)
+      assert {:ok, :archived} = Repository.get_game_status(archived.id)
+      assert {:error, :not_found} = Repository.get_game_status(UUID.uuid4())
+    end
+  end
+
   describe "reconcile_game_state/2" do
     test "F-01: locks and reconciles an ownerless game atomically, and treats archived or missing games cleanly" do
       owner = insert(:player, username: "lia")

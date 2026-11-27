@@ -160,6 +160,19 @@ defmodule Forka.Games.Repository do
   end
 
   @doc """
+  Returns the persisted status for the game with the given ID without preloading associations.
+  """
+  @spec get_game_status(Ecto.UUID.t()) :: {:ok, GameState.status()} | {:error, :not_found}
+  def get_game_status(id) when is_binary(id) do
+    from(g in Game, where: g.id == ^id, select: g.status)
+    |> Repo.one()
+    |> case do
+      nil -> {:error, :not_found}
+      status -> {:ok, status}
+    end
+  end
+
+  @doc """
   Gets a game state from the database by its ID.
 
   This function retrieves a game by ID, preloads its associations,

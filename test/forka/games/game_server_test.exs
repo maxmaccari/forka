@@ -1,7 +1,6 @@
 defmodule Forka.Games.GameServerTest do
-  use Forka.DataCase, async: true
+  use Forka.DataCase
 
-  alias Ecto.Adapters.SQL.Sandbox
   alias Forka.Games.Core
   alias Forka.Games.GameServer
   alias Forka.Games.Repository
@@ -20,11 +19,9 @@ defmodule Forka.Games.GameServerTest do
     game = insert(:game, owner: owner) |> Repo.preload([:owner, :events])
     game_state = Game.to_game_state(game)
 
-    # Start the game server
+    # Start the game server and wait for handle_continue/2 to finish loading
     {:ok, pid} = GameServer.start_link(game.id)
-
-    # Allow server to colaborate with same connection
-    Sandbox.allow(Repo, self(), pid)
+    {:ok, ^pid} = GameServer.await_ready(pid, game.id)
 
     # Subscribe to receive game updates
     GameServer.subscribe(game.id)
@@ -46,24 +43,30 @@ defmodule Forka.Games.GameServerTest do
       assert Process.alive?(pid)
     end
 
-    test "doesn't start a server when the game is archived" do
+    test "stops normally when the game is archived" do
       # Create an archived game
       owner = insert(:player)
       archived_game_state = insert(:game, owner: owner, status: :archived) |> Repo.preload(:owner)
 
-      # Attempt to start a server for the archived game
-      assert {:error, :game_archived} = GameServer.start_link(archived_game_state.id)
+      # Child registers promptly and stops normally during handle_continue/2
+      assert {:ok, pid} = GameServer.start_link(archived_game_state.id)
+      ref = Process.monitor(pid)
+      assert {:error, :game_archived} = GameServer.await_ready(pid, archived_game_state.id)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
 
       # Verify the process doesn't exist
       refute GameServer.exists?(archived_game_state.id)
       assert GameServer.whereis(archived_game_state.id) == nil
     end
 
-    test "returns error when attempting to start a server for a non-existent game" do
+    test "stops normally when attempting to start a server for a non-existent game" do
       non_existent_id = UUID.uuid4()
 
-      # Attempt to start a server for a non-existent game
-      assert {:error, :not_found} = GameServer.start_link(non_existent_id)
+      # Child registers promptly and stops normally during handle_continue/2
+      assert {:ok, pid} = GameServer.start_link(non_existent_id)
+      ref = Process.monitor(pid)
+      assert {:error, :not_found} = GameServer.await_ready(pid, non_existent_id)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
 
       # Verify the process doesn't exist
       refute GameServer.exists?(non_existent_id)
@@ -521,7 +524,7 @@ defmodule Forka.Games.GameServerTest do
         )
 
       {:ok, pid} = GameServer.start_link(game.id)
-      Sandbox.allow(Repo, self(), pid)
+      {:ok, ^pid} = GameServer.await_ready(pid, game.id)
 
       on_exit(fn ->
         try do
@@ -572,7 +575,7 @@ defmodule Forka.Games.GameServerTest do
         )
 
       {:ok, pid} = GameServer.start_link(game.id)
-      Sandbox.allow(Repo, self(), pid)
+      {:ok, ^pid} = GameServer.await_ready(pid, game.id)
 
       on_exit(fn ->
         try do
@@ -780,7 +783,7 @@ defmodule Forka.Games.GameServerTest do
         )
 
       pid = start_supervised!({GameServer, dedicated_game.id}, id: :sixth_miss_server)
-      Sandbox.allow(Repo, self(), pid)
+      {:ok, ^pid} = GameServer.await_ready(pid, dedicated_game.id)
 
       assert {:ok, :joined} = GameServer.join_room(dedicated_game.id, player1.id)
       assert {:ok, :joined} = GameServer.join_room(dedicated_game.id, player2.id)
@@ -1005,7 +1008,7 @@ defmodule Forka.Games.GameServerTest do
 
       # Start the server again
       {:ok, pid} = GameServer.start_link(game_state.id)
-      Sandbox.allow(Repo, self(), pid)
+      {:ok, ^pid} = GameServer.await_ready(pid, game_state.id)
 
       # Make a change to the game
       player = insert(:player)
@@ -1145,9 +1148,7 @@ defmodule Forka.Games.GameServerTest do
 
       # Start a new server for the same game to verify state is loaded correctly
       {:ok, new_pid} = GameServer.start_link(game_state.id)
-
-      # Allow server to collaborate with same connection
-      Sandbox.allow(Repo, self(), new_pid)
+      {:ok, ^new_pid} = GameServer.await_ready(new_pid, game_state.id)
 
       # Verify the loaded state matches what was persisted
       loaded_summary = GameServer.get_game(game_state.id)
@@ -1253,7 +1254,7 @@ defmodule Forka.Games.GameServerTest do
 
       # start_link/1 runs in the test process, which owns the sandbox connection
       {:ok, pid} = GameServer.start_link(game.id)
-      Sandbox.allow(Repo, self(), pid)
+      {:ok, ^pid} = GameServer.await_ready(pid, game.id)
 
       on_exit(fn ->
         try do
@@ -1285,7 +1286,10 @@ defmodule Forka.Games.GameServerTest do
       :ok = Forka.Games.subscribe_to_game_list()
       flush_messages()
 
-      assert {:error, :game_archived} = GameServer.start_link(game.id)
+      assert {:ok, pid} = GameServer.start_link(game.id)
+      ref = Process.monitor(pid)
+      assert {:error, :game_archived} = GameServer.await_ready(pid, game.id)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
       refute GameServer.exists?(game.id)
 
       assert_receive {:game_list_updated, %{id: archived_id, status: :archived}}
@@ -1388,7 +1392,7 @@ defmodule Forka.Games.GameServerTest do
       Repo.delete!(owner)
 
       {:ok, pid} = GameServer.start_link(game.id)
-      Sandbox.allow(Repo, self(), pid)
+      {:ok, ^pid} = GameServer.await_ready(pid, game.id)
 
       on_exit(fn ->
         try do
@@ -1439,7 +1443,7 @@ defmodule Forka.Games.GameServerTest do
       Repo.delete!(p0)
 
       {:ok, pid} = GameServer.start_link(game.id)
-      Sandbox.allow(Repo, self(), pid)
+      {:ok, ^pid} = GameServer.await_ready(pid, game.id)
 
       on_exit(fn ->
         try do
