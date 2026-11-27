@@ -25,6 +25,7 @@ defmodule ForkaWeb.E2ECase do
 
   alias Ecto.Adapters.SQL.Sandbox
   alias PhoenixTest.Playwright.Case, as: PlaywrightCase
+  alias PhoenixTest.Playwright.Config, as: PlaywrightConfig
 
   using opts do
     quote do
@@ -95,6 +96,19 @@ defmodule ForkaWeb.E2ECase do
     |> assert_path(~p"/")
     |> assert_has("[data-phx-main].phx-connected")
     |> assert_has("#rooms-live-status", text: "Ao vivo")
+  end
+
+  @doc """
+  Opens a second isolated browser session (separate cookies and localStorage)
+  sharing the current test's database sandbox.
+  """
+  def second_session(context) do
+    config =
+      context
+      |> Map.take(PlaywrightConfig.setup_keys())
+      |> PlaywrightConfig.validate!()
+
+    PlaywrightCase.new_session(config, context)
   end
 
   defp terminate_game_servers do
