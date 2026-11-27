@@ -285,20 +285,23 @@ defmodule ForkaWeb.E2E.AccountTest do
     try do
       conn
       |> unwrap(fn %{page_id: page_id, frame_id: frame_id} ->
-        {:ok, %{"x" => x, "y" => y}} =
+        {:ok, _} =
           Frame.evaluate(
             frame_id,
             expression: """
             () => {
-              const btn = document.querySelector("#login_form button");
-              btn.scrollIntoView({ block: "center" });
-              const rect = btn.getBoundingClientRect();
-              return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+              sessionStorage.setItem("__loginSubmitCount", "0");
+              document.querySelector("#login_form").addEventListener("submit", () => {
+                const count = Number(sessionStorage.getItem("__loginSubmitCount") || "0") + 1;
+                sessionStorage.setItem("__loginSubmitCount", String(count));
+              });
             }
             """,
             is_function: true,
             timeout: timeout
           )
+
+        {x, y} = login_button_center(frame_id, timeout)
 
         {:ok, _} = Page.mouse_move(page_id, x: x, y: y, timeout: timeout)
         {:ok, _} = Page.mouse_down(page_id, timeout: timeout)
@@ -309,8 +312,6 @@ defmodule ForkaWeb.E2E.AccountTest do
         {:ok, _} = Page.mouse_down(page_id, timeout: timeout)
         {:ok, _} = Page.mouse_up(page_id, timeout: timeout)
 
-        # Flush renderer event loop so click #2 finishes dispatching before releasing POST #1.
-        _ = Frame.evaluate(frame_id, expression: "true", timeout: timeout)
         send(first_route_pid, :release)
       end)
       |> assert_path(~p"/")
@@ -319,6 +320,7 @@ defmodule ForkaWeb.E2E.AccountTest do
       |> assert_has("#flash-info", text: "Bem-vindo de volta!")
       |> refute_has("#flash-error")
       |> assert_has(~s|summary[aria-label="Conta"]|)
+      |> evaluate("Number(sessionStorage.getItem('__loginSubmitCount'))", &assert(&1 == 1))
     after
       unwrap(conn, fn %{page_id: page_id} ->
         {:ok, _} = Page.unroute_all(page_id, timeout: timeout)
@@ -454,7 +456,14 @@ defmodule ForkaWeb.E2E.AccountTest do
       Regex.run(~r|https?://[^\s]+|, body) ||
         flunk("expected URL in email body, got: #{inspect(body)}")
 
+    expected_origin = URI.parse(ForkaWeb.Endpoint.url())
     uri = URI.parse(url)
+
+    assert {uri.scheme, uri.host, uri.port} ==
+             {expected_origin.scheme, expected_origin.host, expected_origin.port},
+           "expected email URL origin #{ForkaWeb.Endpoint.url()}, got: #{url}"
+
+    # Visit only path and query because the test server listens on a random port.
     if uri.query, do: "#{uri.path}?#{uri.query}", else: uri.path
   end
 
