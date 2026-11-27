@@ -618,6 +618,32 @@ defmodule Forka.Games.RepositoryTest do
     end
   end
 
+  describe "F-03: persisted seat position turn resolution" do
+    test "F-03: deleting the active turn player in the last seat wraps turn to the next alive seat on reload" do
+      owner = insert(:player, username: "lia")
+      p1 = insert(:player, username: "bruno")
+      p2 = insert(:player, username: "caio")
+
+      words =
+        for text <- ~w(alfa bravo charlie delta echo foxtrot),
+            do: Word.new(text, "Geral")
+
+      {:ok, game} = Repository.insert_game(owner.id, %{name: "Wrap Turno", max_players: 4})
+      {:ok, state} = Repository.get_game_state(game.id)
+      {:ok, state} = Core.join_game(state, Repository.get_player(p1.id))
+      {:ok, state} = Core.join_game(state, Repository.get_player(p2.id))
+      {:ok, playing} = state |> Core.set_words(words) |> Core.start_game(owner.id)
+
+      # Seat 2 (p2) is up when p2 is deleted from persistence
+      {:ok, _saved} = Repository.save_game_state(%{playing | current_game_player_index: 2})
+      Repo.delete!(p2)
+
+      {:ok, reloaded} = Repository.get_game_state(game.id)
+      assert reloaded.current_game_player_index == 0
+      assert Core.get_current_player(reloaded).id == owner.id
+    end
+  end
+
   defp to_games_player(%Forka.Players.Player{} = player) do
     %Forka.Games.Schemas.Player{
       id: player.id,

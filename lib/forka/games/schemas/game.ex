@@ -221,7 +221,8 @@ defmodule Forka.Games.Schemas.Game do
   @doc false
   @spec to_game_state(t()) :: GameState.t()
   def to_game_state(%__MODULE__{} = game) do
-    # Convert Game schema to GameState
+    sorted_players = Enum.sort_by(game.game_players, &{&1.position, &1.id})
+
     %GameState{
       id: game.id,
       name: game.name,
@@ -229,11 +230,12 @@ defmodule Forka.Games.Schemas.Game do
       max_players: game.max_players,
       tick: game.tick,
       current_game_word_index: game.current_game_word_index,
-      current_game_player_index: game.current_game_player_index,
+      current_game_player_index:
+        resolve_current_player_index(game.current_game_player_index, sorted_players),
       word_options: game.word_options,
       owner: game.owner,
       game_words: list_to_map(game.game_words),
-      game_players: list_to_map(game.game_players, &{&1.position, &1.id}),
+      game_players: indexed_map(sorted_players),
       events: game.events
     }
   end
@@ -243,11 +245,68 @@ defmodule Forka.Games.Schemas.Game do
     Enum.map(map, fn {index, item} -> %{item | position: index} end)
   end
 
-  defp list_to_map(list, sort_key \\ & &1.position) when is_list(list) do
+  defp list_to_map(list) when is_list(list) do
     list
-    |> Enum.sort_by(sort_key)
+    |> Enum.sort_by(& &1.position)
+    |> indexed_map()
+  end
+
+  defp indexed_map(list) when is_list(list) do
+    list
     |> Enum.with_index()
     |> Map.new(fn {v, k} -> {k, v} end)
+  end
+
+  defp resolve_current_player_index(nil, _sorted_players), do: nil
+  defp resolve_current_player_index(_saved_index, []), do: nil
+
+  defp resolve_current_player_index(saved_index, sorted_players) when is_integer(saved_index) do
+    if distinct_positions?(sorted_players) do
+      resolve_from_persisted_positions(saved_index, Enum.with_index(sorted_players))
+    else
+      if saved_index >= 0 and saved_index < length(sorted_players), do: saved_index, else: 0
+    end
+  end
+
+  defp resolve_from_persisted_positions(saved_index, indexed_players) do
+    find_exact_position(indexed_players, saved_index) ||
+      find_next_alive_after(indexed_players, saved_index) ||
+      find_first_alive(indexed_players) ||
+      find_next_after(indexed_players, saved_index) ||
+      0
+  end
+
+  defp find_exact_position(indexed_players, saved_index) do
+    Enum.find_value(indexed_players, fn
+      {%{position: ^saved_index}, idx} -> idx
+      _ -> nil
+    end)
+  end
+
+  defp find_next_alive_after(indexed_players, saved_index) do
+    Enum.find_value(indexed_players, fn
+      {%{position: pos, status: :alive}, idx} when pos > saved_index -> idx
+      _ -> nil
+    end)
+  end
+
+  defp find_first_alive(indexed_players) do
+    Enum.find_value(indexed_players, fn
+      {%{status: :alive}, idx} -> idx
+      _ -> nil
+    end)
+  end
+
+  defp find_next_after(indexed_players, saved_index) do
+    Enum.find_value(indexed_players, fn
+      {%{position: pos}, idx} when pos > saved_index -> idx
+      _ -> nil
+    end)
+  end
+
+  defp distinct_positions?(sorted_players) do
+    positions = Enum.map(sorted_players, & &1.position)
+    Enum.all?(positions, &is_integer/1) and length(Enum.uniq(positions)) == length(positions)
   end
 
   @doc """

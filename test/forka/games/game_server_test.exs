@@ -1366,5 +1366,93 @@ defmodule Forka.Games.GameServerTest do
       assert Map.keys(summary.players) == [0]
       assert summary.players[0].player.id == owner.id
     end
+
+    test "F-03: cold restart after deleting owner in seat 0 keeps seat 1 as active turn instead of shifting to seat 2" do
+      owner = insert(:player, username: "lia")
+      p1 = insert(:player, username: "bruno")
+      p2 = insert(:player, username: "caio")
+
+      words =
+        for text <- ~w(alfa bravo charlie delta echo foxtrot),
+            do: Forka.Games.Schemas.Word.new(text, "Geral")
+
+      {:ok, game} = Repository.insert_game(owner.id, %{name: "Turno Frio", max_players: 4})
+      {:ok, state} = Repository.get_game_state(game.id)
+      {:ok, state} = Core.join_game(state, Repository.get_player(p1.id))
+      {:ok, state} = Core.join_game(state, Repository.get_player(p2.id))
+      {:ok, state} = state |> Core.set_words(words) |> Core.start_game(owner.id)
+      # Seat 0 = owner, Seat 1 = p1 (active turn), Seat 2 = p2
+      {:ok, _saved} = Repository.save_game_state(%{state | current_game_player_index: 1})
+
+      # Owner in seat 0 is deleted while the room is cold (no GameServer running)
+      Repo.delete!(owner)
+
+      {:ok, pid} = GameServer.start_link(game.id)
+      Sandbox.allow(Repo, self(), pid)
+
+      on_exit(fn ->
+        try do
+          GenServer.stop(pid, :normal)
+        catch
+          :exit, _ -> :ok
+        end
+      end)
+
+      summary = GameServer.get_game(game.id)
+      assert summary.game_status == :playing
+      assert summary.owner.id == p1.id
+      assert summary.current_player_id == p1.id
+
+      {:ok, persisted} = Repository.get_game_state(game.id)
+      assert persisted.owner.id == p1.id
+      assert persisted.current_game_player_index == 0
+      assert Core.get_current_player(persisted).id == p1.id
+    end
+
+    test "F-03: cold restart after deleting a non-owner in an earlier seat preserves the active turn player" do
+      p0 = insert(:player, username: "ana")
+      owner = insert(:player, username: "bruno")
+      p2 = insert(:player, username: "caio")
+
+      words =
+        for text <- ~w(alfa bravo charlie delta echo foxtrot),
+            do: Forka.Games.Schemas.Word.new(text, "Geral")
+
+      {:ok, game} = Repository.insert_game(owner.id, %{name: "Turno Nao Dono", max_players: 4})
+      {:ok, state} = Repository.get_game_state(game.id)
+      {:ok, state} = Core.join_game(state, Repository.get_player(p0.id))
+      {:ok, state} = Core.join_game(state, Repository.get_player(p2.id))
+      {:ok, state} = Repository.save_game_state(state)
+
+      gp_p0 = Enum.find(Map.values(state.game_players), &(&1.player_id == p0.id))
+      gp_owner = Enum.find(Map.values(state.game_players), &(&1.player_id == owner.id))
+      gp_p2 = Enum.find(Map.values(state.game_players), &(&1.player_id == p2.id))
+
+      {:ok, playing} =
+        %{state | game_players: %{0 => gp_p0, 1 => gp_owner, 2 => gp_p2}}
+        |> Core.set_words(words)
+        |> Core.start_game(owner.id)
+
+      # Seat 0 = p0 (non-owner), Seat 1 = owner (active turn), Seat 2 = p2
+      {:ok, _saved} = Repository.save_game_state(%{playing | current_game_player_index: 1})
+
+      Repo.delete!(p0)
+
+      {:ok, pid} = GameServer.start_link(game.id)
+      Sandbox.allow(Repo, self(), pid)
+
+      on_exit(fn ->
+        try do
+          GenServer.stop(pid, :normal)
+        catch
+          :exit, _ -> :ok
+        end
+      end)
+
+      summary = GameServer.get_game(game.id)
+      assert summary.game_status == :playing
+      assert summary.owner.id == owner.id
+      assert summary.current_player_id == owner.id
+    end
   end
 end
