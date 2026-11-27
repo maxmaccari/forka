@@ -889,6 +889,82 @@ defmodule Forka.GamesTest do
       assert {:ok, %Forka.Games.RoomLobby{status: :playing}} = Task.await(lobby_task, 5_000)
       assert {:ok, :returning_participant} = Task.await(join_task, 5_000)
     end
+
+    test "MAX-53 EDGE-02: owner and target leaving in either order end with one owner" do
+      task_supervisor = start_supervised!(Task.Supervisor)
+
+      # Case A1: 2 players with UI confirm opts — owner first, target second
+      owner_a1 = insert(:player, username: "lia_a1")
+      target_a1 = insert(:player, username: "bruno_a1")
+      owner_a1_scope = Scope.for_player(owner_a1)
+      target_a1_scope = Scope.for_player(target_a1)
+      {:ok, game_a1} = Games.create_room(owner_a1_scope, %{name: "Sala Ordem A1", max_players: 4})
+      assert {:ok, :joined} = Games.join_room(target_a1_scope, game_a1.id)
+      on_exit(fn -> stop_game_server(game_a1.id) end)
+
+      {first_res, second_res} =
+        queue_two_leaves(
+          task_supervisor,
+          game_a1.id,
+          {owner_a1.id,
+           fn ->
+             Games.leave_game(owner_a1_scope, game_a1.id, confirm: {:handoff, target_a1.id})
+           end},
+          {target_a1.id, fn -> Games.leave_game(target_a1_scope, game_a1.id, confirm: false) end}
+        )
+
+      assert :ok = first_res
+
+      assert {:error,
+              {:confirmation_required,
+               %Forka.Games.RoomLobby{
+                 status: :lobby,
+                 owner_id: owner_after_a1,
+                 player_count: 1
+               }}} = second_res
+
+      assert owner_after_a1 == target_a1.id
+      assert {:ok, lobby_a1} = Games.get_room_lobby(target_a1_scope, game_a1.id)
+      assert lobby_a1.status == :lobby
+      assert lobby_a1.owner_id == target_a1.id
+      assert Enum.map(lobby_a1.players, & &1.id) == [target_a1.id]
+
+      # Case A2: 2 players with UI confirm opts — target first, owner second
+      owner_a2 = insert(:player, username: "lia_a2")
+      target_a2 = insert(:player, username: "bruno_a2")
+      owner_a2_scope = Scope.for_player(owner_a2)
+      target_a2_scope = Scope.for_player(target_a2)
+      {:ok, game_a2} = Games.create_room(owner_a2_scope, %{name: "Sala Ordem A2", max_players: 4})
+      assert {:ok, :joined} = Games.join_room(target_a2_scope, game_a2.id)
+      on_exit(fn -> stop_game_server(game_a2.id) end)
+
+      {first_res, second_res} =
+        queue_two_leaves(
+          task_supervisor,
+          game_a2.id,
+          {target_a2.id, fn -> Games.leave_game(target_a2_scope, game_a2.id, confirm: false) end},
+          {owner_a2.id,
+           fn ->
+             Games.leave_game(owner_a2_scope, game_a2.id, confirm: {:handoff, target_a2.id})
+           end}
+        )
+
+      assert :ok = first_res
+
+      assert {:error,
+              {:confirmation_required,
+               %Forka.Games.RoomLobby{
+                 status: :lobby,
+                 owner_id: owner_after_a2,
+                 player_count: 1
+               }}} = second_res
+
+      assert owner_after_a2 == owner_a2.id
+      assert {:ok, lobby_a2} = Games.get_room_lobby(owner_a2_scope, game_a2.id)
+      assert lobby_a2.status == :lobby
+      assert lobby_a2.owner_id == owner_a2.id
+      assert Enum.map(lobby_a2.players, & &1.id) == [owner_a2.id]
+    end
   end
 
   describe "start_game/2" do
@@ -2856,5 +2932,38 @@ defmodule Forka.GamesTest do
   defp cleanup_unboxed_records(game_ids, player_ids) do
     from(g in Forka.Games.Schemas.Game, where: g.id in ^game_ids) |> Repo.delete_all()
     from(p in Forka.Players.Player, where: p.id in ^player_ids) |> Repo.delete_all()
+  end
+
+  defp queue_two_leaves(task_supervisor, game_id, {first_id, first_fun}, {second_id, second_fun}) do
+    game_pid = GameServer.whereis(game_id)
+    :ok = :sys.suspend(game_pid)
+
+    {first_task, second_task} =
+      try do
+        :erlang.trace(game_pid, true, [:receive])
+
+        first_task = Task.Supervisor.async_nolink(task_supervisor, first_fun)
+        assert_receive {:trace, ^game_pid, :receive, {:"$gen_call", _, first_msg}}, 1_000
+        assert elem(first_msg, 0) == :leave_game and elem(first_msg, 1) == first_id
+
+        second_task = Task.Supervisor.async_nolink(task_supervisor, second_fun)
+        assert_receive {:trace, ^game_pid, :receive, {:"$gen_call", _, second_msg}}, 1_000
+        assert elem(second_msg, 0) == :leave_game and elem(second_msg, 1) == second_id
+
+        {first_task, second_task}
+      after
+        :erlang.trace(game_pid, false, [:receive])
+        :sys.resume(game_pid)
+      end
+
+    {Task.await(first_task, 5_000), Task.await(second_task, 5_000)}
+  end
+
+  defp stop_game_server(game_id) do
+    if pid = GameServer.whereis(game_id) do
+      DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
+    end
+
+    :ok
   end
 end
