@@ -399,6 +399,60 @@ defmodule ForkaWeb.RoomLiveTest do
       refute has_element?(lv, "#edit-room-settings")
       refute text =~ "Começar partida"
     end
+
+    test "MAX-51 E2: fresh mount and cold reload of the lobby keep the owner's edited settings",
+         %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      pt_cat = insert(:category, name: "Filmes", language: "pt")
+      en_cat = insert(:category, name: "Space", language: "en")
+
+      for text <- ~w(orbit comet nebula planet), do: insert(:word, text: text, category: en_cat)
+
+      {:ok, game} =
+        Games.create_game(owner.id, %{
+          name: "Sala Original",
+          max_players: 4,
+          word_options: %{language: "pt", category_ids: [pt_cat.id]}
+        })
+
+      owner_conn = log_in_player(conn, owner)
+      {:ok, edit_lv, _html} = live(owner_conn, ~p"/rooms/#{game.id}/settings")
+
+      edit_lv |> element(~s|#room-language button[phx-value-option="en"]|) |> render_click()
+      edit_lv |> element("#category-chip-#{en_cat.id}") |> render_click()
+      edit_lv |> element(~s|#room-max-players button[phx-value-option="6"]|) |> render_click()
+
+      {:ok, _lobby_lv, _lobby_html} =
+        edit_lv
+        |> form("#room-form", room_settings: %{name: "Sala Persistida"})
+        |> render_submit()
+        |> follow_redirect(owner_conn, ~p"/rooms/#{game.id}")
+
+      # Warm reload: fresh LiveView mount against the running GameServer
+      {:ok, warm_lv, _warm_html} =
+        build_conn() |> log_in_player(owner) |> live(~p"/rooms/#{game.id}")
+
+      assert has_element?(warm_lv, "h1", "Sala Persistida")
+      assert has_element?(warm_lv, "#room-lobby-occupancy", "1/6 jogadores")
+      assert has_element?(warm_lv, "#room-lobby-language", "Inglês")
+      assert has_element?(warm_lv, "#room-lobby-categories", "Space")
+      refute has_element?(warm_lv, "#room-word-availability-alert")
+
+      # Cold reload: stop GameServer so the next mount reloads settings from PostgreSQL
+      pid = GameServer.whereis(game.id)
+      ref = Process.monitor(pid)
+      :ok = DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :shutdown}
+
+      {:ok, cold_lv, _cold_html} =
+        build_conn() |> log_in_player(owner) |> live(~p"/rooms/#{game.id}")
+
+      assert has_element?(cold_lv, "h1", "Sala Persistida")
+      assert has_element?(cold_lv, "#room-lobby-occupancy", "1/6 jogadores")
+      assert has_element?(cold_lv, "#room-lobby-language", "Inglês")
+      assert has_element?(cold_lv, "#room-lobby-categories", "Space")
+      refute has_element?(cold_lv, "#room-word-availability-alert")
+    end
   end
 
   describe "pre-match leave and live lobby transitions" do

@@ -243,6 +243,88 @@ defmodule ForkaWeb.RoomFormLiveTest do
       flash = assert_redirect(lv, ~p"/rooms/#{game.id}/match")
       assert flash["error"] == "As configurações só podem ser alteradas antes da partida começar."
     end
+
+    test "MAX-51 E3: removing a category so the word pool becomes too small blocks start while keeping other settings",
+         %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      guest = insert(:player, username: "bruno")
+      cat_keep = insert(:category, name: "Animals", language: "en")
+      cat_drop = insert(:category, name: "Space", language: "en")
+
+      for text <- ~w(tiger zebra), do: insert(:word, text: text, category: cat_keep)
+      for text <- ~w(orbit comet), do: insert(:word, text: text, category: cat_drop)
+
+      {:ok, game} =
+        Games.create_game(owner.id, %{
+          name: "Noite da Turma",
+          max_players: 5,
+          word_options: %{language: "en", category_ids: [cat_keep.id, cat_drop.id]}
+        })
+
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(guest), game.id)
+
+      conn = log_in_player(conn, owner)
+      {:ok, lv, _html} = live(conn, ~p"/rooms/#{game.id}/settings")
+
+      assert has_element?(lv, ~s|#room-name[value="Noite da Turma"]|)
+      assert has_element?(lv, ~s|#room-max-players button[aria-checked="true"]|, "5")
+      assert has_element?(lv, ~s|#room-language button[aria-checked="true"]|, "Inglês")
+      assert has_element?(lv, "#category-chip-#{cat_keep.id}[aria-pressed='true']")
+      assert has_element?(lv, "#category-chip-#{cat_drop.id}[aria-pressed='true']")
+
+      # Deselect Space, leaving only Animals (2 playable words < 4 required for 2 players)
+      lv |> element("#category-chip-#{cat_drop.id}") |> render_click()
+      assert has_element?(lv, "#category-chip-#{cat_drop.id}[aria-pressed='false']")
+      assert has_element?(lv, "#category-chip-#{cat_keep.id}[aria-pressed='true']")
+
+      {:ok, lobby_lv, lobby_html} =
+        lv
+        |> form("#room-form")
+        |> render_submit()
+        |> follow_redirect(conn, ~p"/rooms/#{game.id}")
+
+      assert lobby_lv.module == ForkaWeb.RoomLive
+      assert visible_text(lobby_html) =~ "Aguardando jogadores"
+
+      # Other settings are preserved
+      assert has_element?(lobby_lv, "h1", "Noite da Turma")
+      assert has_element?(lobby_lv, "#room-lobby-occupancy", "2/5 jogadores")
+      assert has_element?(lobby_lv, "#room-lobby-language", "Inglês")
+      assert has_element?(lobby_lv, "#room-lobby-categories", "Animals")
+      refute has_element?(lobby_lv, "#room-lobby-categories", "Space")
+
+      # Lobby shows the warning alert, broadening guidance, and blocked waiting status
+      assert has_element?(
+               lobby_lv,
+               "#room-word-availability-alert",
+               "Poucas palavras para começar"
+             )
+
+      assert has_element?(lobby_lv, "#room-word-availability-alert", "2 palavras válidas")
+      assert has_element?(lobby_lv, "#room-word-availability-alert", "escolha mais categorias")
+
+      assert has_element?(
+               lobby_lv,
+               ~s|#broaden-word-selection[href="/rooms/#{game.id}/settings"]|
+             )
+
+      assert has_element?(
+               lobby_lv,
+               "#room-waiting-status",
+               "Ajuste as configurações para ter palavras suficientes."
+             )
+
+      # Domain kickoff is blocked and persisted settings remain intact
+      assert {:error, {:insufficient_words, %{available: 2, required: 4}}} =
+               Games.start_game(Forka.Scope.for_player(owner), game.id)
+
+      summary = Games.get_game_summary(game.id)
+      assert summary.game_status == :lobby
+      assert summary.name == "Noite da Turma"
+      assert summary.max_players == 5
+      assert summary.word_options.language == "en"
+      assert summary.word_options.category_ids == [cat_keep.id]
+    end
   end
 
   describe "validation errors, stale selections, and capacity below occupancy" do

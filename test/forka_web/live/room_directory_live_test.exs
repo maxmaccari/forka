@@ -4,6 +4,7 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
   import Phoenix.LiveViewTest
 
   alias Forka.Games
+  alias Forka.Race
   alias ForkaWeb.RoomDirectoryLive
 
   describe "initial render, loading, empty state, and room list" do
@@ -390,6 +391,74 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
       assert text =~ "Ao vivo · #{limit} salas"
       refute text =~ "mostrando as #{limit} mais recentes"
       refute has_element?(lv, "#rooms-#{orphan.id}")
+    end
+
+    test "MAX-51 E1: two players creating rooms concurrently appear exactly once in each open room list",
+         %{conn: conn} do
+      owner_a = insert(:player, username: "lia")
+      owner_b = insert(:player, username: "bruno")
+      cat_a = insert(:category, name: "Animais", language: "pt")
+      cat_b = insert(:category, name: "Música", language: "pt")
+
+      {:ok, dir_a, _html} = conn |> log_in_player(owner_a) |> live(~p"/")
+      _ = render_async(dir_a)
+
+      {:ok, dir_b, _html} = build_conn() |> log_in_player(owner_b) |> live(~p"/")
+      _ = render_async(dir_b)
+
+      assert has_element?(dir_a, "#rooms-empty")
+      assert has_element?(dir_b, "#rooms-empty")
+
+      test_pid = self()
+
+      # Interleave owner_b's room creation (and a mid-race directory mount) right
+      # after owner_a's room is committed and its GameServer is up, immediately
+      # before owner_a's :created PubSub broadcast (`Words.list_categories_by_ids/1`).
+      :ok =
+        Race.after_query(
+          test_pid,
+          fn metadata ->
+            metadata.source == "categories" and is_binary(metadata.query) and
+              String.contains?(metadata.query, "ORDER BY")
+          end,
+          fn ->
+            {:ok, game_b} =
+              Games.create_room(Forka.Scope.for_player(owner_b), %{
+                name: "Sala do Bruno",
+                max_players: 4,
+                word_options: %{language: "pt", category_ids: [cat_b.id]}
+              })
+
+            {:ok, dir_mid_race, _html} =
+              build_conn() |> log_in_player(owner_b) |> live(~p"/")
+
+            _ = render_async(dir_mid_race)
+            send(test_pid, {:raced, game_b, dir_mid_race})
+          end
+        )
+
+      {:ok, game_a} =
+        Games.create_room(Forka.Scope.for_player(owner_a), %{
+          name: "Sala da Lia",
+          max_players: 4,
+          word_options: %{language: "pt", category_ids: [cat_a.id]}
+        })
+
+      assert_receive {:raced, game_b, dir_mid_race}
+
+      for lv <- [dir_a, dir_b, dir_mid_race] do
+        html = render(lv)
+        doc = LazyHTML.from_fragment(html)
+        text = visible_text(html)
+
+        refute has_element?(lv, "#rooms-empty")
+        assert text =~ "Ao vivo · 2 salas"
+        assert Enum.count(LazyHTML.query(doc, "#rooms-list > article")) == 2
+        assert Enum.count(LazyHTML.query(doc, "#rooms-#{game_a.id}")) == 1
+        assert Enum.count(LazyHTML.query(doc, "#rooms-#{game_b.id}")) == 1
+        assert text =~ "Sala da Lia"
+        assert text =~ "Sala do Bruno"
+      end
     end
   end
 
