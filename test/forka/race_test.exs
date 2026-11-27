@@ -55,4 +55,30 @@ defmodule Forka.RaceTest do
     Repo.all(Category)
     assert_received :raced
   end
+
+  test "RACE-04: fails teardown when the race callback raises instead of swallowing it" do
+    teardown =
+      Race.arm(self(), &(&1.source == "categories"), fn ->
+        raise "callback boom"
+      end)
+
+    Repo.all(Category)
+
+    assert_raise ExUnit.AssertionError, ~r/callback failed.*callback boom/s, teardown
+  end
+
+  test "RACE-05: fails teardown when no query matches and includes a raising matcher error" do
+    teardown =
+      Race.arm(
+        self(),
+        fn _metadata -> raise "matcher boom" end,
+        fn -> :ok end
+      )
+
+    Repo.all(Category)
+
+    assert_raise ExUnit.AssertionError,
+                 ~r/no matching query outside a transaction.*matcher boom/s,
+                 teardown
+  end
 end
