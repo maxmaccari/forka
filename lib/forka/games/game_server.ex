@@ -33,19 +33,38 @@ defmodule Forka.Games.GameServer do
   # Public API
 
   @doc false
-  def start_link(game_id) do
-    with {:ok, game_state} <- Repository.get_game_state(game_id),
-         {:ok, reconciled} <- reconcile_loaded_state(game_state),
-         :ok <- validate_status(reconciled) do
-      GenServer.start_link(__MODULE__, reconciled, name: global_name(game_id))
+  def start_link(game_id) when is_binary(game_id) do
+    with_game_lifecycle_lock(game_id, fn -> start_cold_game(game_id) end)
+  end
+
+  defp start_cold_game(game_id) do
+    case whereis(game_id) do
+      pid when is_pid(pid) ->
+        {:error, {:already_started, pid}}
+
+      nil ->
+        with {:ok, reconciled} <- load_and_reconcile_cold_game(game_id),
+             :ok <- validate_status(reconciled) do
+          GenServer.start_link(__MODULE__, reconciled, name: global_name(game_id))
+        end
     end
   end
 
   @doc false
   def reconcile_cold_game(game_id) when is_binary(game_id) do
-    with {:ok, game_state} <- Repository.get_game_state(game_id) do
-      reconcile_loaded_state(game_state)
-    end
+    with_game_lifecycle_lock(game_id, fn ->
+      case whereis(game_id) do
+        pid when is_pid(pid) ->
+          {:running, pid}
+
+        nil ->
+          load_and_reconcile_cold_game(game_id)
+      end
+    end)
+  end
+
+  defp with_game_lifecycle_lock(game_id, fun) when is_binary(game_id) and is_function(fun, 0) do
+    :global.trans({{__MODULE__, :lifecycle, game_id}, self()}, fun)
   end
 
   defp validate_status(%{status: :archived}), do: {:error, :game_archived}
@@ -298,13 +317,20 @@ defmodule Forka.Games.GameServer do
 
   # Private Helpers
 
-  defp reconcile_loaded_state(%GameState{status: :archived} = game_state),
-    do: {:ok, game_state}
+  defp load_and_reconcile_cold_game(game_id, retries \\ 1) do
+    case Repository.reconcile_game_state(game_id, &Core.reconcile_missing_players/2) do
+      {:ok, :unchanged, state} ->
+        {:ok, state}
 
-  defp reconcile_loaded_state(%GameState{} = game_state) do
-    case reconcile_running_state(game_state) do
-      {:ok, reconciled} -> {:ok, reconciled}
-      {:archived, archived} -> {:ok, archived}
+      {:ok, :reconciled, previous, saved} ->
+        publish_state!(previous, saved)
+        {:ok, saved}
+
+      {:error, %Ecto.Changeset{}} when retries > 0 ->
+        load_and_reconcile_cold_game(game_id, retries - 1)
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -395,10 +421,14 @@ defmodule Forka.Games.GameServer do
 
   defp save_and_publish!(previous, updated) do
     saved = Repository.save_game_state!(updated)
+    publish_state!(previous, saved)
+    saved
+  end
+
+  defp publish_state!(previous, saved) do
     broadcast!(saved)
     broadcast_lobby!(saved)
     :ok = GameListNotifier.broadcast_update_if_changed(previous, saved)
-    saved
   end
 
   defp do_start_game(game, actor_id) do

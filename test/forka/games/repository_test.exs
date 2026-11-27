@@ -594,6 +594,30 @@ defmodule Forka.Games.RepositoryTest do
     end
   end
 
+  describe "reconcile_game_state/2" do
+    test "F-01: locks and reconciles an ownerless game atomically, and treats archived or missing games cleanly" do
+      owner = insert(:player, username: "lia")
+      {:ok, game} = Repository.insert_game(owner.id, %{name: "Orfa", max_players: 4})
+      Repo.delete!(owner)
+
+      assert {:ok, :reconciled, prev, saved} =
+               Repository.reconcile_game_state(game.id, &Core.reconcile_missing_players/2)
+
+      assert prev.status == :lobby
+      assert saved.status == :archived
+      assert saved.owner == nil
+
+      # Second reconciliation sees already-archived row and returns :unchanged without raising
+      assert {:ok, :unchanged, archived} =
+               Repository.reconcile_game_state(game.id, &Core.reconcile_missing_players/2)
+
+      assert archived.status == :archived
+
+      assert {:error, :not_found} =
+               Repository.reconcile_game_state(UUID.uuid4(), &Core.reconcile_missing_players/2)
+    end
+  end
+
   defp to_games_player(%Forka.Players.Player{} = player) do
     %Forka.Games.Schemas.Player{
       id: player.id,

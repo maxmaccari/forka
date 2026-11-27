@@ -1941,5 +1941,194 @@ defmodule Forka.GamesTest do
       assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
       assert {:error, :game_archived} = Games.get_room_invite(game.id)
     end
+
+    test "F-01: parallel cold repairs of the same empty ownerless room serialize without crashing" do
+      owner = insert(:player, username: "lia")
+      {:ok, game} = Repository.insert_game(owner.id, %{name: "Solo Paralela", max_players: 4})
+      Repo.delete!(owner)
+
+      test_pid = self()
+      task_supervisor = start_supervised!(Task.Supervisor)
+      handler_id = "f01-parallel-empty-#{System.unique_integer([:positive])}"
+
+      :ok =
+        :telemetry.attach(
+          handler_id,
+          [:forka, :repo, :query],
+          fn _event, _measurements, %{query: query}, %{test_pid: parent} ->
+            case Process.get(:f01_role) do
+              {:invite, idx} ->
+                cond do
+                  String.contains?(query, ~s|LEFT OUTER JOIN "game_players"|) and
+                      not Process.get(:f01_invite_loaded, false) ->
+                    Process.put(:f01_invite_loaded, true)
+                    send(parent, {:invite_loaded, idx, self()})
+                    receive do: (:go_reconcile -> :ok)
+
+                  idx == 1 and String.contains?(query, ~s|FROM "games"|) and
+                    not String.contains?(query, "LEFT OUTER JOIN") and
+                      not Process.get(:f01_reconcile_paused, false) ->
+                    Process.put(:f01_reconcile_paused, true)
+                    send(parent, {:reconcile_loaded, 1, self()})
+                    receive do: (:finish_reconcile -> :ok)
+
+                  true ->
+                    :ok
+                end
+
+              _ ->
+                :ok
+            end
+          end,
+          %{test_pid: test_pid}
+        )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      task1 =
+        Task.Supervisor.async_nolink(task_supervisor, fn ->
+          Process.put(:f01_role, {:invite, 1})
+          Games.get_room_invite(game.id)
+        end)
+
+      assert_receive {:invite_loaded, 1, t1_pid}, 2_000
+
+      task2 =
+        Task.Supervisor.async_nolink(task_supervisor, fn ->
+          Process.put(:f01_role, {:invite, 2})
+          result = Games.get_room_invite(game.id)
+          send(test_pid, :task2_done)
+          result
+        end)
+
+      assert_receive {:invite_loaded, 2, t2_pid}, 2_000
+
+      # Release task1 into cold repair and pause it right after it loads the game row
+      send(t1_pid, :go_reconcile)
+      assert_receive {:reconcile_loaded, 1, ^t1_pid}, 2_000
+
+      # Release task2: either it finishes unserialized (bug) or contends on the lifecycle lock (fix)
+      try do
+        :erlang.trace(t2_pid, true, [:send])
+        send(t2_pid, :go_reconcile)
+
+        receive do
+          {:trace, ^t2_pid, :send, {:"$gen_call", _, {:set_lock, _}}, _} -> :ok
+          :task2_done -> :ok
+        after
+          2_000 -> flunk("task2 neither contended on the repair lock nor completed")
+        end
+      after
+        try do
+          :erlang.trace(t2_pid, false, [:send])
+        rescue
+          ArgumentError -> :ok
+        end
+
+        send(t1_pid, :finish_reconcile)
+      end
+
+      assert {:error, :game_archived} = Task.await(task1, 5_000)
+      assert {:error, :game_archived} = Task.await(task2, 5_000)
+      assert GameServer.whereis(game.id) == nil
+      assert {:ok, %{status: :archived, owner: nil}} = Repository.get_game_state(game.id)
+    end
+
+    test "F-01: cold repair racing with GameServer startup never overwrites a newer join or transfer" do
+      owner = insert(:player, username: "lia")
+      p2 = insert(:player, username: "bruno")
+      p3 = insert(:player, username: "caio")
+
+      {:ok, game} = Repository.insert_game(owner.id, %{name: "Corrida Fria", max_players: 4})
+      {:ok, state} = Repository.get_game_state(game.id)
+      {:ok, state} = Core.join_game(state, Repository.get_player(p2.id))
+      {:ok, _} = Repository.save_game_state(state)
+      Repo.delete!(owner)
+
+      on_exit(fn ->
+        if pid = GameServer.whereis(game.id) do
+          DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
+        end
+      end)
+
+      test_pid = self()
+      task_supervisor = start_supervised!(Task.Supervisor)
+      handler_id = "f01-repair-vs-startup-#{System.unique_integer([:positive])}"
+      games_sup = Process.whereis(Forka.GamesSupervisor)
+
+      :ok =
+        :telemetry.attach(
+          handler_id,
+          [:forka, :repo, :query],
+          fn _event, _measurements, %{query: query}, %{test_pid: parent} ->
+            if Process.get(:f01_role) == :cold_repair and
+                 String.contains?(query, ~s|FROM "games"|) and
+                 not String.contains?(query, "LEFT OUTER JOIN") and
+                 not Process.get(:f01_reconcile_paused, false) do
+              Process.put(:f01_reconcile_paused, true)
+              send(parent, {:cold_repair_loaded, self()})
+              receive do: (:finish_reconcile -> :ok)
+            end
+          end,
+          %{test_pid: test_pid}
+        )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      repair_task =
+        Task.Supervisor.async_nolink(task_supervisor, fn ->
+          Process.put(:f01_role, :cold_repair)
+          Games.get_room_invite(game.id)
+        end)
+
+      assert_receive {:cold_repair_loaded, repair_pid}, 2_000
+
+      # While cold repair is paused after loading, start the server via join_room and transfer ownership
+      join_transfer_task =
+        try do
+          :erlang.trace(games_sup, true, [:send])
+
+          task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              assert {:ok, :joined} = Games.join_room(Scope.for_player(p3), game.id)
+              assert :ok = Games.transfer_ownership(Scope.for_player(p2), game.id, p3.id)
+              send(test_pid, :join_transfer_done)
+              :ok
+            end)
+
+          receive do
+            {:trace, ^games_sup, :send, {:"$gen_call", _, {:set_lock, _}}, _} -> :ok
+            :join_transfer_done -> :ok
+          after
+            2_000 ->
+              flunk("join_room/transfer_ownership neither contended on the lock nor finished")
+          end
+
+          task
+        after
+          :erlang.trace(games_sup, false, [:send])
+          send(repair_pid, :finish_reconcile)
+        end
+
+      assert {:ok, %Forka.Games.RoomInvite{}} = Task.await(repair_task, 5_000)
+      assert :ok = Task.await(join_transfer_task, 5_000)
+
+      # Neither the live GameServer nor PostgreSQL may lose p3's join or ownership transfer
+      live_summary = Games.get_game_summary(game.id)
+      assert live_summary.owner.id == p3.id
+
+      assert live_summary.players |> Map.values() |> Enum.map(& &1.player.id) |> Enum.sort() ==
+               Enum.sort([p2.id, p3.id])
+
+      {:ok, persisted} = Repository.get_game_state(game.id)
+      assert persisted.owner.id == p3.id
+
+      assert persisted.game_players |> Map.values() |> Enum.map(& &1.player.id) |> Enum.sort() ==
+               Enum.sort([p2.id, p3.id])
+
+      # Calling reconcile_cold_game once the server is running delegates instead of overwriting
+      assert {:running, pid} = GameServer.reconcile_cold_game(game.id)
+      assert pid == GameServer.whereis(game.id)
+    end
   end
 end

@@ -672,22 +672,40 @@ defmodule Forka.Games do
     ensure_game_server_available(game_id, fn -> GameServer.unsubscribe(game_id) end)
   end
 
-  defp reconcile_ownerless_room(game_id) do
+  defp reconcile_ownerless_room(game_id, retries \\ 1) do
     if GameServer.exists?(game_id),
-      do: reconcile_running_room(game_id),
-      else: reconcile_cold_room(game_id)
+      do: reconcile_running_room(game_id, retries),
+      else: reconcile_cold_room(game_id, retries)
   end
 
-  defp reconcile_running_room(game_id) do
-    case call_server_action(game_id, fn -> {:ok, GameServer.get_game(game_id)} end, 1) do
-      {:ok, %GameSummary{game_status: :archived}} -> {:error, :game_archived}
-      {:ok, %GameSummary{} = summary} -> {:ok, summary}
-      {:error, _} = error -> error
+  defp reconcile_running_room(game_id, retries) do
+    case GameServer.get_game(game_id) do
+      %GameSummary{game_status: :archived} -> {:error, :game_archived}
+      %GameSummary{} = summary -> {:ok, summary}
+    end
+  catch
+    :exit, {reason, _call} when reason in [:normal, :noproc] ->
+      handle_reconcile_shutdown_race(game_id, retries)
+
+    :exit, reason when reason in [:normal, :noproc] ->
+      handle_reconcile_shutdown_race(game_id, retries)
+  end
+
+  defp handle_reconcile_shutdown_race(game_id, retries) when retries > 0 do
+    reconcile_ownerless_room(game_id, retries - 1)
+  end
+
+  defp handle_reconcile_shutdown_race(game_id, _retries) do
+    case Repository.get_game_state(game_id) do
+      {:ok, %{status: :archived}} -> {:error, :game_archived}
+      {:ok, _game_state} -> {:error, :game_server_unavailable}
+      {:error, _reason} = error -> error
     end
   end
 
-  defp reconcile_cold_room(game_id) do
+  defp reconcile_cold_room(game_id, retries) do
     case GameServer.reconcile_cold_game(game_id) do
+      {:running, _pid} -> reconcile_running_room(game_id, retries)
       {:ok, %GameState{status: :archived}} -> {:error, :game_archived}
       {:ok, %GameState{} = state} -> {:ok, Core.to_game_summary(state)}
       {:error, _} = error -> error
@@ -726,17 +744,8 @@ defmodule Forka.Games do
   end
 
   defp start_and_run_game_server(game_id, action, retries) do
-    case Repository.get_game_state(game_id) do
-      {:ok, %{status: :archived}} ->
-        {:error, :game_archived}
-
-      {:ok, _game_state} ->
-        with {:ok, _pid} <- start_supervised_game(game_id) do
-          call_server_action(game_id, action, retries)
-        end
-
-      {:error, _reason} = error ->
-        error
+    with {:ok, _pid} <- start_supervised_game(game_id) do
+      call_server_action(game_id, action, retries)
     end
   end
 

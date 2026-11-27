@@ -205,6 +205,76 @@ defmodule Forka.Games.Repository do
   end
 
   @doc """
+  Atomically locks `id` in persistence, loads its state, evaluates `reconcile_fun`
+  against the currently existing player IDs, and persists the reconciled state when changed.
+  """
+  @spec reconcile_game_state(
+          Ecto.UUID.t(),
+          (GameState.t(), [Ecto.UUID.t()] -> :unchanged | {:changed, GameState.t()})
+        ) ::
+          {:ok, :unchanged, GameState.t()}
+          | {:ok, :reconciled, GameState.t(), GameState.t()}
+          | {:error, :not_found | Ecto.Changeset.t(Game.t())}
+  def reconcile_game_state(id, reconcile_fun)
+      when is_binary(id) and is_function(reconcile_fun, 2) do
+    Repo.transaction(fn -> reconcile_locked_game(id, reconcile_fun) end)
+    |> handle_reconcile_result()
+  end
+
+  defp reconcile_locked_game(id, reconcile_fun) do
+    case fetch_locked_game(id) do
+      nil -> Repo.rollback(:not_found)
+      %Game{status: :archived} = archived -> {:unchanged, Game.to_game_state(archived)}
+      %Game{} = game -> apply_reconcile_fun(game, reconcile_fun)
+    end
+  end
+
+  defp apply_reconcile_fun(%Game{} = game, reconcile_fun) do
+    loaded_state = Game.to_game_state(game)
+    existing_ids = loaded_state |> referenced_player_ids() |> existing_player_ids()
+
+    case reconcile_fun.(loaded_state, existing_ids) do
+      :unchanged -> {:unchanged, loaded_state}
+      {:changed, updated_state} -> persist_reconciled_game(game, loaded_state, updated_state)
+    end
+  end
+
+  defp persist_reconciled_game(game, loaded_state, updated_state) do
+    case game |> Game.state_changeset(updated_state) |> Repo.update() do
+      {:ok, saved_game} ->
+        saved_state = saved_game |> Repo.preload(@game_preloads) |> Game.to_game_state()
+        {:reconciled, saved_game, loaded_state, saved_state}
+
+      {:error, changeset} ->
+        Repo.rollback(changeset)
+    end
+  end
+
+  defp handle_reconcile_result({:ok, {:unchanged, state}}), do: {:ok, :unchanged, state}
+
+  defp handle_reconcile_result({:ok, {:reconciled, saved_game, previous_state, saved_state}}) do
+    broadcast_backoffice!(saved_game, "backpex:updated")
+    {:ok, :reconciled, previous_state, saved_state}
+  end
+
+  defp handle_reconcile_result({:error, reason}), do: {:error, reason}
+
+  defp fetch_locked_game(id) do
+    from(g in Game, where: g.id == ^id, lock: "FOR UPDATE")
+    |> Repo.one()
+    |> Repo.preload(@game_preloads)
+  end
+
+  defp referenced_player_ids(%GameState{owner: owner, game_players: game_players}) do
+    seated_ids = Enum.map(game_players, fn {_idx, gp} -> gp.player.id end)
+
+    case owner do
+      %{id: owner_id} when is_binary(owner_id) -> [owner_id | seated_ids]
+      _ -> seated_ids
+    end
+  end
+
+  @doc """
   Similar to `save_game_state/1`, but raises an exception if the game state cannot be saved.
 
   ## Parameters
