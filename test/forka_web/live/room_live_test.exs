@@ -955,7 +955,12 @@ defmodule ForkaWeb.RoomLiveTest do
 
       assert has_element?(
                owner_lv,
-               "#transfer-ownership-sheet",
+               ~s|#transfer-ownership-sheet [role="dialog"][aria-describedby="transfer-ownership-sheet-description"]|
+             )
+
+      assert has_element?(
+               owner_lv,
+               "#transfer-ownership-sheet-description",
                "bruno passa a mudar as configurações e a começar a partida. Você continua na sala como participante."
              )
 

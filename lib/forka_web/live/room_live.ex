@@ -526,11 +526,15 @@ defmodule ForkaWeb.RoomLive do
       on_cancel={JS.push("cancel_transfer_ownership")}
     >
       <:title>Passar a sala para {@target.username}?</:title>
-      <div class="flex items-start gap-3">
+      <:description>
+        {@target.username} passa a mudar as configurações e a começar a partida. Você continua na sala como participante.
+      </:description>
+      <div class="flex items-center gap-3 rounded-lg bg-sunken px-3 py-2.5">
         <.avatar name={@target.username} player_index={@target.player_index} size="md" />
-        <p class="text-base text-ink-muted">
-          {@target.username} passa a mudar as configurações e a começar a partida. Você continua na sala como participante.
-        </p>
+        <div class="min-w-0">
+          <p class="truncate text-sm font-semibold text-ink">{@target.username}</p>
+          <p class="text-xs text-ink-muted">Novo anfitrião da sala</p>
+        </div>
       </div>
       <:actions>
         <.button
