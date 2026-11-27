@@ -5,14 +5,26 @@ defmodule ForkaWeb.E2E.InviteLobbyTest do
   use ForkaWeb.E2ECase, async: false
 
   alias Forka.Games
+  alias Forka.Games.GameServer
   alias Forka.Scope
+  alias PhoenixTest.Playwright
   alias PhoenixTest.Playwright.Config
+  alias PlaywrightEx.Frame
+  alias PlaywrightEx.Selector
 
   test "E2E-INV-01: invite sign-in, live lobby sync, copy confirmation, role controls, revisit, reload, and leave",
        %{conn: conn} = context do
     owner = insert(:player, username: "lia")
     guest = insert(:player, username: "bruno")
-    room = create_room!(owner, %{name: "Noite de palavras", max_players: 4})
+    empty_category = insert(:category, name: "Vazia", language: "pt")
+
+    room =
+      create_room!(owner, %{
+        name: "Noite de palavras",
+        max_players: 4,
+        word_options: %{language: "pt", category_ids: [empty_category.id]}
+      })
+
     expected_invite_url = url(~p"/rooms/#{room.id}/join")
 
     # Done 5: Owner opens lobby, copies invite link, sees confirmation, and clipboard holds URL.
@@ -68,21 +80,43 @@ defmodule ForkaWeb.E2E.InviteLobbyTest do
       |> assert_has("#room-lobby-player-#{guest.id}", text: "bruno")
       |> assert_has("#room-lobby-player-#{guest.id}", text: "· você")
 
-    # Done 2: Owner sees the new player appear in the roster live without a reload.
+    # Done 2: Owner sees the new player appear in the roster live without a reload,
+    # and positively sees desktop, mobile (DOM-attached + narrow viewport), and word-alert owner controls.
     owner_conn
     |> assert_has("#room-lobby-occupancy", text: "2/4 jogadores")
     |> assert_has("#room-lobby-player-#{guest.id}", text: "bruno")
+    |> assert_has("#room-word-availability-alert")
+    |> assert_has("#broaden-word-selection", text: "Ajustar configurações")
+    |> assert_has("#edit-room-settings", text: "Editar")
     |> assert_has("#transfer-ownership-#{guest.id}", text: "Passar a posse")
+    |> assert_in_dom("#transfer-ownership-mobile-#{guest.id}")
+    |> with_viewport(375, 812, fn mobile_owner ->
+      mobile_owner
+      |> assert_has("#transfer-ownership-mobile-#{guest.id}")
+      |> assert_has("#broaden-word-selection", text: "Ajustar configurações")
+    end)
     |> evaluate(
       "window.forkaNoReload",
       &assert(&1 == true, "expected owner lobby to update live without reload")
     )
 
-    # Done 4: Non-owner does not see owner controls (edit settings or transfer ownership).
+    # Done 4: Non-owner sees the word-availability alert itself, but has no owner controls
+    # in the DOM (desktop, sm:hidden mobile transfer, or #broaden-word-selection) or on narrow viewports.
     guest_conn
-    |> refute_has("#edit-room-settings")
-    |> refute_has(~s|[id^="transfer-ownership-"]|)
+    |> assert_has("#room-word-availability-alert")
     |> assert_has("#room-waiting-status", text: "Esperando lia começar")
+    |> refute_has("#edit-room-settings")
+    |> refute_has("#broaden-word-selection")
+    |> refute_has(~s|[id^="transfer-ownership-"]|)
+    |> refute_in_dom("#edit-room-settings")
+    |> refute_in_dom("#broaden-word-selection")
+    |> refute_in_dom(~s|[id^="transfer-ownership-"]|)
+    |> with_viewport(375, 812, fn mobile_guest ->
+      mobile_guest
+      |> refute_has("#edit-room-settings")
+      |> refute_has("#broaden-word-selection")
+      |> refute_has(~s|[id^="transfer-ownership-"]|)
+    end)
 
     # Edge B: Participant reopens invite link and returns to lobby without joining twice.
     guest_conn =
@@ -171,7 +205,7 @@ defmodule ForkaWeb.E2E.InviteLobbyTest do
     |> assert_has("#rooms-live-status", text: "Ao vivo")
   end
 
-  test "E2E-INV-03: two players open the stale invite for the last seat; first joins and second sees Sala cheia",
+  test "E2E-INV-03: two players submit overlapping joins for the last seat; one enters the lobby and the other sees Sala cheia",
        %{conn: conn} = context do
     owner = insert(:player, username: "lia")
     first_player = insert(:player, username: "bruno")
@@ -197,16 +231,85 @@ defmodule ForkaWeb.E2E.InviteLobbyTest do
       |> assert_has("#room-invite-occupancy", text: "1/2 jogadores")
       |> assert_has("#invite-join-button", text: "Entrar na sala")
 
-    first_conn
-    |> click_button("Entrar na sala")
-    |> assert_path(~p"/rooms/#{room.id}")
+    game_pid = GameServer.whereis(room.id)
+    assert is_pid(game_pid)
+    invite_lv_pids = find_invite_live_pids(room.id)
+    assert length(invite_lv_pids) == 2
+
+    Enum.each(invite_lv_pids, &:erlang.trace(&1, true, [:send]))
+    :ok = :sys.suspend(game_pid)
+
+    {first_conn, second_conn} =
+      try do
+        first_conn =
+          first_conn
+          |> click_button("#invite-join-button", "Entrar na sala")
+          |> assert_has("#invite-join-button.phx-click-loading")
+
+        second_conn =
+          second_conn
+          |> click_button("#invite-join-button", "Entrar na sala")
+          |> assert_has("#invite-join-button.phx-click-loading")
+
+        first_id = first_player.id
+        second_id = second_player.id
+
+        assert_receive {:trace, _, :send, {:"$gen_call", _, {:join_room, ^first_id}}, ^game_pid},
+                       2_000
+
+        assert_receive {:trace, _, :send, {:"$gen_call", _, {:join_room, ^second_id}}, ^game_pid},
+                       2_000
+
+        {:messages, queued_messages} = Process.info(game_pid, :messages)
+
+        assert Enum.any?(
+                 queued_messages,
+                 &match?({:"$gen_call", _, {:join_room, ^first_id}}, &1)
+               )
+
+        assert Enum.any?(
+                 queued_messages,
+                 &match?({:"$gen_call", _, {:join_room, ^second_id}}, &1)
+               )
+
+        {first_conn, second_conn}
+      after
+        Enum.each(invite_lv_pids, fn pid ->
+          if Process.alive?(pid), do: :erlang.trace(pid, false, [:send])
+        end)
+
+        if Process.alive?(game_pid), do: :sys.resume(game_pid)
+      end
+
+    first_conn = await_join_outcome(first_conn)
+    second_conn = await_join_outcome(second_conn)
+
+    lobby_path = ~p"/rooms/#{room.id}"
+    join_path = ~p"/rooms/#{room.id}/join"
+
+    {winner, lobby_conn, loser, rejected_conn} =
+      case {Playwright.current_path(first_conn), Playwright.current_path(second_conn)} do
+        {^lobby_path, ^join_path} ->
+          {first_player, first_conn, second_player, second_conn}
+
+        {^join_path, ^lobby_path} ->
+          {second_player, second_conn, first_player, first_conn}
+
+        paths ->
+          flunk("expected one lobby and one invite path, got: #{inspect(paths)}")
+      end
+
+    lobby_conn
+    |> assert_path(lobby_path)
     |> assert_has("[data-phx-main].phx-connected")
     |> assert_has("#room-lobby-occupancy", text: "2/2 jogadores")
-    |> assert_has("#room-lobby-player-#{first_player.id}", text: "bruno")
+    |> assert_has("#room-lobby-players > li[id^='room-lobby-player-']", count: 2)
+    |> assert_has("#room-lobby-player-#{owner.id}", text: "lia")
+    |> assert_has("#room-lobby-player-#{winner.id}", text: winner.username)
+    |> refute_has("#room-lobby-player-#{loser.id}")
 
-    second_conn
-    |> click_button("Entrar na sala")
-    |> assert_path(~p"/rooms/#{room.id}/join")
+    rejected_conn
+    |> assert_path(join_path)
     |> assert_has("h2", text: "Sala cheia")
     |> assert_has("#room-invite-occupancy", text: "2/2 jogadores")
     |> refute_has("#invite-join-button")
@@ -330,6 +433,93 @@ defmodule ForkaWeb.E2E.InviteLobbyTest do
 
       refute Map.has_key?(response, :error),
              "grantPermissions failed: #{inspect(response)}"
+    end)
+  end
+
+  defp find_invite_live_pids(room_id) do
+    Enum.filter(Process.list(), fn pid ->
+      with {:dictionary, dict} <- Process.info(pid, :dictionary),
+           {ForkaWeb.RoomInviteLive, :mount, 3} <- Keyword.get(dict, :"$initial_call") do
+        try do
+          match?(
+            %{socket: %{view: ForkaWeb.RoomInviteLive, assigns: %{invite: %{id: ^room_id}}}},
+            :sys.get_state(pid, 1_000)
+          )
+        catch
+          :exit, _ -> false
+        end
+      else
+        _ -> false
+      end
+    end)
+  end
+
+  defp await_join_outcome(conn) do
+    conn
+    |> refute_has("#invite-join-button")
+    |> assert_has("#room-lobby-occupancy, #room-invite-card h2")
+  end
+
+  defp assert_in_dom(conn, selector) do
+    unwrap(conn, fn %{frame_id: frame_id} ->
+      {:ok, attached?} =
+        Frame.expect(
+          frame_id,
+          expression: "to.be.attached",
+          selector: selector |> Selector.css() |> Selector.concat(Selector.at(0)),
+          timeout: Config.global(:timeout)
+        )
+
+      assert attached?, "expected #{inspect(selector)} to be attached in the DOM"
+    end)
+  end
+
+  defp refute_in_dom(conn, selector) do
+    unwrap(conn, fn %{frame_id: frame_id} ->
+      {:ok, attached?} =
+        Frame.expect(
+          frame_id,
+          expression: "to.be.attached",
+          selector: selector |> Selector.css() |> Selector.concat(Selector.at(0)),
+          is_not: true,
+          timeout: Config.global(:timeout)
+        )
+
+      refute attached?, "expected #{inspect(selector)} to be absent from the DOM"
+    end)
+  end
+
+  defp with_viewport(conn, width, height, fun) do
+    {:ok, %{"width" => prev_w, "height" => prev_h}} =
+      Frame.evaluate(conn.frame_id,
+        expression: "() => ({width: window.innerWidth, height: window.innerHeight})",
+        is_function: true,
+        timeout: Config.global(:timeout)
+      )
+
+    conn = set_viewport(conn, width, height)
+
+    try do
+      fun.(conn)
+    after
+      set_viewport(conn, prev_w, prev_h)
+    end
+  end
+
+  defp set_viewport(conn, width, height) do
+    unwrap(conn, fn %{page_id: page_id} ->
+      response =
+        PlaywrightEx.send(
+          %{
+            guid: page_id,
+            method: :set_viewport_size,
+            params: %{viewportSize: %{width: width, height: height}}
+          },
+          timeout: Config.global(:timeout)
+        )
+
+      refute Map.has_key?(response, :error),
+             "setViewportSize failed: #{inspect(response)}"
     end)
   end
 end
