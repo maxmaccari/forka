@@ -4,7 +4,9 @@ defmodule ForkaWeb.RoomInviteLiveTest do
   import Phoenix.LiveViewTest
 
   alias Forka.Games
+  alias Forka.Games.Core
   alias Forka.Games.GameServer
+  alias Forka.Games.Repository
 
   describe "GET /rooms/:id/join" do
     test "REQ-01: renders room details and sign-in/register links with return_to for unauthenticated guests",
@@ -251,6 +253,38 @@ defmodule ForkaWeb.RoomInviteLiveTest do
       assert {:error,
               {:live_redirect, %{to: "/", flash: %{"error" => "Esta sala foi arquivada."}}}} =
                live(conn, ~p"/rooms/#{solo.id}/join")
+    end
+
+    test "F-13: anonymous preview of a cold populated orphan promotes survivor without starting a GameServer",
+         %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      member = insert(:player, username: "bruno")
+
+      {:ok, cold_shared} =
+        Repository.insert_game(owner.id, %{name: "Orfa Fria Convite", max_players: 4})
+
+      {:ok, state} = Repository.get_game_state(cold_shared.id)
+
+      {:ok, state} =
+        Core.join_game(state, Repository.get_player(member.id))
+
+      {:ok, _} = Repository.save_game_state(state)
+
+      Forka.Repo.delete!(owner)
+      assert GameServer.whereis(cold_shared.id) == nil
+
+      {:ok, lv, html} = live(conn, ~p"/rooms/#{cold_shared.id}/join")
+      assert visible_text(html) =~ "bruno"
+      assert has_element?(lv, "#room-invite-owner", "bruno")
+
+      # No GameServer was started by the preview, so no 30-minute idle archive clock is armed
+      assert GameServer.whereis(cold_shared.id) == nil
+
+      {:ok, persisted} = Repository.get_game_state(cold_shared.id)
+      assert persisted.status == :lobby
+      assert persisted.owner.id == member.id
+      assert Map.keys(persisted.game_players) == [0]
+      assert persisted.game_players[0].player.id == member.id
     end
   end
 end

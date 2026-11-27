@@ -17,6 +17,7 @@ defmodule Forka.Games.GameServer do
   alias Forka.Games.Core
   alias Forka.Games.Core.GameState
   alias Forka.Games.GameListNotifier
+  alias Forka.Games.GameSummary
   alias Forka.Games.Repository
   alias Forka.Games.RoomLobby
   alias Forka.Games.RoomSettings
@@ -65,6 +66,71 @@ defmodule Forka.Games.GameServer do
       {:ok, _status} -> {:error, :game_server_unavailable}
       {:error, :not_found} -> {:error, :not_found}
     end
+  end
+
+  @doc false
+  def reconcile_ownerless_room(game_id, retries \\ 1) when is_binary(game_id) do
+    case whereis(game_id) do
+      pid when is_pid(pid) ->
+        reconcile_running_room(pid, game_id, retries)
+
+      nil ->
+        reconcile_cold_room(game_id, retries)
+    end
+  end
+
+  defp reconcile_cold_room(game_id, retries) do
+    case reconcile_cold_game(game_id) do
+      {:running, pid} -> reconcile_running_room(pid, game_id, retries)
+      {:ok, %GameState{status: :archived}} -> {:error, :game_archived}
+      {:ok, %GameState{} = state} -> {:ok, Core.to_game_summary(state)}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp reconcile_cold_game(game_id) do
+    with_game_lifecycle_lock(game_id, fn ->
+      case whereis(game_id) do
+        pid when is_pid(pid) -> {:running, pid}
+        nil -> load_and_reconcile_game(game_id)
+      end
+    end)
+  end
+
+  defp reconcile_running_room(pid, game_id, retries) do
+    case await_ready(pid, game_id) do
+      {:ok, ready_pid} ->
+        fetch_running_summary(ready_pid, game_id, retries)
+
+      {:error, :game_server_unavailable} when retries > 0 ->
+        reconcile_ownerless_room(game_id, retries - 1)
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp fetch_running_summary(ready_pid, game_id, retries) do
+    case get_game(ready_pid) do
+      %GameSummary{game_status: :archived} -> {:error, :game_archived}
+      %GameSummary{} = summary -> {:ok, summary}
+    end
+  catch
+    :exit, {reason, _call} when reason in [:normal, :noproc] ->
+      handle_reconcile_shutdown_race(game_id, retries)
+
+    :exit, reason when reason in [:normal, :noproc] ->
+      handle_reconcile_shutdown_race(game_id, retries)
+  end
+
+  defp handle_reconcile_shutdown_race(game_id, retries) when retries > 0 do
+    reconcile_ownerless_room(game_id, retries - 1)
+  end
+
+  defp handle_reconcile_shutdown_race(game_id, _retries), do: classify_stopped_game(game_id)
+
+  defp with_game_lifecycle_lock(game_id, fun) when is_binary(game_id) and is_function(fun, 0) do
+    :global.trans({{__MODULE__, :lifecycle, game_id}, self()}, fun)
   end
 
   defp global_name(game_id) when is_binary(game_id) do
@@ -186,7 +252,12 @@ defmodule Forka.Games.GameServer do
 
   @impl true
   def handle_continue(:load, {:loading, game_id}) do
-    case load_and_reconcile_game(game_id) do
+    result =
+      with_game_lifecycle_lock(game_id, fn ->
+        load_and_reconcile_game(game_id)
+      end)
+
+    case result do
       {:ok, %GameState{status: :archived} = archived} ->
         {:stop, :normal, archived}
 

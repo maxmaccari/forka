@@ -327,8 +327,11 @@ defmodule Forka.Games do
 
   defp heal_ownerless_row(%{game: %Game{id: id, status: status, owner_id: nil}})
        when status != :archived do
-    with {:ok, %GameSummary{}} <- fetch_game_summary(id) do
-      {:ok, fetch_persisted_room_invite_row(id)}
+    with {:ok, %GameSummary{}} <- GameServer.reconcile_ownerless_room(id) do
+      case fetch_persisted_room_invite_row(id) do
+        %{} = row -> {:ok, row}
+        nil -> {:error, :not_found}
+      end
     end
   end
 

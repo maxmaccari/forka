@@ -805,9 +805,9 @@ defmodule Forka.Games.Core do
   Reconciles a game state against the list of player IDs that still exist in persistence.
 
   Drops seated players whose accounts were deleted, compacts remaining seats in seat
-  order, and resolves an absent or deleted owner by promoting seat `0` or archiving the
-  room when nobody remains. Returns `:unchanged` when no repair is needed or the room is
-  already `:archived`.
+  order, archives the room whenever a removal or missing owner leaves zero seated players,
+  and resolves an absent or deleted owner by promoting seat `0`. Returns `:unchanged`
+  when no repair is needed or the room is already `:archived`.
   """
   @spec reconcile_missing_players(GameState.t(), [Ecto.UUID.t()]) ::
           :unchanged | {:changed, GameState.t()}
@@ -907,14 +907,14 @@ defmodule Forka.Games.Core do
 
   defp reconcile_owner_and_status(
          %GameState{game_players: remaining_players} = game_state,
-         true,
+         owner_missing?,
          _previous_owner_id,
          _previous_turn_player_id
        )
        when map_size(remaining_players) == 0 do
     %{
       game_state
-      | owner: nil,
+      | owner: if(owner_missing?, do: nil, else: game_state.owner),
         current_game_word_index: nil,
         current_game_player_index: nil
     }
@@ -959,17 +959,6 @@ defmodule Forka.Games.Core do
   end
 
   defp current_turn_player_id(_game_state), do: nil
-
-  defp realign_playing_turn(%GameState{status: :playing, game_players: players} = game_state, _id)
-       when map_size(players) == 0 do
-    %{
-      game_state
-      | status: :game_over,
-        current_game_word_index: nil,
-        current_game_player_index: nil
-    }
-    |> push_event(:game_over)
-  end
 
   defp realign_playing_turn(%GameState{status: :playing} = game_state, previous_turn_player_id) do
     preserved_index =

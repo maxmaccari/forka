@@ -1569,6 +1569,25 @@ defmodule Forka.Games.CoreTest do
       assert archived.game_players == %{}
     end
 
+    test "archives a room when removing or reconciling the last seated player leaves zero seated players even with a surviving unseated owner" do
+      owner = build_games_player("lia")
+      guest = build_games_player("bruno")
+
+      {:ok, lobby_with_guest} = Core.new(owner, "Unseated Owner", 4) |> Core.join_game(guest)
+
+      assert {:changed, archived_via_remove} = Core.remove_player(lobby_with_guest, guest.id)
+      assert archived_via_remove.status == :archived
+      assert archived_via_remove.game_players == %{}
+      assert Enum.any?(archived_via_remove.events, &(&1.type == :game_archived))
+
+      assert {:changed, archived_via_reconcile} =
+               Core.reconcile_missing_players(lobby_with_guest, [owner.id])
+
+      assert archived_via_reconcile.status == :archived
+      assert archived_via_reconcile.game_players == %{}
+      assert Enum.any?(archived_via_reconcile.events, &(&1.type == :game_archived))
+    end
+
     property "removing a player never leaves them as owner or seated, and preserves owner invariant" do
       check all(
               status <- StreamData.member_of([:lobby, :playing, :finished, :game_over]),
