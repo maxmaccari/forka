@@ -1136,12 +1136,15 @@ defmodule ForkaWeb.RoomLiveTest do
       assert :ok = Task.await(leave_task, 5_000)
       confirm_html = Task.await(confirm_task, 5_000)
 
-      assert is_binary(confirm_html)
-      refute has_element?(owner_lv, "#transfer-ownership-sheet")
-      assert has_element?(owner_lv, "#room-lobby-notice", "bruno saiu da sala.")
+      confirm_doc = LazyHTML.from_fragment(confirm_html)
+      assert Enum.empty?(LazyHTML.query(confirm_doc, "#transfer-ownership-sheet"))
+
+      assert visible_text(LazyHTML.query(confirm_doc, "#room-lobby-notice")) =~
+               "bruno saiu da sala."
 
       # After the queued PubSub update is processed, notice remains and owner controls stay intact
       _ = render(owner_lv)
+      refute has_element?(owner_lv, "#transfer-ownership-sheet")
       assert has_element?(owner_lv, "#room-lobby-notice", "bruno saiu da sala.")
       refute has_element?(owner_lv, "#room-lobby-player-#{target.id}")
       assert has_element?(owner_lv, "#edit-room-settings")
