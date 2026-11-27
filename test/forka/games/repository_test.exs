@@ -4,6 +4,8 @@ defmodule Forka.Games.RepositoryTest do
   alias Forka.Games.Core
   alias Forka.Games.Core.GameState
   alias Forka.Games.Repository
+  alias Forka.Games.RoomListItem
+  alias Forka.Games.Schemas.Game
   alias Forka.Games.Schemas.GamePlayer
   alias Forka.Games.Schemas.Player
   alias Forka.Games.Schemas.Word
@@ -641,6 +643,100 @@ defmodule Forka.Games.RepositoryTest do
       {:ok, reloaded} = Repository.get_game_state(game.id)
       assert reloaded.current_game_player_index == 0
       assert Core.get_current_player(reloaded).id == owner.id
+    end
+  end
+
+  describe "F-09: indexed resumable ownerless room selection" do
+    test "F-09: list_ownerless_visible_games_batch/3 separates populated and empty phases with keyset resumption and excludes archived/owned rooms" do
+      base = ~U[2026-11-27 15:00:00Z]
+      statuses = RoomListItem.visible_statuses()
+
+      set_inserted_at = fn game_id, offset_seconds ->
+        ts = DateTime.add(base, offset_seconds, :second)
+
+        from(g in Game, where: g.id == ^game_id)
+        |> Repo.update_all(set: [inserted_at: ts])
+      end
+
+      member = insert(:player, username: "bruno")
+
+      insert_orphan = fn name, offset_seconds, populated? ->
+        owner = insert(:player)
+        {:ok, game} = Repository.insert_game(owner.id, %{name: name, max_players: 4})
+
+        if populated? do
+          {:ok, state} = Repository.get_game_state(game.id)
+          {:ok, state} = Core.join_game(state, Repository.get_player(member.id))
+          {:ok, _} = Repository.save_game_state(state)
+        end
+
+        set_inserted_at.(game.id, offset_seconds)
+        Repo.delete!(owner)
+        %{id: game.id, inserted_at: DateTime.add(base, offset_seconds, :second)}
+      end
+
+      # Owned room and archived ownerless room must never be selected
+      healthy = insert(:game, owner: member, status: :lobby)
+      set_inserted_at.(healthy.id, 900)
+
+      archived_owner = insert(:player)
+      archived = insert(:game, owner: archived_owner, status: :archived)
+      set_inserted_at.(archived.id, 950)
+      Repo.delete!(archived_owner)
+
+      # Empty rooms newer than populated rooms, plus same-second tie-break on id
+      empty_new = insert_orphan.("Empty New", 500, false)
+      empty_old = insert_orphan.("Empty Old", 100, false)
+
+      pop_tie_a = insert_orphan.("Pop Tie A", 300, true)
+      pop_tie_b = insert_orphan.("Pop Tie B", 300, true)
+      pop_oldest = insert_orphan.("Pop Oldest", 200, true)
+
+      [pop_tie_first, pop_tie_second] =
+        Enum.sort_by([pop_tie_a, pop_tie_b], & &1.id, :desc)
+
+      # Combined selection prioritizes all populated rooms before empty rooms, newest first
+      assert Repository.list_ownerless_visible_game_ids(statuses, 10) == [
+               pop_tie_first.id,
+               pop_tie_second.id,
+               pop_oldest.id,
+               empty_new.id,
+               empty_old.id
+             ]
+
+      # Resumable keyset batching over :populated preserves deterministic (inserted_at DESC, id DESC) order
+      assert [first_entry] =
+               Repository.list_ownerless_visible_games_batch(statuses, 1, phase: :populated)
+
+      assert first_entry.id == pop_tie_first.id
+
+      assert [second_entry] =
+               Repository.list_ownerless_visible_games_batch(statuses, 1,
+                 phase: :populated,
+                 after: {first_entry.inserted_at, first_entry.id}
+               )
+
+      assert second_entry.id == pop_tie_second.id
+
+      assert [third_entry] =
+               Repository.list_ownerless_visible_games_batch(statuses, 2,
+                 phase: :populated,
+                 after: {second_entry.inserted_at, second_entry.id}
+               )
+
+      assert third_entry.id == pop_oldest.id
+
+      assert [] =
+               Repository.list_ownerless_visible_games_batch(statuses, 2,
+                 phase: :populated,
+                 after: {third_entry.inserted_at, third_entry.id}
+               )
+
+      # Empty phase returns only empty ownerless visible rooms in newest-first order
+      assert Enum.map(
+               Repository.list_ownerless_visible_games_batch(statuses, 10, phase: :empty),
+               & &1.id
+             ) == [empty_new.id, empty_old.id]
     end
   end
 

@@ -16,6 +16,8 @@ defmodule Forka.Games.OwnerlessRoomRepairer do
           batch_size: pos_integer(),
           draining?: boolean(),
           reschedule?: boolean(),
+          phase: Repository.ownerless_phase(),
+          cursor: Repository.ownerless_cursor() | nil,
           waiters: [GenServer.from()]
         }
 
@@ -41,13 +43,21 @@ defmodule Forka.Games.OwnerlessRoomRepairer do
 
   @impl true
   def init(batch_size) when is_integer(batch_size) and batch_size > 0 do
-    {:ok, %{batch_size: batch_size, draining?: false, reschedule?: false, waiters: []}}
+    {:ok,
+     %{
+       batch_size: batch_size,
+       draining?: false,
+       reschedule?: false,
+       phase: :populated,
+       cursor: nil,
+       waiters: []
+     }}
   end
 
   @impl true
   def handle_cast(:schedule_drain, %{draining?: false} = state) do
     send(self(), :drain_batch)
-    {:noreply, %{state | draining?: true, reschedule?: false}}
+    {:noreply, %{state | draining?: true, reschedule?: false, phase: :populated, cursor: nil}}
   end
 
   def handle_cast(:schedule_drain, %{draining?: true} = state) do
@@ -64,40 +74,83 @@ defmodule Forka.Games.OwnerlessRoomRepairer do
   end
 
   @impl true
-  def handle_info(:drain_batch, %{batch_size: batch_size} = state) do
-    case drain_one_batch(batch_size) do
-      :more ->
-        send(self(), :drain_batch)
-        {:noreply, %{state | draining?: true, reschedule?: false}}
+  def handle_info(:drain_batch, state) do
+    {phase, cursor} =
+      if state.reschedule?, do: {:populated, nil}, else: {state.phase, state.cursor}
 
-      :done when state.reschedule? ->
+    case drain_one_batch(state.batch_size, phase, cursor) do
+      {:more, next_phase, next_cursor} ->
         send(self(), :drain_batch)
-        {:noreply, %{state | draining?: true, reschedule?: false}}
+
+        {:noreply,
+         %{
+           state
+           | draining?: true,
+             reschedule?: false,
+             phase: next_phase,
+             cursor: next_cursor
+         }}
 
       status when status in [:done, :stalled] ->
         reply_waiters(state.waiters)
-        {:noreply, %{state | draining?: false, reschedule?: false, waiters: []}}
+
+        {:noreply,
+         %{
+           state
+           | draining?: false,
+             reschedule?: false,
+             phase: :populated,
+             cursor: nil,
+             waiters: []
+         }}
     end
   end
 
-  defp drain_one_batch(batch_size) do
+  defp drain_one_batch(batch_size, phase, cursor) do
     visible_statuses = RoomListItem.visible_statuses()
 
-    case Repository.list_ownerless_visible_game_ids(visible_statuses, batch_size + 1) do
+    case Repository.list_ownerless_visible_games_batch(
+           visible_statuses,
+           batch_size + 1,
+           phase: phase,
+           after: cursor
+         ) do
       [] ->
-        :done
+        empty_batch_transition(phase)
 
-      ownerless_ids ->
-        {batch_ids, remaining_ids} = Enum.split(ownerless_ids, batch_size)
-        made_progress? = batch_ids |> Enum.map(&reconcile_made_progress?/1) |> Enum.any?()
-
-        cond do
-          not made_progress? -> :stalled
-          remaining_ids != [] -> :more
-          true -> :done
-        end
+      entries ->
+        reconcile_entries(entries, batch_size, phase)
     end
   end
+
+  defp empty_batch_transition(:populated), do: {:more, :empty, nil}
+  defp empty_batch_transition(:empty), do: :done
+
+  defp reconcile_entries(entries, batch_size, phase) do
+    {batch, remaining} = Enum.split(entries, batch_size)
+    made_progress? = batch |> Enum.map(&reconcile_made_progress?(&1.id)) |> Enum.any?()
+
+    cond do
+      not made_progress? ->
+        :stalled
+
+      remaining != [] ->
+        {:more, phase, next_cursor(phase, batch)}
+
+      phase == :populated ->
+        {:more, :empty, nil}
+
+      true ->
+        :done
+    end
+  end
+
+  defp next_cursor(:populated, batch) do
+    last = List.last(batch)
+    {last.inserted_at, last.id}
+  end
+
+  defp next_cursor(:empty, _batch), do: nil
 
   defp reconcile_made_progress?(game_id) do
     case GameServer.reconcile_ownerless_room(game_id) do
