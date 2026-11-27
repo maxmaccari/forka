@@ -89,6 +89,53 @@ jobs:
       - name: Run tests with the coverage gate
         run: mix coveralls
 
+  e2e:
+    name: E2E
+    if: join(github.event.pull_request.labels.*.name, ',') != 'documentation' # DOCS_ONLY
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      # Records a Playwright trace of every e2e test (config/test.exs).
+      PW_TRACE: "true"
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: assets/package-lock.json
+      - name: Install Playwright and Chromium
+        run: |
+          npm --prefix assets ci --include=dev
+          npm --prefix assets exec -- playwright install chromium --with-deps
+      - uses: ./.github/actions/setup-elixir
+      # The `test.e2e` alias builds the assets and prepares the test database (mix.exs).
+      - name: Run e2e tests
+        run: mix test.e2e
+      # Open with `npx playwright show-trace <file>.zip`.
+      - name: Upload traces of a failed run
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-traces
+          path: traces/
+          retention-days: 7
+
   lint:
     name: Lint
     if: join(github.event.pull_request.labels.*.name, ',') != 'documentation' # DOCS_ONLY

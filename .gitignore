@@ -43,3 +43,7 @@ npm-debug.log
 
 # Temporary plans and reports from development workflows.
 /docs/tmp/
+
+# Playwright traces and screenshots from browser tests.
+/traces/
+/screenshots/

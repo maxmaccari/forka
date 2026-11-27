@@ -15,7 +15,7 @@ defmodule Forka.MixProject do
       dialyzer: [
         plt_local_path: "priv/plts",
         plt_core_path: "priv/plts",
-        plt_add_apps: [:mix, :ex_unit],
+        plt_add_apps: plt_add_apps(Mix.env()),
         flags: [:missing_return, :extra_return, :error_handling]
       ]
     ]
@@ -27,7 +27,8 @@ defmodule Forka.MixProject do
         precommit: :test,
         coveralls: :test,
         "coveralls.detail": :test,
-        "coveralls.html": :test
+        "coveralls.html": :test,
+        "test.e2e": :test
       ]
     ]
   end
@@ -46,6 +47,9 @@ defmodule Forka.MixProject do
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
 
+  defp plt_add_apps(:test), do: [:mix, :ex_unit, :phoenix_test, :phoenix_test_playwright]
+  defp plt_add_apps(_), do: [:mix, :ex_unit]
+
   # Specifies your project dependencies.
   #
   # Type `mix help deps` for examples and options.
@@ -63,6 +67,7 @@ defmodule Forka.MixProject do
       {:phoenix_live_view, "~> 1.1"},
       {:floki, ">= 0.30.0", only: :test},
       {:lazy_html, ">= 0.1.0", only: :test},
+      {:phoenix_test_playwright, "~> 0.19.0", only: :test, runtime: false},
       {:phoenix_live_dashboard, "~> 0.8.3"},
       {:esbuild, "~> 0.8", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.3", runtime: Mix.env() == :dev},
@@ -107,6 +112,12 @@ defmodule Forka.MixProject do
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
+      "test.e2e": [
+        "tailwind.install --if-missing",
+        "esbuild.install --if-missing",
+        "assets.build",
+        "test --only e2e"
+      ],
       precommit: [
         "compile --warnings-as-errors",
         "deps.unlock --unused",

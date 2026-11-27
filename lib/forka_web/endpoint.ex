@@ -1,6 +1,12 @@
 defmodule ForkaWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :forka
 
+  # E2E tests only: browser requests join the test's database sandbox.
+  if Application.compile_env(:forka, :sql_sandbox) do
+    alias Phoenix.Ecto.SQL.Sandbox
+    plug Sandbox
+  end
+
   # The session will be stored in the cookie and signed,
   # this means its contents can be read but not tampered with.
   # Set :encryption_salt if you would also like to encrypt it.
@@ -12,8 +18,8 @@ defmodule ForkaWeb.Endpoint do
   ]
 
   socket "/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [session: @session_options]],
-    longpoll: [connect_info: [session: @session_options]]
+    websocket: [connect_info: [:user_agent, session: @session_options]],
+    longpoll: [connect_info: [:user_agent, session: @session_options]]
 
   # Serve at "/" the static files from "priv/static" directory.
   #

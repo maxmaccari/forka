@@ -94,6 +94,7 @@ The full rules and checklist are `.agents/rules/security.md`; these are the ones
 
 - Use `mix precommit` alias when you are done with all changes and fix any pending issues
 - Domain modules in `lib/forka/` require `@moduledoc`, `@doc` and `@spec` for public functions, and a `t()` type for structs. Doctor checks these in `mix precommit`. The web layer, test support, application supervisor, mailer, and repo are exempt.
+- **E2E Tests:** A flow that exercises real browser behaviour (JavaScript hooks, `JS` commands, `localStorage`, CSP, or multi-player live sync across separate browser sessions) gets an e2e test with PhoenixTestPlaywright (`test/forka_web/e2e/`, `use ForkaWeb.E2ECase`). Keep them few, one per critical journey; domain rules and single-session LiveView behaviour stay in ExUnit and LiveViewTest. `mix precommit` and `mix test` skip them: run them with `mix test.e2e` (CI runs them on every pull request). How to write and run them: `.agents/rules/liveview.md`.
 - Use the already included and available `:req` (`Req`) library for HTTP requests, **avoid** `:httpoison`, `:tesla`, and `:httpc`. Req is included by default and is the preferred HTTP client for Phoenix apps
 
 ### Phoenix v1.8 guidelines

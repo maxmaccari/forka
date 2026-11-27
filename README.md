@@ -54,17 +54,29 @@ Run `mix precommit` with PostgreSQL running. It compiles with warnings treated
 as errors, formats the code, runs Credo, Sobelow, MixAudit, Doctor, and Dialyzer,
 then runs the tests with ExCoveralls. The first Dialyzer run builds a local PLT.
 
-GitHub Actions runs parallel checks (**Test**, **Lint**, **Security**, **Doctor**,
-**Dialyzer**, **Assets**, and **Audit**) on pull requests and pushes to `main`.
-Merging to `main` requires a pull request and all checks except **Audit** to
-pass (enforced by the `main` branch ruleset). Pull requests labelled only
-`documentation` (and docs-only pushes to `main`) skip CI.
+GitHub Actions runs parallel checks (**Test**, **E2E**, **Lint**, **Security**,
+**Doctor**, **Dialyzer**, **Assets**, and **Audit**) on pull requests and pushes to
+`main`. Merging to `main` requires a pull request and all checks except **Audit**
+and **E2E** to pass (enforced by the `main` branch ruleset). Pull requests labelled
+only `documentation` (and docs-only pushes to `main`) skip CI.
 
 Ready to run in production? Please [check our deployment guides](https://hexdocs.pm/phoenix/deployment.html).
 
 The production endpoint uses `X-Forwarded-Proto` for HTTPS redirects and HSTS.
 Run it behind a trusted TLS-terminating proxy that sets this header from the
 original connection. Restrict access to the Phoenix listener to that proxy.
+
+### E2E tests
+
+Browser tests drive Chromium through [PhoenixTestPlaywright](https://hexdocs.pm/phoenix_test_playwright) to verify JavaScript hooks, CSP, and multi-player live updates (`test/forka_web/e2e/`). `mix test` and `mix precommit` skip them. Install Playwright and Chromium once per worktree, then run `mix test.e2e`:
+
+```bash
+npm --prefix assets ci --include=dev
+npm --prefix assets exec -- playwright install chromium
+mix test.e2e
+```
+
+Rerun one test with `mix test.e2e test/forka_web/e2e/room_directory_test.exs:7` (plain `mix test path:line` does not start the Playwright driver or rebuild assets).
 
 ## Learn more
 
