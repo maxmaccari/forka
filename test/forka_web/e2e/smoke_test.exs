@@ -20,4 +20,15 @@ defmodule ForkaWeb.E2E.SmokeTest do
 
     refute log =~ "Content Security Policy"
   end
+
+  test "E2E-02: an async browser session joins the SQL sandbox across login and LiveView mount",
+       %{conn: conn} do
+    player = insert(:player)
+
+    conn
+    |> log_in(player)
+    |> visit(~p"/players/settings")
+    |> assert_has("[data-phx-main].phx-connected")
+    |> assert_has("h1", text: "Minha conta")
+  end
 end

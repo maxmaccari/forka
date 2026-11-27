@@ -46,7 +46,10 @@ defmodule ForkaWeb.Router do
     pipe_through [:browser, :redirect_if_player_is_authenticated]
 
     live_session :redirect_if_player_is_authenticated,
-      on_mount: [{ForkaWeb.PlayerAuth, :redirect_if_player_is_authenticated}] do
+      on_mount: [
+        ForkaWeb.LiveAcceptance,
+        {ForkaWeb.PlayerAuth, :redirect_if_player_is_authenticated}
+      ] do
       live "/players/register", PlayerRegistrationLive, :new
       live "/players/log_in", PlayerLoginLive, :new
       live "/players/reset_password", PlayerForgotPasswordLive, :new
@@ -60,7 +63,7 @@ defmodule ForkaWeb.Router do
     pipe_through [:browser, :require_authenticated_player]
 
     live_session :require_authenticated_player,
-      on_mount: [{ForkaWeb.PlayerAuth, :ensure_authenticated}] do
+      on_mount: [ForkaWeb.LiveAcceptance, {ForkaWeb.PlayerAuth, :ensure_authenticated}] do
       live "/rooms/new", RoomFormLive, :new
       live "/rooms/:id", RoomLive, :show
       live "/rooms/:id/match", MatchLive, :show
@@ -76,7 +79,7 @@ defmodule ForkaWeb.Router do
     delete "/players/log_out", PlayerSessionController, :delete
 
     live_session :current_player,
-      on_mount: [{ForkaWeb.PlayerAuth, :mount_current_player}] do
+      on_mount: [ForkaWeb.LiveAcceptance, {ForkaWeb.PlayerAuth, :mount_current_player}] do
       live "/", RoomDirectoryLive, :index
       live "/rooms/:id/join", RoomInviteLive, :show
       live "/players/confirm/:token", PlayerConfirmationLive, :edit
@@ -90,7 +93,10 @@ defmodule ForkaWeb.Router do
     pipe_through [:browser, :admin_layout, :redirect_if_admin_is_authenticated]
 
     live_session :redirect_if_admin_is_authenticated,
-      on_mount: [{ForkaWeb.AdminAuth, :redirect_if_admin_is_authenticated}] do
+      on_mount: [
+        ForkaWeb.LiveAcceptance,
+        {ForkaWeb.AdminAuth, :redirect_if_admin_is_authenticated}
+      ] do
       live "/admin/log_in", AdminLoginLive, :new
     end
 
@@ -103,7 +109,7 @@ defmodule ForkaWeb.Router do
     delete "/admin/log_out", AdminSessionController, :delete
 
     live_session :current_admin,
-      on_mount: [{ForkaWeb.AdminAuth, :mount_current_admin}] do
+      on_mount: [ForkaWeb.LiveAcceptance, {ForkaWeb.AdminAuth, :mount_current_admin}] do
       live "/admin/confirm/:token", AdminConfirmationLive, :edit
       live "/admin/confirm", AdminConfirmationInstructionsLive, :new
     end
@@ -117,7 +123,11 @@ defmodule ForkaWeb.Router do
     backpex_routes()
 
     live_session :default,
-      on_mount: [{ForkaWeb.AdminAuth, :ensure_authenticated}, Backpex.InitAssigns] do
+      on_mount: [
+        ForkaWeb.LiveAcceptance,
+        {ForkaWeb.AdminAuth, :ensure_authenticated},
+        Backpex.InitAssigns
+      ] do
       live_resources "/categories", CategoryLive
       live_resources "/words", WordLive
       live_resources "/players", PlayerLive
