@@ -329,20 +329,108 @@ defmodule ForkaWeb.E2E.AccountTest do
     assert session_token_count(player) == 1
   end
 
+  test "EDGE-02: stopping an in-flight sign-in restores the button so a retry signs in", %{
+    conn: conn
+  } do
+    player = insert(:player)
+    timeout = Config.global(:timeout)
+    test_pid = self()
+    post_counter = :counters.new(1, [:atomics])
+
+    conn =
+      conn
+      |> visit(~p"/players/log_in")
+      |> assert_has("[data-phx-main].phx-connected")
+      |> fill_in("E-mail ou nome de usuário", with: player.email)
+      |> fill_in("Senha", with: "Password1!456")
+
+    conn =
+      unwrap(conn, fn %{page_id: page_id} ->
+        {:ok, _} =
+          Page.route(
+            page_id,
+            "**/players/log_in",
+            fn route, request ->
+              handle_login_route(route, request, post_counter, test_pid, timeout)
+            end,
+            timeout: timeout,
+            on_error: :message
+          )
+      end)
+
+    try do
+      conn
+      |> unwrap(fn %{page_id: page_id, frame_id: frame_id} ->
+        {x, y} = login_button_center(frame_id, timeout)
+
+        {:ok, _} = Page.mouse_move(page_id, x: x, y: y, timeout: timeout)
+        {:ok, _} = Page.mouse_down(page_id, timeout: timeout)
+        {:ok, _} = Page.mouse_up(page_id, timeout: timeout)
+
+        assert_receive {:login_post, 1, first_route_pid}, timeout
+        send(first_route_pid, :abort)
+        {:ok, _} = Frame.evaluate(frame_id, expression: "window.stop()", timeout: timeout)
+      end)
+      |> assert_path(~p"/players/log_in")
+      |> assert_has("#login_form button[disabled]", text: "Entrando...")
+      |> assert_has("#login_form button:not([disabled])", text: "Entrar", timeout: 12_000)
+      |> click_button("Entrar")
+      |> assert_path(~p"/")
+      |> assert_has("[data-phx-main].phx-connected")
+      |> assert_has("#rooms-live-status", text: "Ao vivo")
+      |> assert_has("#flash-info", text: "Bem-vindo de volta!")
+      |> refute_has("#flash-error")
+      |> assert_has(~s|summary[aria-label="Conta"]|)
+    after
+      unwrap(conn, fn %{page_id: page_id} ->
+        {:ok, _} = Page.unroute_all(page_id, timeout: timeout)
+      end)
+    end
+
+    assert :counters.get(post_counter, 1) == 2
+    assert session_token_count(player) == 1
+  end
+
+  defp login_button_center(frame_id, timeout) do
+    {:ok, %{"x" => x, "y" => y}} =
+      Frame.evaluate(
+        frame_id,
+        expression: """
+        () => {
+          const btn = document.querySelector("#login_form button");
+          btn.scrollIntoView({ block: "center" });
+          const rect = btn.getBoundingClientRect();
+          return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+        }
+        """,
+        is_function: true,
+        timeout: timeout
+      )
+
+    {x, y}
+  end
+
   defp handle_login_route(route, %{method: "POST"}, post_counter, test_pid, timeout) do
     :counters.add(post_counter, 1, 1)
     attempt = :counters.get(post_counter, 1)
     send(test_pid, {:login_post, attempt, self()})
 
-    if attempt == 1 do
-      receive do
-        :release -> :ok
-      after
-        timeout -> :ok
+    action =
+      if attempt == 1 do
+        receive do
+          :release -> :continue
+          :abort -> :abort
+        after
+          timeout -> :continue
+        end
+      else
+        :continue
       end
-    end
 
-    Route.continue(route)
+    case action do
+      :continue -> Route.continue(route)
+      :abort -> Route.abort(route, error_code: "aborted")
+    end
   end
 
   defp handle_login_route(route, _request, _post_counter, _test_pid, _timeout) do
