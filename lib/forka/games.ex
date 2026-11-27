@@ -506,18 +506,22 @@ defmodule Forka.Games do
       {:ok, valid_player_id} ->
         valid_player_id
         |> Repository.list_active_game_ids_for_player()
-        |> Enum.reduce_while(:ok, fn game_id, :ok ->
-          case remove_player_from_game(game_id, valid_player_id) do
-            :ok -> {:cont, :ok}
-            {:error, reason} -> {:halt, {:error, reason}}
-          end
-        end)
+        |> remove_player_from_game_ids(valid_player_id)
 
       :error ->
         {:error, :invalid_player_id}
     end
   rescue
     error in [DBConnection.ConnectionError, Postgrex.Error] -> {:error, error}
+  end
+
+  defp remove_player_from_game_ids(game_ids, player_id) do
+    Enum.reduce_while(game_ids, :ok, fn game_id, :ok ->
+      case remove_player_from_game(game_id, player_id) do
+        :ok -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
   end
 
   defp remove_player_from_game(game_id, player_id) do
