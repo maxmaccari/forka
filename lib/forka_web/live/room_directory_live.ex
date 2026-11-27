@@ -12,8 +12,6 @@ defmodule ForkaWeb.RoomDirectoryLive do
       |> assign(:directory_limit, Games.directory_limit())
       |> assign(:capped?, false)
       |> assign(:loading?, true)
-      |> assign(:refreshing?, false)
-      |> assign(:needs_refresh?, false)
       |> assign(:load_error, nil)
       |> assign(:rooms_count, 0)
       |> assign(:room_order, [])
@@ -46,55 +44,29 @@ defmodule ForkaWeb.RoomDirectoryLive do
     {:noreply,
      socket
      |> assign(:loading?, false)
-     |> assign(:refreshing?, false)
-     |> assign(:needs_refresh?, false)
      |> assign(:load_error, "Não foi possível carregar as salas agora.")
      |> assign(:pending_events, [])}
-  end
-
-  def handle_async(:refresh_rooms, {:ok, %{rooms: rooms, has_more?: has_more?}}, socket) do
-    finish_load_rooms(socket, rooms, has_more?)
-  end
-
-  def handle_async(:refresh_rooms, {:exit, _reason}, socket) do
-    pending = Enum.reverse(socket.assigns.pending_events)
-
-    socket =
-      socket
-      |> assign(:refreshing?, false)
-      |> assign(:needs_refresh?, false)
-      |> assign(:pending_events, [])
-
-    socket =
-      pending
-      |> Enum.reduce(socket, &apply_room_event/2)
-      |> assign(:needs_refresh?, false)
-
-    {:noreply, socket}
   end
 
   defp finish_load_rooms(socket, rooms, has_more?) do
     room_order = Enum.map(rooms, & &1.id)
     room_ids = MapSet.new(room_order)
-    pending = Enum.reverse(socket.assigns.pending_events)
 
     socket =
       socket
       |> assign(:loading?, false)
-      |> assign(:refreshing?, false)
-      |> assign(:needs_refresh?, false)
       |> assign(:load_error, nil)
       |> assign(:capped?, has_more?)
       |> assign(:room_order, room_order)
       |> assign(:room_ids, room_ids)
       |> assign(:rooms_count, MapSet.size(room_ids))
-      |> assign(:pending_events, [])
       |> stream(:rooms, rooms, reset: true)
 
     socket =
-      pending
+      socket.assigns.pending_events
+      |> Enum.reverse()
       |> Enum.reduce(socket, &apply_room_event/2)
-      |> maybe_start_refresh()
+      |> assign(:pending_events, [])
 
     {:noreply, socket}
   end
@@ -109,12 +81,8 @@ defmodule ForkaWeb.RoomDirectoryLive do
     {:noreply, socket}
   end
 
-  def handle_info({:game_list_updated, payload}, %{assigns: %{refreshing?: true}} = socket) do
-    {:noreply, update(socket, :pending_events, &[payload | &1])}
-  end
-
   def handle_info({:game_list_updated, payload}, socket) do
-    {:noreply, payload |> apply_room_event(socket) |> maybe_start_refresh()}
+    {:noreply, apply_room_event(payload, socket)}
   end
 
   defp apply_room_event(payload, socket) do
@@ -135,28 +103,11 @@ defmodule ForkaWeb.RoomDirectoryLive do
       MapSet.member?(room_ids, item.id) ->
         stream_insert(socket, :rooms, item)
 
-      Map.get(payload, :action) == :repaired ->
-        assign(socket, :needs_refresh?, true)
-
       Map.get(payload, :action) == :created or not capped? ->
         insert_new_room(socket, item, room_order, capped?, limit)
 
       true ->
         socket
-    end
-  end
-
-  defp maybe_start_refresh(socket) do
-    if Map.get(socket.assigns, :needs_refresh?, false) and
-         not Map.get(socket.assigns, :refreshing?, false) and
-         not Map.get(socket.assigns, :loading?, false) and
-         is_nil(socket.assigns.load_error) do
-      socket
-      |> assign(:refreshing?, true)
-      |> assign(:needs_refresh?, false)
-      |> start_async(:refresh_rooms, fn -> Games.list_directory_rooms_page(repair: false) end)
-    else
-      socket
     end
   end
 
@@ -197,8 +148,6 @@ defmodule ForkaWeb.RoomDirectoryLive do
     {:noreply,
      socket
      |> assign(:loading?, true)
-     |> assign(:refreshing?, false)
-     |> assign(:needs_refresh?, false)
      |> assign(:load_error, nil)
      |> assign(:pending_events, [])
      |> start_async(:load_rooms, fn -> Games.list_directory_rooms_page() end)}

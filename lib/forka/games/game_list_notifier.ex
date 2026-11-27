@@ -2,7 +2,6 @@ defmodule Forka.Games.GameListNotifier do
   @moduledoc "Publishes game list changes to subscribed clients."
 
   alias Forka.Games.Core.GameState
-  alias Forka.Games.RoomListItem
   alias Forka.Games.Schemas.WordOptions
   alias Forka.Words
   alias Phoenix.PubSub
@@ -52,36 +51,11 @@ defmodule Forka.Games.GameListNotifier do
   end
 
   @doc false
-  @spec broadcast_update_if_changed(GameState.t(), GameState.t(), keyword()) :: :ok
-  def broadcast_update_if_changed(
-        %GameState{} = previous,
-        %GameState{} = saved,
-        opts \\ []
-      ) do
-    cond do
-      owner_repaired_to_visible?(previous, saved, opts) ->
-        broadcast_update(saved, :repaired)
-
-      list_fields(previous) != list_fields(saved) ->
-        broadcast_update(saved)
-
-      true ->
-        :ok
-    end
+  @spec broadcast_update_if_changed(GameState.t(), GameState.t()) :: :ok
+  def broadcast_update_if_changed(%GameState{} = previous, %GameState{} = saved) do
+    if list_fields(previous) != list_fields(saved), do: broadcast_update(saved)
+    :ok
   end
-
-  defp owner_repaired_to_visible?(previous, saved, opts) do
-    reconciliation? = Keyword.get(opts, :reconciliation?, false)
-    previous_owner_id = owner_id(previous.owner)
-    saved_owner_id = owner_id(saved.owner)
-
-    RoomListItem.visible_status?(saved.status) and
-      not is_nil(saved_owner_id) and
-      (is_nil(previous_owner_id) or (reconciliation? and previous_owner_id != saved_owner_id))
-  end
-
-  defp owner_id(%{id: id}) when is_binary(id), do: id
-  defp owner_id(_), do: nil
 
   defp list_fields(game_state) do
     {language, category_ids} = extract_word_options(game_state.word_options)

@@ -5,7 +5,6 @@ defmodule Forka.Games.Repository do
 
   alias Forka.Games.Core.GameState
   alias Forka.Games.Schemas.Game
-  alias Forka.Games.Schemas.GamePlayer
   alias Forka.Games.Schemas.Player
   alias Forka.Games.Schemas.Word
   alias Forka.Games.Schemas.WordOptions
@@ -144,99 +143,6 @@ defmodule Forka.Games.Repository do
       {:error, changeset} ->
         {:error, changeset}
     end
-  end
-
-  @type ownerless_phase :: :populated | :empty
-  @type ownerless_cursor :: {DateTime.t(), Ecto.UUID.t()}
-
-  @doc """
-  Returns up to `limit` non-archived, ownerless game IDs matching `statuses`,
-  prioritizing rooms with remaining players before empty rooms, newest first.
-  """
-  @spec list_ownerless_visible_game_ids([GameState.status()], pos_integer()) :: [Ecto.UUID.t()]
-  def list_ownerless_visible_game_ids(statuses, limit)
-      when is_list(statuses) and is_integer(limit) and limit > 0 do
-    populated_ids =
-      statuses
-      |> list_ownerless_visible_games_batch(limit, phase: :populated)
-      |> Enum.map(& &1.id)
-
-    case limit - length(populated_ids) do
-      remaining when remaining > 0 ->
-        empty_ids =
-          statuses
-          |> list_ownerless_visible_games_batch(remaining, phase: :empty)
-          |> Enum.map(& &1.id)
-
-        populated_ids ++ empty_ids
-
-      _ ->
-        populated_ids
-    end
-  end
-
-  @doc """
-  Returns up to `limit` non-archived, ownerless game entries (`%{id, inserted_at}`)
-  matching `statuses` for the given `:phase` (`:populated` or `:empty`), ordered newest
-  first, optionally resuming after a `{inserted_at, id}` keyset cursor.
-  """
-  @spec list_ownerless_visible_games_batch([GameState.status()], pos_integer(), keyword()) :: [
-          %{id: Ecto.UUID.t(), inserted_at: DateTime.t()}
-        ]
-  def list_ownerless_visible_games_batch(statuses, limit, opts \\ [])
-      when is_list(statuses) and is_integer(limit) and limit > 0 and is_list(opts) do
-    phase = Keyword.fetch!(opts, :phase)
-    cursor = Keyword.get(opts, :after)
-
-    from(g in Game,
-      as: :game,
-      where: g.status in ^statuses and g.status != :archived and is_nil(g.owner_id),
-      order_by: [desc: g.inserted_at, desc: g.id],
-      limit: ^limit,
-      select: %{id: g.id, inserted_at: g.inserted_at}
-    )
-    |> apply_ownerless_phase(phase)
-    |> apply_ownerless_cursor(cursor)
-    |> Repo.all()
-  end
-
-  defp apply_ownerless_phase(query, :populated) do
-    from(g in query,
-      where:
-        exists(
-          from(gp in GamePlayer,
-            where: gp.game_id == parent_as(:game).id,
-            select: 1
-          )
-        )
-    )
-  end
-
-  defp apply_ownerless_phase(query, :empty) do
-    from(g in query,
-      where:
-        not exists(
-          from(gp in GamePlayer,
-            where: gp.game_id == parent_as(:game).id,
-            select: 1
-          )
-        )
-    )
-  end
-
-  defp apply_ownerless_cursor(query, nil), do: query
-
-  defp apply_ownerless_cursor(query, {inserted_at, id}) do
-    from(g in query,
-      where:
-        fragment(
-          "(?, ?) < (?, ?)",
-          g.inserted_at,
-          g.id,
-          type(^inserted_at, :utc_datetime),
-          type(^id, :binary_id)
-        )
-    )
   end
 
   @doc """

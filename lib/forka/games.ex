@@ -25,7 +25,6 @@ defmodule Forka.Games do
   alias Forka.Games.GameListNotifier
   alias Forka.Games.GameServer
   alias Forka.Games.GameSummary
-  alias Forka.Games.OwnerlessRoomRepairer
   alias Forka.Games.Repository
   alias Forka.Games.RoomInvite
   alias Forka.Games.RoomListItem
@@ -40,19 +39,12 @@ defmodule Forka.Games do
   alias Forka.Words
 
   @directory_limit 60
-  @directory_repair_limit 10
 
   @doc """
   Returns the maximum number of rooms returned by the public directory query.
   """
   @spec directory_limit() :: pos_integer()
   def directory_limit, do: @directory_limit
-
-  @doc """
-  Returns the maximum number of ownerless rooms repaired synchronously per public directory load.
-  """
-  @spec directory_repair_limit() :: pos_integer()
-  def directory_repair_limit, do: @directory_repair_limit
 
   @doc """
   Lists games with pagination and optional filtering.
@@ -142,11 +134,6 @@ defmodule Forka.Games do
         }
   def list_directory_rooms_page(opts \\ []) do
     limit = opts |> Keyword.get(:limit, @directory_limit) |> cap_directory_limit()
-
-    if Keyword.get(opts, :repair, true) do
-      repair_bounded_ownerless_rooms(@directory_repair_limit)
-    end
-
     rows = fetch_directory_rows(limit)
 
     {page_rows, extra_rows} = Enum.split(rows, limit)
@@ -190,33 +177,6 @@ defmodule Forka.Games do
       }
     )
     |> Repo.all()
-  end
-
-  defp repair_bounded_ownerless_rooms(budget) do
-    visible_statuses = RoomListItem.visible_statuses()
-
-    case Repository.list_ownerless_visible_game_ids(visible_statuses, budget + 1) do
-      [] ->
-        :ok
-
-      ownerless_ids ->
-        {batch_ids, remaining_ids} = Enum.split(ownerless_ids, budget)
-        made_progress? = batch_ids |> Enum.map(&reconcile_made_progress?/1) |> Enum.any?()
-
-        if remaining_ids != [] and made_progress? do
-          OwnerlessRoomRepairer.schedule_drain()
-        end
-
-        :ok
-    end
-  end
-
-  defp reconcile_made_progress?(game_id) do
-    case GameServer.reconcile_ownerless_room(game_id) do
-      {:ok, _summary} -> true
-      {:error, reason} when reason in [:game_archived, :not_found] -> true
-      {:error, _other} -> false
-    end
   end
 
   defp cap_directory_limit(limit) when is_integer(limit) and limit > 0,
@@ -302,7 +262,10 @@ defmodule Forka.Games do
   end
 
   defp start_supervised_game(game_id) do
-    GameServer.start_supervised(Forka.GamesSupervisor, game_id)
+    case DynamicSupervisor.start_child(Forka.GamesSupervisor, {GameServer, game_id}) do
+      {:error, {:already_started, pid}} -> {:ok, pid}
+      result -> result
+    end
   end
 
   @doc "Updates room settings for the scoped authenticated owner while the room is in lobby."
@@ -348,7 +311,7 @@ defmodule Forka.Games do
 
   defp heal_ownerless_row(%{game: %Game{id: id, status: status, owner_id: nil}})
        when status != :archived do
-    with {:ok, %GameSummary{}} <- GameServer.reconcile_ownerless_room(id) do
+    with {:ok, %GameSummary{}} <- fetch_game_summary(id) do
       {:ok, fetch_persisted_room_invite_row(id)}
     end
   end
@@ -730,20 +693,23 @@ defmodule Forka.Games do
   end
 
   defp start_and_run_game_server(game_id, action, retries) do
-    with {:ok, _pid} <- start_supervised_game(game_id) do
-      call_server_action(game_id, action, retries)
+    case Repository.get_game_state(game_id) do
+      {:ok, %{status: :archived}} ->
+        {:error, :game_archived}
+
+      {:ok, _game_state} ->
+        with {:ok, _pid} <- start_supervised_game(game_id) do
+          call_server_action(game_id, action, retries)
+        end
+
+      {:error, _reason} = error ->
+        error
     end
   end
 
   defp call_server_action(game_id, action, retries) do
     action.()
   catch
-    :exit, {{:shutdown, {:load_error, reason}}, _call} ->
-      {:error, reason}
-
-    :exit, {:shutdown, {:load_error, reason}} ->
-      {:error, reason}
-
     :exit, {reason, _call} when reason in [:normal, :noproc] ->
       handle_server_shutdown_race(game_id, action, retries)
 

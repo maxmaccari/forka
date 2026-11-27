@@ -16,7 +16,6 @@ defmodule Forka.Application do
       {Finch, name: Forka.Finch},
       # Forka Games Supervisor
       {DynamicSupervisor, strategy: :one_for_one, name: Forka.GamesSupervisor},
-      Forka.Games.OwnerlessRoomRepairer,
       # Start to serve requests, typically the last entry
       ForkaWeb.Endpoint
     ]
