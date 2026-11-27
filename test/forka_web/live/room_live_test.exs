@@ -1079,6 +1079,86 @@ defmodule ForkaWeb.RoomLiveTest do
       assert has_element?(owner_lv, "#room-lobby-notice", "Agora caio comanda a sala.")
     end
 
+    test "MAX-53 EDGE-01: confirm after target left shows notice and changes nothing",
+         %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      target = insert(:player, username: "bruno")
+      third = insert(:player, username: "caio")
+      owner_scope = Forka.Scope.for_player(owner)
+      target_scope = Forka.Scope.for_player(target)
+      third_scope = Forka.Scope.for_player(third)
+
+      {:ok, game} = Games.create_game(owner.id, %{name: "Sala Transfer Saiu", max_players: 4})
+      {:ok, :joined} = Games.join_room(target_scope, game.id)
+      {:ok, :joined} = Games.join_room(third_scope, game.id)
+
+      {:ok, owner_lv, _html} = conn |> log_in_player(owner) |> live(~p"/rooms/#{game.id}")
+
+      owner_lv |> element("#transfer-ownership-#{target.id}") |> render_click()
+      assert has_element?(owner_lv, "#transfer-ownership-sheet", "Passar a sala para bruno?")
+
+      game_pid = GameServer.whereis(game.id)
+      task_supervisor = start_supervised!(Task.Supervisor)
+      owner_id = owner.id
+      target_id = target.id
+
+      :ok = :sys.suspend(game_pid)
+
+      {leave_task, confirm_task} =
+        try do
+          :erlang.trace(game_pid, true, [:receive])
+
+          leave_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.leave_game(target_scope, game.id)
+            end)
+
+          assert_receive {:trace, ^game_pid, :receive, {:"$gen_call", _, leave_msg}}, 1_000
+          assert elem(leave_msg, 0) == :leave_game and elem(leave_msg, 1) == target_id
+
+          confirm_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              owner_lv |> element("#confirm-transfer-ownership") |> render_click()
+            end)
+
+          assert_receive {:trace, ^game_pid, :receive, {:"$gen_call", _, transfer_msg}}, 1_000
+
+          assert elem(transfer_msg, 0) == :transfer_ownership and
+                   elem(transfer_msg, 1) == owner_id and
+                   elem(transfer_msg, 2) == target_id
+
+          {leave_task, confirm_task}
+        after
+          :erlang.trace(game_pid, false, [:receive])
+          :sys.resume(game_pid)
+        end
+
+      assert :ok = Task.await(leave_task, 5_000)
+      confirm_html = Task.await(confirm_task, 5_000)
+
+      assert is_binary(confirm_html)
+      refute has_element?(owner_lv, "#transfer-ownership-sheet")
+      assert has_element?(owner_lv, "#room-lobby-notice", "bruno saiu da sala.")
+
+      # After the queued PubSub update is processed, notice remains and owner controls stay intact
+      _ = render(owner_lv)
+      assert has_element?(owner_lv, "#room-lobby-notice", "bruno saiu da sala.")
+      refute has_element?(owner_lv, "#room-lobby-player-#{target.id}")
+      assert has_element?(owner_lv, "#edit-room-settings")
+      assert has_element?(owner_lv, "#transfer-ownership-#{third.id}", "Passar a posse")
+
+      assert visible_text(element(owner_lv, "#room-lobby-player-#{owner.id}") |> render()) =~
+               "Anfitrião"
+
+      assert {:ok, lobby} = Games.get_room_lobby(owner_scope, game.id)
+      assert lobby.status == :lobby
+      assert lobby.owner_id == owner.id
+      assert Enum.map(lobby.players, & &1.id) == [owner.id, third.id]
+
+      summary = Games.get_game_summary(game.id, load_all_events: true)
+      refute Enum.any?(summary.last_events, &(&1.type == :ownership_transferred_to))
+    end
+
     test "STALE-02: confirm raced behind start_game does not transfer during match and redirects to match; confirm raced behind archive redirects to directory",
          %{conn: conn} do
       owner = insert(:player, username: "lia")
