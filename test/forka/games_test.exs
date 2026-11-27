@@ -2497,6 +2497,95 @@ defmodule Forka.GamesTest do
       assert Map.keys(summary.players) == [0]
       assert summary.players[0].player.id == p2.id
     end
+
+    test "F-14: acknowledges removal when a GameServer crashes after persisting the handoff before replying" do
+      owner = insert(:player, username: "f14_lost_lia")
+      p2 = insert(:player, username: "f14_lost_bruno")
+
+      {:ok, game} =
+        Games.create_room(Scope.for_player(owner), %{name: "Reply Perdido", max_players: 4})
+
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(p2), game.id)
+      pid = GameServer.whereis(game.id)
+      ref = Process.monitor(pid)
+      handler_id = "f14-kill-after-commit-#{System.unique_integer([:positive])}"
+
+      :ok =
+        :telemetry.attach(
+          handler_id,
+          [:forka, :repo, :query],
+          fn _event, _measurements, metadata, target_pid ->
+            # count_available_words queries "words" inside broadcast_lobby! only after save_game_state committed
+            if self() == target_pid and is_binary(metadata[:query]) and
+                 String.contains?(metadata[:query], ~s|FROM "words"|) do
+              :telemetry.detach(handler_id)
+              Process.exit(self(), :kill)
+            end
+          end,
+          pid
+        )
+
+      on_exit(fn ->
+        :telemetry.detach(handler_id)
+        _ = :sys.get_state(Process.whereis(Forka.GamesSupervisor))
+
+        if restarted = GameServer.whereis(game.id) do
+          DynamicSupervisor.terminate_child(Forka.GamesSupervisor, restarted)
+        end
+      end)
+
+      assert :ok = Games.remove_player_from_games(owner.id)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :killed}, 2_000
+
+      {:ok, persisted} = Repository.get_game_state(game.id)
+      assert persisted.owner.id == p2.id
+      assert Map.keys(persisted.game_players) == [0]
+      assert persisted.game_players[0].player.id == p2.id
+    end
+
+    test "F-14: reports uncertain removal outcome when exit cannot confirm cancellation while player remains persisted" do
+      owner = insert(:player, username: "f14_noconn_lia")
+      p2 = insert(:player, username: "f14_noconn_bruno")
+      owner_id = owner.id
+
+      {:ok, game} =
+        Games.create_room(Scope.for_player(owner), %{name: "Sem Conexao", max_players: 4})
+
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(p2), game.id)
+      pid = GameServer.whereis(game.id)
+      task_supervisor = start_supervised!(Task.Supervisor)
+
+      on_exit(fn ->
+        _ = :sys.get_state(Process.whereis(Forka.GamesSupervisor))
+
+        if restarted = GameServer.whereis(game.id) do
+          DynamicSupervisor.terminate_child(Forka.GamesSupervisor, restarted)
+        end
+      end)
+
+      :ok = :sys.suspend(pid)
+
+      task =
+        try do
+          :erlang.trace(pid, true, [:receive])
+
+          t =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.remove_player_from_games(owner.id)
+            end)
+
+          assert_receive {:trace, ^pid, :receive, {:"$gen_call", _, {:remove_player, ^owner_id}}},
+                         2_000
+
+          Process.exit(pid, :noconnection)
+          t
+        after
+          :erlang.trace(:all, false, [:receive])
+        end
+
+      assert {:error, {:removal_outcome_unknown, _reason}} = Task.await(task, 5_000)
+      assert {:ok, %{owner: %{id: ^owner_id}}} = Repository.get_game_state(game.id)
+    end
   end
 
   describe "F-12: isolated per-room startup and readiness" do

@@ -180,7 +180,7 @@ defmodule Forka.Games.GameServer do
   @doc false
   def remove_player(server, player_id)
       when (is_pid(server) or is_binary(server)) and is_binary(player_id) do
-    GenServer.call(server_ref(server), {:remove_player, player_id})
+    GenServer.call(server_ref(server), {:remove_player, player_id}, :infinity)
   end
 
   @doc false

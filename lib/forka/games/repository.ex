@@ -119,6 +119,23 @@ defmodule Forka.Games.Repository do
   end
 
   @doc """
+  Returns `true` when `game_id` exists in persistence, is not `:archived`, and still
+  references `player_id` as its owner or a seated player.
+  """
+  @spec player_active_in_game?(Ecto.UUID.t(), Ecto.UUID.t()) :: boolean()
+  def player_active_in_game?(game_id, player_id)
+      when is_binary(game_id) and is_binary(player_id) do
+    from(g in Game,
+      left_join: gp in GamePlayer,
+      on: gp.game_id == g.id and gp.player_id == ^player_id,
+      where:
+        g.id == ^game_id and g.status != :archived and
+          (g.owner_id == ^player_id or not is_nil(gp.id))
+    )
+    |> Repo.exists?()
+  end
+
+  @doc """
   Inserts a new game into the database with the given owner ID and parameters.
 
   ## Parameters

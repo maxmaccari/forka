@@ -337,5 +337,117 @@ defmodule ForkaWeb.Admin.PlayerLiveTest do
       assert is_binary(message)
       assert Games.get_game_summary(game.id).owner.id == owner.id
     end
+
+    test "F-14: waits past 5s when a room is busy instead of cancelling and leaving a queued removal behind",
+         %{conn: admin_conn} do
+      owner = insert(:player, username: "f14_lia")
+      p2 = insert(:player, username: "f14_bruno")
+      owner_id = owner.id
+
+      {:ok, game} =
+        Games.create_room(Scope.for_player(owner), %{name: "Sala Ocupada", max_players: 4})
+
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(p2), game.id)
+      pid = GameServer.whereis(game.id)
+      task_supervisor = start_supervised!(Task.Supervisor)
+
+      on_exit(fn ->
+        if running = GameServer.whereis(game.id) do
+          DynamicSupervisor.terminate_child(Forka.GamesSupervisor, running)
+        end
+      end)
+
+      {:ok, admin_lv, _html} = live(admin_conn, Testing.path(Router, PlayerLive, :index))
+      Testing.click_item_action(admin_lv, :delete, owner)
+
+      :ok = :sys.suspend(pid)
+
+      confirm_task =
+        try do
+          :erlang.trace(pid, true, [:receive])
+
+          task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Testing.confirm_item_action(admin_lv)
+            end)
+
+          assert_receive {:trace, ^pid, :receive, {:"$gen_call", _, {:remove_player, ^owner_id}}},
+                         2_000
+
+          # Hold past the default 5_000ms GenServer.call timeout
+          Process.send_after(self(), :resume_busy_room, 5_200)
+          assert_receive :resume_busy_room, 6_000
+
+          # No premature timeout cancellation; both account and room remain unchanged while blocked
+          assert Task.yield(task, 0) == nil
+          assert Repo.get(Player, owner.id) != nil
+          assert {:ok, %{owner: %{id: ^owner_id}}} = Repository.get_game_state(game.id)
+
+          :ok = :sys.resume(pid)
+          task
+        after
+          :erlang.trace(:all, false, [:receive])
+
+          try do
+            :sys.resume(pid)
+          catch
+            :exit, _ -> :ok
+          end
+        end
+
+      Task.await(confirm_task, 5_000)
+
+      refute Repo.get(Player, owner.id)
+      assert Games.get_game_summary(game.id).owner.id == p2.id
+      assert {:ok, %{owner: %{id: p2_id}}} = Repository.get_game_state(game.id)
+      assert p2_id == p2.id
+    end
+
+    test "F-14: distinguishes uncertain removal outcome from an explicit refusal in on_item_deleting/2",
+         %{admin: admin} do
+      owner = insert(:player, username: "f14_unc_lia")
+      p2 = insert(:player, username: "f14_unc_bruno")
+      owner_id = owner.id
+
+      {:ok, game} =
+        Games.create_room(Scope.for_player(owner), %{name: "Sala Incerta", max_players: 4})
+
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(p2), game.id)
+      pid = GameServer.whereis(game.id)
+      task_supervisor = start_supervised!(Task.Supervisor)
+
+      on_exit(fn ->
+        _ = :sys.get_state(Process.whereis(Forka.GamesSupervisor))
+
+        if restarted = GameServer.whereis(game.id) do
+          DynamicSupervisor.terminate_child(Forka.GamesSupervisor, restarted)
+        end
+      end)
+
+      :ok = :sys.suspend(pid)
+
+      hook_task =
+        try do
+          :erlang.trace(pid, true, [:receive])
+
+          task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              PlayerLive.on_item_deleting(%{assigns: %{current_admin: admin}}, owner)
+            end)
+
+          assert_receive {:trace, ^pid, :receive, {:"$gen_call", _, {:remove_player, ^owner_id}}},
+                         2_000
+
+          Process.exit(pid, :noconnection)
+          task
+        after
+          :erlang.trace(:all, false, [:receive])
+        end
+
+      assert {:error, message} = Task.await(hook_task, 5_000)
+      assert message =~ "Could not confirm"
+      assert Repo.get(Player, owner.id) != nil
+      assert {:ok, %{owner: %{id: ^owner_id}}} = Repository.get_game_state(game.id)
+    end
   end
 end

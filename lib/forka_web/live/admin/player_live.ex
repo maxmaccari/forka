@@ -54,6 +54,14 @@ defmodule ForkaWeb.Admin.PlayerLive do
       :ok ->
         :ok
 
+      {:error, {:removal_outcome_unknown, reason}} ->
+        Logger.error(
+          "Could not confirm removal of player #{player_id} from active games before deletion: #{inspect(reason)}"
+        )
+
+        {:error,
+         "Could not confirm whether the player was removed from active rooms. Deletion was cancelled."}
+
       {:error, reason} ->
         Logger.error(
           "Failed to remove player #{player_id} from active games before deletion: #{inspect(reason)}"

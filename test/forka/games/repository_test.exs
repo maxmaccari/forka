@@ -633,6 +633,31 @@ defmodule Forka.Games.RepositoryTest do
     end
   end
 
+  describe "player_active_in_game?/2" do
+    test "returns true only for non-archived games where the player is owner or seated" do
+      owner = insert(:player, username: "lia")
+      guest = insert(:player, username: "bruno")
+      outsider = insert(:player, username: "caio")
+
+      {:ok, game} = Repository.insert_game(owner.id, %{name: "Ativa", max_players: 4})
+      {:ok, state} = Repository.get_game_state(game.id)
+      {:ok, state} = Core.join_game(state, Repository.get_player(guest.id))
+      {:ok, _} = Repository.save_game_state(state)
+
+      assert Repository.player_active_in_game?(game.id, owner.id)
+      assert Repository.player_active_in_game?(game.id, guest.id)
+      refute Repository.player_active_in_game?(game.id, outsider.id)
+      refute Repository.player_active_in_game?(UUID.uuid4(), owner.id)
+
+      {:ok, archived_state} = Repository.get_game_state(game.id)
+      {:ok, archived} = Core.archive_game(archived_state)
+      {:ok, _} = Repository.save_game_state(archived)
+
+      refute Repository.player_active_in_game?(game.id, owner.id)
+      refute Repository.player_active_in_game?(game.id, guest.id)
+    end
+  end
+
   describe "get_game_status/1" do
     test "returns the persisted game status or :not_found without preloading associations" do
       game = insert(:game, status: :lobby)

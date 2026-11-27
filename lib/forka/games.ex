@@ -547,13 +547,43 @@ defmodule Forka.Games do
     case ensure_game_server_available(game_id, fn pid ->
            GameServer.remove_player(pid, player_id)
          end) do
-      :ok -> :ok
-      {:error, reason} when reason in [:game_archived, :not_found] -> :ok
-      {:error, reason} -> {:error, reason}
+      :ok ->
+        :ok
+
+      {:error, reason} when reason in [:game_archived, :not_found] ->
+        :ok
+
+      {:error, :game_server_unavailable} ->
+        verify_post_exit_removal(game_id, player_id, :game_server_unavailable)
+
+      {:error, reason} ->
+        {:error, {:removal_rejected, reason}}
     end
   catch
-    :exit, reason -> {:error, reason}
+    :exit, reason ->
+      verify_post_exit_removal(game_id, player_id, reason)
   end
+
+  defp verify_post_exit_removal(game_id, player_id, reason) do
+    if Repository.player_active_in_game?(game_id, player_id) do
+      if uncertain_exit?(reason) do
+        {:error, {:removal_outcome_unknown, reason}}
+      else
+        {:error, {:removal_rejected, reason}}
+      end
+    else
+      :ok
+    end
+  rescue
+    error in [DBConnection.ConnectionError, Postgrex.Error] ->
+      {:error, {:removal_outcome_unknown, {reason, error}}}
+  end
+
+  defp uncertain_exit?(reason) when reason in [:noconnection, :timeout], do: true
+  defp uncertain_exit?({:nodedown, _node}), do: true
+  defp uncertain_exit?({reason, _call}) when reason in [:noconnection, :timeout], do: true
+  defp uncertain_exit?({{:nodedown, _node}, _call}), do: true
+  defp uncertain_exit?(_reason), do: false
 
   @doc "Starts a lobby game for the scoped authenticated owner."
   @spec start_game(Scope.t() | nil, Ecto.UUID.t()) ::
