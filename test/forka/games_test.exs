@@ -4,8 +4,10 @@ defmodule Forka.GamesTest do
   alias Forka.Games
   alias Forka.Games.Core
   alias Forka.Games.GameServer
+  alias Forka.Games.GameSummary
   alias Forka.Games.OwnerlessRoomRepairer
   alias Forka.Games.Repository
+  alias Forka.Games.RoomLobby
   alias Forka.Games.Schemas.Event
   alias Forka.Games.Schemas.WordOptions
   alias Forka.Scope
@@ -2221,6 +2223,219 @@ defmodule Forka.GamesTest do
 
       assert summary_a.players |> Map.values() |> Enum.map(& &1.player.id) |> Enum.sort() ==
                Enum.sort([member_a.id, joiner_a.id])
+    end
+
+    test "F-08: slow cold startup past 5s does not exit callers on join, request, or reconcile paths" do
+      owner = insert(:player, username: "lia")
+      member = insert(:player, username: "bruno")
+      joiner = insert(:player, username: "caio")
+
+      {:ok, game} = Repository.insert_game(owner.id, %{name: "Sala Lenta", max_players: 4})
+      {:ok, state} = Repository.get_game_state(game.id)
+      {:ok, state} = Core.join_game(state, Repository.get_player(member.id))
+      {:ok, _} = Repository.save_game_state(state)
+      Repo.delete!(owner)
+
+      on_exit(fn ->
+        if pid = GameServer.whereis(game.id) do
+          DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
+        end
+      end)
+
+      test_pid = self()
+      task_supervisor = start_supervised!(Task.Supervisor)
+      games_sup = Process.whereis(Forka.GamesSupervisor)
+
+      lock_holder =
+        Task.Supervisor.async_nolink(task_supervisor, fn ->
+          :global.trans({{GameServer, :lifecycle, game.id}, self()}, fn ->
+            send(test_pid, {:lock_held, self()})
+            receive do: (:release_lock -> :ok)
+          end)
+        end)
+
+      assert_receive {:lock_held, holder_pid}, 2_000
+      on_exit(fn -> send(holder_pid, :release_lock) end)
+
+      {join_task, request_task, reconcile_task} =
+        try do
+          :erlang.trace(games_sup, true, [:send, :set_on_spawn])
+
+          join_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.join_room(Scope.for_player(joiner), game.id)
+            end)
+
+          # Wait until the room's GameServer child is starting and contending on its lifecycle lock
+          child_pid =
+            receive do
+              {:trace, locker_pid, :send, {:"$gen_call", _, {:set_lock, _}}, _} ->
+                refute locker_pid == games_sup
+                locker_pid
+            after
+              2_000 -> flunk("room startup did not contend on its lifecycle lock")
+            end
+
+          # The room is not yet advertised as ready while handle_continue/2 is still loading
+          assert GameServer.whereis(game.id) == nil
+
+          # Start request path and reconcile path callers while child_pid is still in handle_continue/2
+          request_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.get_room_lobby(Scope.for_player(member), game.id)
+            end)
+
+          reconcile_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              receive do: (:go -> GameServer.reconcile_ownerless_room(game.id))
+            end)
+
+          # Confirm join_task and request_task queued :ensure_ready on child_pid and
+          # reconcile_task is contending on the lifecycle lock before starting the 5.2s hold
+          caller_pids = MapSet.new([join_task.pid, request_task.pid])
+          Enum.each(caller_pids, &:erlang.trace(&1, true, [:send]))
+          :erlang.trace(reconcile_task.pid, true, [:send])
+          send(reconcile_task.pid, :go)
+
+          wait_for_calls = fn wait_fn, pending, reconcile_waiting? ->
+            {:messages, queued} = Process.info(child_pid, :messages)
+
+            already_sent =
+              for {:"$gen_call", {from_pid, _tag}, _req} <- queued,
+                  MapSet.member?(pending, from_pid),
+                  into: MapSet.new(),
+                  do: from_pid
+
+            remaining = MapSet.difference(pending, already_sent)
+
+            if MapSet.size(remaining) == 0 and reconcile_waiting? do
+              :ok
+            else
+              receive do
+                {:trace, sender, :send, {:"$gen_call", _, _}, ^child_pid} ->
+                  wait_fn.(wait_fn, MapSet.delete(remaining, sender), reconcile_waiting?)
+
+                {:trace, pid, :send, {:"$gen_call", _, {:set_lock, _}}, _}
+                when pid == reconcile_task.pid ->
+                  wait_fn.(wait_fn, remaining, true)
+
+                {:trace, _other, :send, _, _} ->
+                  wait_fn.(wait_fn, remaining, reconcile_waiting?)
+              after
+                2_000 ->
+                  flunk(
+                    "callers did not block on startup: remaining=#{inspect(remaining)} reconcile=#{reconcile_waiting?}"
+                  )
+              end
+            end
+          end
+
+          wait_for_calls.(wait_for_calls, caller_pids, false)
+
+          # Hold the lock past GenServer's default 5_000ms call timeout, then release
+          Process.send_after(holder_pid, :release_lock, 5_200)
+
+          {join_task, request_task, reconcile_task}
+        after
+          :erlang.trace(:all, false, [:send, :set_on_spawn])
+        end
+
+      assert :ok = Task.await(lock_holder, 10_000)
+      assert {:ok, :joined} = Task.await(join_task, 10_000)
+
+      assert {:ok, %RoomLobby{owner_username: "bruno"}} =
+               Task.await(request_task, 10_000)
+
+      assert {:ok, %GameSummary{owner: %{username: "bruno"}}} =
+               Task.await(reconcile_task, 10_000)
+    end
+
+    test "F-08: request path returns :game_archived cleanly when a registered startup child archives an empty ownerless room" do
+      owner = insert(:player, username: "lia")
+      outsider = insert(:player, username: "bruno")
+
+      {:ok, game} = Repository.insert_game(owner.id, %{name: "Sala Vazia Lenta", max_players: 4})
+      Repo.delete!(owner)
+
+      test_pid = self()
+      task_supervisor = start_supervised!(Task.Supervisor)
+      games_sup = Process.whereis(Forka.GamesSupervisor)
+
+      lock_holder =
+        Task.Supervisor.async_nolink(task_supervisor, fn ->
+          :global.trans({{GameServer, :lifecycle, game.id}, self()}, fn ->
+            send(test_pid, {:lock_held, self()})
+            receive do: (:release_lock -> :ok)
+          end)
+        end)
+
+      assert_receive {:lock_held, holder_pid}, 2_000
+
+      {join_task, request_task} =
+        try do
+          :erlang.trace(games_sup, true, [:send, :set_on_spawn])
+
+          join_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.join_room(Scope.for_player(outsider), game.id)
+            end)
+
+          child_pid =
+            receive do
+              {:trace, locker_pid, :send, {:"$gen_call", _, {:set_lock, _}}, _} ->
+                locker_pid
+            after
+              2_000 -> flunk("room startup did not contend on its lifecycle lock")
+            end
+
+          assert GameServer.whereis(game.id) == nil
+
+          request_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.get_room_lobby(Scope.for_player(outsider), game.id)
+            end)
+
+          caller_pids = MapSet.new([join_task.pid, request_task.pid])
+          Enum.each(caller_pids, &:erlang.trace(&1, true, [:send]))
+
+          wait_for_calls = fn wait_fn, pending ->
+            {:messages, queued} = Process.info(child_pid, :messages)
+
+            already_sent =
+              for {:"$gen_call", {from_pid, _tag}, _req} <- queued,
+                  MapSet.member?(pending, from_pid),
+                  into: MapSet.new(),
+                  do: from_pid
+
+            remaining = MapSet.difference(pending, already_sent)
+
+            if MapSet.size(remaining) == 0 do
+              :ok
+            else
+              receive do
+                {:trace, sender, :send, {:"$gen_call", _, _}, ^child_pid} ->
+                  wait_fn.(wait_fn, MapSet.delete(remaining, sender))
+
+                {:trace, _other, :send, _, _} ->
+                  wait_fn.(wait_fn, remaining)
+              after
+                2_000 ->
+                  flunk("callers did not queue calls on child_pid: #{inspect(remaining)}")
+              end
+            end
+          end
+
+          wait_for_calls.(wait_for_calls, caller_pids)
+
+          {join_task, request_task}
+        after
+          :erlang.trace(:all, false, [:send, :set_on_spawn])
+          send(holder_pid, :release_lock)
+        end
+
+      assert :ok = Task.await(lock_holder, 5_000)
+      assert {:error, :game_archived} = Task.await(join_task, 5_000)
+      assert {:error, :game_archived} = Task.await(request_task, 5_000)
     end
 
     test "F-02: list_directory_rooms_page/1 reconciles ownerless rooms across multiple batches for both page items and has_more?" do

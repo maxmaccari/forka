@@ -34,7 +34,7 @@ defmodule Forka.Games.GameServer do
   # Public API
 
   @doc false
-  def child_spec(game_id) when is_binary(game_id) do
+  def child_spec({:supervised, game_id}) when is_binary(game_id) do
     %{
       id: __MODULE__,
       start: {__MODULE__, :start_link, [{:supervised, game_id}]},
@@ -42,14 +42,28 @@ defmodule Forka.Games.GameServer do
     }
   end
 
+  def child_spec(game_id) when is_binary(game_id) do
+    %{
+      id: __MODULE__,
+      start: {__MODULE__, :start_link, [game_id]},
+      restart: :transient
+    }
+  end
+
   @doc false
-  def start_supervised(supervisor, game_id) when is_binary(game_id) do
-    case DynamicSupervisor.start_child(supervisor, {__MODULE__, game_id}) do
+  def start_supervised(supervisor, game_id, retries \\ 1) when is_binary(game_id) do
+    case DynamicSupervisor.start_child(supervisor, {__MODULE__, {:supervised, game_id}}) do
       {:ok, pid} ->
         await_ready(pid, game_id)
 
       {:error, {:already_started, pid}} ->
-        await_ready(pid, game_id)
+        case await_ready(pid, game_id) do
+          {:error, :game_server_unavailable} when retries > 0 ->
+            start_supervised(supervisor, game_id, retries - 1)
+
+          result ->
+            result
+        end
 
       result ->
         result
@@ -58,7 +72,7 @@ defmodule Forka.Games.GameServer do
 
   @doc false
   def start_link({:supervised, game_id}) when is_binary(game_id) do
-    GenServer.start_link(__MODULE__, {:load, game_id}, name: global_name(game_id))
+    GenServer.start_link(__MODULE__, {:load, game_id}, name: starting_name(game_id))
   end
 
   def start_link(game_id) when is_binary(game_id) do
@@ -78,10 +92,16 @@ defmodule Forka.Games.GameServer do
     end
   end
 
-  defp await_ready(pid, game_id) do
-    :ok = GenServer.call(pid, :ensure_ready)
+  defp await_ready(pid, game_id, retries \\ 1) when is_pid(pid) and is_binary(game_id) do
+    :ok = GenServer.call(pid, :ensure_ready, :infinity)
     {:ok, pid}
   catch
+    :exit, {{:shutdown, {:already_started, existing_pid}}, _call} ->
+      {:ok, existing_pid}
+
+    :exit, {:shutdown, {:already_started, existing_pid}} ->
+      {:ok, existing_pid}
+
     :exit, {{:shutdown, {:load_error, reason}}, _call} ->
       {:error, reason}
 
@@ -89,23 +109,34 @@ defmodule Forka.Games.GameServer do
       {:error, reason}
 
     :exit, {reason, _call} when reason in [:normal, :noproc] ->
-      resolve_stopped_startup(game_id)
+      resolve_stopped_startup(game_id, retries)
 
     :exit, reason when reason in [:normal, :noproc] ->
-      resolve_stopped_startup(game_id)
+      resolve_stopped_startup(game_id, retries)
   end
 
-  defp resolve_stopped_startup(game_id) do
+  defp resolve_stopped_startup(game_id, retries) do
     case whereis(game_id) do
-      pid when is_pid(pid) ->
-        {:ok, pid}
+      pid when is_pid(pid) -> {:ok, pid}
+      nil -> resolve_unregistered_startup(game_id, retries)
+    end
+  end
 
-      nil ->
-        case Repository.get_game_state(game_id) do
-          {:ok, %{status: :archived}} -> {:error, :game_archived}
-          {:ok, _game_state} -> {:error, :game_server_unavailable}
-          {:error, _reason} = error -> error
-        end
+  defp resolve_unregistered_startup(game_id, retries) do
+    case whereis_starting(game_id) do
+      starting_pid when is_pid(starting_pid) and retries > 0 ->
+        await_ready(starting_pid, game_id, retries - 1)
+
+      _ ->
+        classify_stopped_game(game_id)
+    end
+  end
+
+  defp classify_stopped_game(game_id) do
+    case Repository.get_game_state(game_id) do
+      {:ok, %{status: :archived}} -> {:error, :game_archived}
+      {:ok, _game_state} -> {:error, :game_server_unavailable}
+      {:error, _reason} = error -> error
     end
   end
 
@@ -139,13 +170,7 @@ defmodule Forka.Games.GameServer do
     reconcile_ownerless_room(game_id, retries - 1)
   end
 
-  defp handle_reconcile_shutdown_race(game_id, _retries) do
-    case Repository.get_game_state(game_id) do
-      {:ok, %{status: :archived}} -> {:error, :game_archived}
-      {:ok, _game_state} -> {:error, :game_server_unavailable}
-      {:error, _reason} = error -> error
-    end
-  end
+  defp handle_reconcile_shutdown_race(game_id, _retries), do: classify_stopped_game(game_id)
 
   defp reconcile_cold_room(game_id, retries) do
     case reconcile_cold_game(game_id) do
@@ -178,6 +203,31 @@ defmodule Forka.Games.GameServer do
 
   defp global_name(game_id) when is_binary(game_id) do
     {:global, {__MODULE__, game_id}}
+  end
+
+  defp starting_name(game_id) when is_binary(game_id) do
+    {:global, {__MODULE__, :starting, game_id}}
+  end
+
+  defp whereis_starting(game_id) do
+    game_id
+    |> starting_name()
+    |> GenServer.whereis()
+  end
+
+  defp register_ready_name(game_id) do
+    :global.unregister_name({__MODULE__, :starting, game_id})
+
+    case :global.register_name({__MODULE__, game_id}, self()) do
+      :yes ->
+        :ok
+
+      :no ->
+        case whereis(game_id) do
+          pid when is_pid(pid) -> {:already_started, pid}
+          nil -> {:error, :game_server_unavailable}
+        end
+    end
   end
 
   @doc false
@@ -274,20 +324,29 @@ defmodule Forka.Games.GameServer do
 
   @impl true
   def handle_continue(:load, {:loading, game_id}) do
-    result =
-      with_game_lifecycle_lock(game_id, fn ->
-        with {:ok, reconciled} <- load_and_reconcile_cold_game(game_id),
-             :ok <- validate_status(reconciled) do
-          {:ok, reconciled}
-        end
-      end)
-
-    case result do
+    case with_game_lifecycle_lock(game_id, fn -> load_supervised_game(game_id) end) do
       {:ok, reconciled} ->
         {:noreply, reconciled, @timeout_ms}
 
+      {:already_started, existing_pid} ->
+        {:stop, {:shutdown, {:already_started, existing_pid}}, {:loading, game_id}}
+
       {:error, reason} ->
         {:stop, {:shutdown, {:load_error, reason}}, {:loading, game_id}}
+    end
+  end
+
+  defp load_supervised_game(game_id) do
+    case whereis(game_id) do
+      existing_pid when is_pid(existing_pid) ->
+        {:already_started, existing_pid}
+
+      nil ->
+        with {:ok, reconciled} <- load_and_reconcile_cold_game(game_id),
+             :ok <- validate_status(reconciled),
+             :ok <- register_ready_name(game_id) do
+          {:ok, reconciled}
+        end
     end
   end
 
