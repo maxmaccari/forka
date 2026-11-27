@@ -16,11 +16,18 @@ config :forka, Forka.Repo,
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2
 
-# When HTTP tests enable the server, the OS assigns an available port.
+# The server runs so e2e tests (`mix test.e2e`) can reach it. Port 0 lets the OS
+# pick a free port, so test runs in parallel worktrees never clash; test_helper.exs
+# reads the port it got.
 config :forka, ForkaWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 0],
   secret_key_base: "yiZ72KnT5vsdy8R7Nab+r9zSWJrBwT68s7+LakoThEukt7BT3xMiIbChfWF0W/33",
-  server: false
+  server: true
+
+config :phoenix_test,
+  otp_app: :forka,
+  # CI sets PW_TRACE=true and uploads the traces when an e2e test fails.
+  playwright: [trace: System.get_env("PW_TRACE") == "true"]
 
 # In test we don't send emails
 config :forka, Forka.Mailer, adapter: Swoosh.Adapters.Test
@@ -37,3 +44,7 @@ config :phoenix, :plug_init_mode, :runtime
 # Enable helpful, but potentially expensive runtime checks
 config :phoenix_live_view,
   enable_expensive_runtime_checks: true
+
+# E2E tests: browser requests and LiveViews share the test's database sandbox
+# (Phoenix.Ecto.SQL.Sandbox in the endpoint, ForkaWeb.LiveAcceptance in the router).
+config :forka, sql_sandbox: true
