@@ -410,5 +410,60 @@ defmodule ForkaWeb.RoomComponentsTest do
       assert visible_text(ready_owner_html) =~ "Sala pronta com 2 jogadores (4 palavras)."
       refute visible_text(ready_owner_html) =~ "Começar partida"
     end
+
+    test "UI-01: lobby_roster/1 renders mobile options button and desktop Passar a posse button for other players only when can_transfer_ownership? is true" do
+      players = [
+        %{id: "p1", username: "lia"},
+        %{id: "p2", username: "bruno"}
+      ]
+
+      owner_html =
+        render_component(&lobby_roster/1, %{
+          players: players,
+          owner_id: "p1",
+          current_player_id: "p1",
+          can_transfer_ownership?: true,
+          empty_seats: 2,
+          player_count: 2,
+          max_players: 4
+        })
+
+      owner_doc = LazyHTML.from_fragment(owner_html)
+
+      # Never rendered on the owner's own row
+      assert Enum.empty?(LazyHTML.query(owner_doc, "#transfer-ownership-p1"))
+      assert Enum.empty?(LazyHTML.query(owner_doc, "#transfer-ownership-mobile-p1"))
+
+      # Desktop and mobile controls rendered on other players' rows
+      desktop_btn = LazyHTML.query(owner_doc, "#transfer-ownership-p2")
+      assert Enum.count(desktop_btn) == 1
+      assert LazyHTML.attribute(desktop_btn, "phx-click") == ["open_transfer_sheet"]
+      assert LazyHTML.attribute(desktop_btn, "phx-value-player_id") == ["p2"]
+      assert visible_text(desktop_btn) =~ "Passar a posse"
+
+      mobile_btn = LazyHTML.query(owner_doc, "#transfer-ownership-mobile-p2")
+      assert Enum.count(mobile_btn) == 1
+      assert LazyHTML.attribute(mobile_btn, "phx-click") == ["open_transfer_sheet"]
+      assert LazyHTML.attribute(mobile_btn, "phx-value-player_id") == ["p2"]
+      assert LazyHTML.attribute(mobile_btn, "aria-label") == ["Opções para bruno"]
+
+      # Hidden when viewer is not the owner
+      guest_html =
+        render_component(&lobby_roster/1, %{
+          players: players,
+          owner_id: "p1",
+          current_player_id: "p2",
+          can_transfer_ownership?: false,
+          empty_seats: 2,
+          player_count: 2,
+          max_players: 4
+        })
+
+      guest_doc = LazyHTML.from_fragment(guest_html)
+      assert Enum.empty?(LazyHTML.query(guest_doc, "#transfer-ownership-p1"))
+      assert Enum.empty?(LazyHTML.query(guest_doc, "#transfer-ownership-mobile-p1"))
+      assert Enum.empty?(LazyHTML.query(guest_doc, "#transfer-ownership-p2"))
+      assert Enum.empty?(LazyHTML.query(guest_doc, "#transfer-ownership-mobile-p2"))
+    end
   end
 end

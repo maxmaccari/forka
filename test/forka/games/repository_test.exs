@@ -482,6 +482,27 @@ defmodule Forka.Games.RepositoryTest do
       assert saved_playing_state.owner.id == player3.id
       assert saved_playing_state.status == :playing
     end
+
+    test "OWN-01: allows saving an archived game with nil owner after owner deletion while still requiring owner_id for non-archived games" do
+      owner = insert(:player, username: "lia")
+      game = insert(:game, owner: owner, status: :lobby)
+
+      Repo.delete!(owner)
+      {:ok, ownerless_state} = Repository.get_game_state(game.id)
+      assert ownerless_state.owner == nil
+
+      # Non-archived save with nil owner still fails validation
+      assert {:error, non_archived_cs} =
+               Repository.save_game_state(%{ownerless_state | name: "Still Lobby"})
+
+      assert "can't be blank" in errors_on(non_archived_cs).owner_id
+
+      # Archiving an ownerless game succeeds so empty rooms can be closed cleanly
+      {:ok, archived_state} = Core.archive_game(ownerless_state)
+      assert {:ok, saved} = Repository.save_game_state(archived_state)
+      assert saved.status == :archived
+      assert saved.owner == nil
+    end
   end
 
   describe "save_game_state!/1" do
@@ -555,6 +576,146 @@ defmodule Forka.Games.RepositoryTest do
       # Assert we receive the broadcast
       assert_receive {"backpex:updated", %{id: ^game_id} = broadcasted_game}
       assert broadcasted_game.name == "Updated Game Name"
+    end
+  end
+
+  describe "existing_player_ids/1" do
+    test "OWN-01: returns only player IDs that still exist in persistence" do
+      kept = insert(:player)
+      deleted = insert(:player)
+      missing_id = Ecto.UUID.generate()
+
+      Repo.delete!(deleted)
+
+      assert Repository.existing_player_ids([]) == []
+
+      result = Repository.existing_player_ids([kept.id, deleted.id, missing_id, kept.id])
+      assert result == [kept.id]
+    end
+  end
+
+  describe "list_active_game_ids_for_player/1" do
+    test "returns distinct non-archived game IDs where the player is owner or seated and excludes archived rooms" do
+      player = insert(:player, username: "lia")
+      other = insert(:player, username: "bruno")
+
+      # Owned + seated lobby room
+      {:ok, owned_seated} = Repository.insert_game(player.id, %{name: "Dona", max_players: 4})
+
+      # Owned room without game_players row
+      owned_only = insert(:game, owner: player, status: :lobby, name: "So Dona")
+
+      # Seated as non-owner in another player's playing room
+      {:ok, seated_non_owner} =
+        Repository.insert_game(other.id, %{name: "Convidada", max_players: 4})
+
+      {:ok, state} = Repository.get_game_state(seated_non_owner.id)
+      {:ok, state} = Core.join_game(state, Repository.get_player(player.id))
+      {:ok, _} = Repository.save_game_state(%{state | status: :playing})
+
+      # Archived rooms (owned and seated) must be excluded
+      {:ok, archived_owned} =
+        Repository.insert_game(player.id, %{name: "Arquivada", max_players: 4})
+
+      {:ok, arch_state} = Repository.get_game_state(archived_owned.id)
+      {:ok, archived} = Core.archive_game(arch_state)
+      {:ok, _} = Repository.save_game_state(archived)
+
+      # Unrelated active room must be excluded
+      {:ok, _unrelated} = Repository.insert_game(other.id, %{name: "Outra", max_players: 4})
+
+      ids = Repository.list_active_game_ids_for_player(player.id)
+
+      assert Enum.sort(ids) ==
+               Enum.sort([owned_seated.id, owned_only.id, seated_non_owner.id])
+
+      assert length(ids) == 3
+    end
+  end
+
+  describe "player_active_in_game?/2" do
+    test "returns true only for non-archived games where the player is owner or seated" do
+      owner = insert(:player, username: "lia")
+      guest = insert(:player, username: "bruno")
+      outsider = insert(:player, username: "caio")
+
+      {:ok, game} = Repository.insert_game(owner.id, %{name: "Ativa", max_players: 4})
+      {:ok, state} = Repository.get_game_state(game.id)
+      {:ok, state} = Core.join_game(state, Repository.get_player(guest.id))
+      {:ok, _} = Repository.save_game_state(state)
+
+      assert Repository.player_active_in_game?(game.id, owner.id)
+      assert Repository.player_active_in_game?(game.id, guest.id)
+      refute Repository.player_active_in_game?(game.id, outsider.id)
+      refute Repository.player_active_in_game?(UUID.uuid4(), owner.id)
+
+      {:ok, archived_state} = Repository.get_game_state(game.id)
+      {:ok, archived} = Core.archive_game(archived_state)
+      {:ok, _} = Repository.save_game_state(archived)
+
+      refute Repository.player_active_in_game?(game.id, owner.id)
+      refute Repository.player_active_in_game?(game.id, guest.id)
+    end
+  end
+
+  describe "get_game_status/1" do
+    test "returns the persisted game status or :not_found without preloading associations" do
+      game = insert(:game, status: :lobby)
+      archived = insert(:game, status: :archived)
+
+      assert {:ok, :lobby} = Repository.get_game_status(game.id)
+      assert {:ok, :archived} = Repository.get_game_status(archived.id)
+      assert {:error, :not_found} = Repository.get_game_status(UUID.uuid4())
+    end
+  end
+
+  describe "reconcile_game_state/2" do
+    test "F-01: locks and reconciles an ownerless game atomically, and treats archived or missing games cleanly" do
+      owner = insert(:player, username: "lia")
+      {:ok, game} = Repository.insert_game(owner.id, %{name: "Orfa", max_players: 4})
+      Repo.delete!(owner)
+
+      assert {:ok, :reconciled, prev, saved} =
+               Repository.reconcile_game_state(game.id, &Core.reconcile_missing_players/2)
+
+      assert prev.status == :lobby
+      assert saved.status == :archived
+      assert saved.owner == nil
+
+      # Second reconciliation sees already-archived row and returns :unchanged without raising
+      assert {:ok, :unchanged, archived} =
+               Repository.reconcile_game_state(game.id, &Core.reconcile_missing_players/2)
+
+      assert archived.status == :archived
+
+      assert {:error, :not_found} =
+               Repository.reconcile_game_state(UUID.uuid4(), &Core.reconcile_missing_players/2)
+    end
+  end
+
+  describe "F-03: persisted seat position turn resolution" do
+    test "F-03: deleting the active turn player in the last seat wraps turn to the next alive seat on reload" do
+      owner = insert(:player, username: "lia")
+      p1 = insert(:player, username: "bruno")
+      p2 = insert(:player, username: "caio")
+
+      words =
+        for text <- ~w(alfa bravo charlie delta echo foxtrot),
+            do: Word.new(text, "Geral")
+
+      {:ok, game} = Repository.insert_game(owner.id, %{name: "Wrap Turno", max_players: 4})
+      {:ok, state} = Repository.get_game_state(game.id)
+      {:ok, state} = Core.join_game(state, Repository.get_player(p1.id))
+      {:ok, state} = Core.join_game(state, Repository.get_player(p2.id))
+      {:ok, playing} = state |> Core.set_words(words) |> Core.start_game(owner.id)
+
+      # Seat 2 (p2) is up when p2 is deleted from persistence
+      {:ok, _saved} = Repository.save_game_state(%{playing | current_game_player_index: 2})
+      Repo.delete!(p2)
+
+      {:ok, reloaded} = Repository.get_game_state(game.id)
+      assert reloaded.current_game_player_index == 0
+      assert Core.get_current_player(reloaded).id == owner.id
     end
   end
 

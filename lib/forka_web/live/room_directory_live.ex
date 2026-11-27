@@ -149,6 +149,7 @@ defmodule ForkaWeb.RoomDirectoryLive do
      socket
      |> assign(:loading?, true)
      |> assign(:load_error, nil)
+     |> assign(:pending_events, [])
      |> start_async(:load_rooms, fn -> Games.list_directory_rooms_page() end)}
   end
 
@@ -182,6 +183,16 @@ defmodule ForkaWeb.RoomDirectoryLive do
         case Games.join_room(socket.assigns.current_scope, valid_id) do
           {:ok, _status} ->
             {:noreply, push_navigate(socket, to: ~p"/rooms/#{valid_id}")}
+
+          {:error, :game_archived} ->
+            {:noreply,
+             socket
+             |> apply_hidden_room_event(
+               %RoomListItem{id: valid_id, status: :archived},
+               socket.assigns.room_ids,
+               socket.assigns.room_order
+             )
+             |> put_flash(:error, "Esta sala foi arquivada.")}
 
           {:error, _reason} ->
             {:noreply, push_navigate(socket, to: ~p"/rooms/#{valid_id}/join")}

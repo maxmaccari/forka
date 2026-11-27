@@ -28,6 +28,7 @@ defmodule Forka.Games.RoomLobby do
           participant?: boolean(),
           can_edit_settings?: boolean(),
           can_leave?: boolean(),
+          can_transfer_ownership?: boolean(),
           word_availability: WordAvailability.t() | nil
         }
 
@@ -47,6 +48,7 @@ defmodule Forka.Games.RoomLobby do
     :participant?,
     :can_edit_settings?,
     :can_leave?,
+    :can_transfer_ownership?,
     :word_availability
   ]
 
@@ -96,6 +98,7 @@ defmodule Forka.Games.RoomLobby do
       participant?: participant?,
       can_edit_settings?: payload.status == :lobby and is_owner?,
       can_leave?: payload.status == :lobby and participant?,
+      can_transfer_ownership?: payload.status == :lobby and is_owner?,
       word_availability:
         build_word_availability(
           payload.status,
@@ -147,6 +150,7 @@ defmodule Forka.Games.RoomLobby do
       participant?: participant?,
       can_edit_settings?: summary.game_status == :lobby and is_owner?,
       can_leave?: summary.game_status == :lobby and participant?,
+      can_transfer_ownership?: summary.game_status == :lobby and is_owner?,
       word_availability:
         build_word_availability(
           summary.game_status,

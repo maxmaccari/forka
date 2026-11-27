@@ -25,6 +25,12 @@ defmodule ForkaWeb.RoomInviteLive do
           {:ok, assign_invite_state(socket, invite)}
         end
 
+      {:error, :game_archived} ->
+        {:ok,
+         socket
+         |> put_flash(:error, "Esta sala foi arquivada.")
+         |> push_navigate(to: ~p"/")}
+
       {:error, reason} ->
         {:ok, assign_error_state(socket, nil, reason)}
     end
@@ -34,6 +40,12 @@ defmodule ForkaWeb.RoomInviteLive do
     case Games.get_room_invite(game_id) do
       {:ok, %RoomInvite{} = invite} ->
         {:ok, assign_invite_state(socket, invite)}
+
+      {:error, :game_archived} ->
+        {:ok,
+         socket
+         |> put_flash(:error, "Esta sala foi arquivada.")
+         |> push_navigate(to: ~p"/")}
 
       {:error, reason} ->
         {:ok, assign_error_state(socket, nil, reason)}
@@ -81,6 +93,12 @@ defmodule ForkaWeb.RoomInviteLive do
     case Games.join_room(scope, game_id) do
       {:ok, _status} ->
         {:noreply, push_navigate(socket, to: ~p"/rooms/#{game_id}")}
+
+      {:error, :game_archived} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Esta sala foi arquivada.")
+         |> push_navigate(to: ~p"/")}
 
       {:error, reason} ->
         invite =
@@ -210,7 +228,6 @@ defmodule ForkaWeb.RoomInviteLive do
     do: "Partida em andamento"
 
   defp error_heading(state) when state in [:game_ended, :ended], do: "Partida encerrada"
-  defp error_heading(:game_archived), do: "Esta sala foi arquivada"
   defp error_heading(_), do: "Sala não encontrada"
 
   defp error_description(state) when state in [:maximum_players, :full],
@@ -221,9 +238,6 @@ defmodule ForkaWeb.RoomInviteLive do
 
   defp error_description(state) when state in [:game_ended, :ended],
     do: "Esta partida já foi finalizada."
-
-  defp error_description(:game_archived),
-    do: "Esta sala não está mais disponível."
 
   defp error_description(_),
     do: "Não encontramos uma sala com este convite."

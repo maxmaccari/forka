@@ -135,11 +135,10 @@ defmodule ForkaWeb.RoomFormLiveTest do
                conn |> log_in_player(owner) |> live(~p"/rooms/#{game.id}/settings")
     end
 
-    test "AC-08: redirects with flash if room starts or ownership transfers before submit", %{
-      conn: conn
-    } do
-      owner = insert(:player)
-      guest = insert(:player)
+    test "UI-03: former owner with settings page open is redirected back to lobby with a notice on ownership transfer",
+         %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      guest = insert(:player, username: "bruno")
       {:ok, game} = Games.create_game(owner.id, %{name: "Corrida", max_players: 4})
       {:ok, :joined} = Games.join_room(Forka.Scope.for_player(guest), game.id)
 
@@ -148,19 +147,65 @@ defmodule ForkaWeb.RoomFormLiveTest do
 
       :ok = Games.transfer_ownership(Forka.Scope.for_player(owner), game.id, guest.id)
 
-      {:ok, lobby_lv, lobby_html} =
-        lv
-        |> form("#room-form", room_settings: %{name: "Tarde demais"})
-        |> render_submit()
+      flash = assert_redirect(lv, ~p"/rooms/#{game.id}")
+      assert flash["error"] == "Agora bruno comanda a sala."
+    end
+
+    test "AC-08: submit raced behind ownership transfer redirects back to lobby with error flash",
+         %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      guest = insert(:player, username: "bruno")
+      owner_scope = Forka.Scope.for_player(owner)
+      {:ok, game} = Games.create_game(owner.id, %{name: "Corrida Submit", max_players: 4})
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(guest), game.id)
+
+      conn = log_in_player(conn, owner)
+      {:ok, lv, _html} = live(conn, ~p"/rooms/#{game.id}/settings")
+
+      game_pid = GameServer.whereis(game.id)
+      task_supervisor = start_supervised!(Task.Supervisor)
+      :ok = :sys.suspend(game_pid)
+
+      {transfer_task, save_task} =
+        try do
+          :erlang.trace(game_pid, true, [:receive])
+
+          transfer_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.transfer_ownership(owner_scope, game.id, guest.id)
+            end)
+
+          assert_receive {:trace, ^game_pid, :receive, {:"$gen_call", _, msg}}, 1_000
+          assert elem(msg, 0) == :transfer_ownership
+
+          save_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              lv
+              |> form("#room-form", room_settings: %{name: "Tarde demais"})
+              |> render_submit()
+            end)
+
+          assert_receive {:trace, ^game_pid, :receive, {:"$gen_call", _, save_msg}}, 1_000
+          assert elem(save_msg, 0) == :update_settings
+
+          {transfer_task, save_task}
+        after
+          :erlang.trace(game_pid, false, [:receive])
+          :sys.resume(game_pid)
+        end
+
+      assert :ok = Task.await(transfer_task, 5_000)
+
+      {:ok, _lobby_lv, lobby_html} =
+        save_task
+        |> Task.await(5_000)
         |> follow_redirect(conn, ~p"/rooms/#{game.id}")
 
-      assert lobby_lv.module == ForkaWeb.RoomLive
       assert lobby_html =~ "Apenas quem criou a sala pode editar as configurações."
     end
 
-    test "AC-08: redirects to directory when reopening or submitting edit on an archived room", %{
-      conn: conn
-    } do
+    test "ARCH-01: redirects to directory immediately when room is archived while settings page is open and on reopen",
+         %{conn: conn} do
       owner = insert(:player)
       {:ok, game} = Games.create_game(owner.id, %{name: "Sala Arquivada", max_players: 4})
 
@@ -172,17 +217,31 @@ defmodule ForkaWeb.RoomFormLiveTest do
       :ok = Games.archive_game(Forka.Scope.for_player(owner), game.id)
       assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
 
-      {:ok, _dir_lv, dir_html} =
-        lv
-        |> form("#room-form", room_settings: %{name: "Após arquivar"})
-        |> render_submit()
-        |> follow_redirect(conn, ~p"/")
-
-      assert dir_html =~ "Esta sala foi arquivada."
+      flash = assert_redirect(lv, ~p"/")
+      assert flash["error"] == "Esta sala foi arquivada."
 
       assert {:error,
               {:live_redirect, %{to: "/", flash: %{"error" => "Esta sala foi arquivada."}}}} =
                live(conn, ~p"/rooms/#{game.id}/settings")
+    end
+
+    test "UI-03: redirects owner from open settings page to match when game starts", %{
+      conn: conn
+    } do
+      owner = insert(:player, username: "lia")
+      guest = insert(:player, username: "bruno")
+      insert_list(4, :word)
+
+      {:ok, game} = Games.create_game(owner.id, %{name: "Sala Inicia", max_players: 4})
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(guest), game.id)
+
+      conn = log_in_player(conn, owner)
+      {:ok, lv, _html} = live(conn, ~p"/rooms/#{game.id}/settings")
+
+      :ok = Games.start_game(Forka.Scope.for_player(owner), game.id)
+
+      flash = assert_redirect(lv, ~p"/rooms/#{game.id}/match")
+      assert flash["error"] == "As configurações só podem ser alteradas antes da partida começar."
     end
   end
 

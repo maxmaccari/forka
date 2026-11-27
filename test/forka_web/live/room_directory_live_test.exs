@@ -369,6 +369,28 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
       assert text =~ "Ao vivo · #{limit} salas"
       refute text =~ "mostrando as #{limit} mais recentes"
     end
+
+    test "hides ownerless rooms without inflating the visible count or capped notice", %{
+      conn: conn
+    } do
+      owner = insert(:player, username: "lia")
+      orphan_owner = insert(:player, username: "ex_dono")
+      limit = Games.directory_limit()
+
+      for i <- 1..limit do
+        insert(:game, owner: owner, status: :lobby, name: "Sala #{i}")
+      end
+
+      orphan = insert(:game, owner: orphan_owner, status: :lobby, name: "Sala Orfa")
+      Forka.Repo.delete!(orphan_owner)
+
+      {:ok, lv, _html} = live(conn, ~p"/")
+      text = lv |> render_async() |> visible_text()
+
+      assert text =~ "Ao vivo · #{limit} salas"
+      refute text =~ "mostrando as #{limit} mais recentes"
+      refute has_element?(lv, "#rooms-#{orphan.id}")
+    end
   end
 
   describe "entry points and header controls" do
@@ -525,6 +547,23 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
       player_ids = summary.players |> Map.values() |> Enum.map(& &1.player.id)
       assert actor.id in player_ids
       refute victim.id in player_ids
+    end
+
+    test "ARCH-02: clicking join on a room archived just before click stays on directory with archived flash and removes card",
+         %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      joiner = insert(:player, username: "bruno")
+      {:ok, game} = Games.create_game(owner.id, %{name: "Sala Arquivando", max_players: 4})
+
+      {:ok, lv, _html} = conn |> log_in_player(joiner) |> live(~p"/")
+      _ = render_async(lv)
+      assert has_element?(lv, "#rooms-#{game.id}")
+
+      :ok = Games.archive_game(Forka.Scope.for_player(owner), game.id)
+      html = render_hook(lv, "join_room", %{"id" => game.id})
+
+      assert html =~ "Esta sala foi arquivada."
+      refute has_element?(lv, "#rooms-#{game.id}")
     end
   end
 end

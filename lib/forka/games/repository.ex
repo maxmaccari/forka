@@ -1,8 +1,11 @@
 defmodule Forka.Games.Repository do
   @moduledoc "Loads and persists game state, players, and dictionary words for the Games context."
 
+  import Ecto.Query
+
   alias Forka.Games.Core.GameState
   alias Forka.Games.Schemas.Game
+  alias Forka.Games.Schemas.GamePlayer
   alias Forka.Games.Schemas.Player
   alias Forka.Games.Schemas.Word
   alias Forka.Games.Schemas.WordOptions
@@ -91,6 +94,47 @@ defmodule Forka.Games.Repository do
     Repo.get(Player, id)
   end
 
+  @doc "Returns the subset of `player_ids` that still exist in persistence."
+  @spec existing_player_ids([Ecto.UUID.t()]) :: [Ecto.UUID.t()]
+  def existing_player_ids([]), do: []
+
+  def existing_player_ids(player_ids) when is_list(player_ids) do
+    ids = Enum.uniq(player_ids)
+
+    from(p in Player, where: p.id in ^ids, select: p.id)
+    |> Repo.all()
+  end
+
+  @doc "Returns distinct IDs of non-archived games where `player_id` is the owner or a seated player."
+  @spec list_active_game_ids_for_player(Ecto.UUID.t()) :: [Ecto.UUID.t()]
+  def list_active_game_ids_for_player(player_id) when is_binary(player_id) do
+    from(g in Game,
+      left_join: gp in GamePlayer,
+      on: gp.game_id == g.id and gp.player_id == ^player_id,
+      where: g.status != :archived and (g.owner_id == ^player_id or not is_nil(gp.id)),
+      distinct: g.id,
+      select: g.id
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Returns `true` when `game_id` exists in persistence, is not `:archived`, and still
+  references `player_id` as its owner or a seated player.
+  """
+  @spec player_active_in_game?(Ecto.UUID.t(), Ecto.UUID.t()) :: boolean()
+  def player_active_in_game?(game_id, player_id)
+      when is_binary(game_id) and is_binary(player_id) do
+    from(g in Game,
+      left_join: gp in GamePlayer,
+      on: gp.game_id == g.id and gp.player_id == ^player_id,
+      where:
+        g.id == ^game_id and g.status != :archived and
+          (g.owner_id == ^player_id or not is_nil(gp.id))
+    )
+    |> Repo.exists?()
+  end
+
   @doc """
   Inserts a new game into the database with the given owner ID and parameters.
 
@@ -129,6 +173,19 @@ defmodule Forka.Games.Repository do
 
       {:error, changeset} ->
         {:error, changeset}
+    end
+  end
+
+  @doc """
+  Returns the persisted status for the game with the given ID without preloading associations.
+  """
+  @spec get_game_status(Ecto.UUID.t()) :: {:ok, GameState.status()} | {:error, :not_found}
+  def get_game_status(id) when is_binary(id) do
+    from(g in Game, where: g.id == ^id, select: g.status)
+    |> Repo.one()
+    |> case do
+      nil -> {:error, :not_found}
+      status -> {:ok, status}
     end
   end
 
@@ -188,6 +245,76 @@ defmodule Forka.Games.Repository do
 
       {:error, changeset} ->
         {:error, changeset}
+    end
+  end
+
+  @doc """
+  Atomically locks `id` in persistence, loads its state, evaluates `reconcile_fun`
+  against the currently existing player IDs, and persists the reconciled state when changed.
+  """
+  @spec reconcile_game_state(
+          Ecto.UUID.t(),
+          (GameState.t(), [Ecto.UUID.t()] -> :unchanged | {:changed, GameState.t()})
+        ) ::
+          {:ok, :unchanged, GameState.t()}
+          | {:ok, :reconciled, GameState.t(), GameState.t()}
+          | {:error, :not_found | Ecto.Changeset.t(Game.t())}
+  def reconcile_game_state(id, reconcile_fun)
+      when is_binary(id) and is_function(reconcile_fun, 2) do
+    Repo.transaction(fn -> reconcile_locked_game(id, reconcile_fun) end)
+    |> handle_reconcile_result()
+  end
+
+  defp reconcile_locked_game(id, reconcile_fun) do
+    case fetch_locked_game(id) do
+      nil -> Repo.rollback(:not_found)
+      %Game{status: :archived} = archived -> {:unchanged, Game.to_game_state(archived)}
+      %Game{} = game -> apply_reconcile_fun(game, reconcile_fun)
+    end
+  end
+
+  defp apply_reconcile_fun(%Game{} = game, reconcile_fun) do
+    loaded_state = Game.to_game_state(game)
+    existing_ids = loaded_state |> referenced_player_ids() |> existing_player_ids()
+
+    case reconcile_fun.(loaded_state, existing_ids) do
+      :unchanged -> {:unchanged, loaded_state}
+      {:changed, updated_state} -> persist_reconciled_game(game, loaded_state, updated_state)
+    end
+  end
+
+  defp persist_reconciled_game(game, loaded_state, updated_state) do
+    case game |> Game.state_changeset(updated_state) |> Repo.update() do
+      {:ok, saved_game} ->
+        saved_state = saved_game |> Repo.preload(@game_preloads) |> Game.to_game_state()
+        {:reconciled, saved_game, loaded_state, saved_state}
+
+      {:error, changeset} ->
+        Repo.rollback(changeset)
+    end
+  end
+
+  defp handle_reconcile_result({:ok, {:unchanged, state}}), do: {:ok, :unchanged, state}
+
+  defp handle_reconcile_result({:ok, {:reconciled, saved_game, previous_state, saved_state}}) do
+    broadcast_backoffice!(saved_game, "backpex:updated")
+    {:ok, :reconciled, previous_state, saved_state}
+  end
+
+  defp handle_reconcile_result({:error, reason}), do: {:error, reason}
+
+  defp fetch_locked_game(id) do
+    from(g in Game, where: g.id == ^id, lock: "FOR UPDATE")
+    |> Repo.one()
+    |> Repo.preload(@game_preloads)
+  end
+
+  defp referenced_player_ids(%GameState{owner: owner, game_players: game_players}) do
+    seated_ids = Enum.map(game_players, fn {_idx, gp} -> gp.player.id end)
+
+    case owner do
+      %{id: owner_id} when is_binary(owner_id) -> [owner_id | seated_ids]
+      _ -> seated_ids
     end
   end
 

@@ -52,10 +52,7 @@ defmodule Forka.Games.GameListNotifier do
 
   @doc false
   @spec broadcast_update_if_changed(GameState.t(), GameState.t()) :: :ok
-  def broadcast_update_if_changed(
-        %GameState{} = previous,
-        %GameState{} = saved
-      ) do
+  def broadcast_update_if_changed(%GameState{} = previous, %GameState{} = saved) do
     if list_fields(previous) != list_fields(saved), do: broadcast_update(saved)
     :ok
   end

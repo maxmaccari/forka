@@ -390,6 +390,7 @@ defmodule ForkaWeb.RoomComponents do
   attr :players, :list, required: true
   attr :owner_id, :string, default: nil
   attr :current_player_id, :string, required: true
+  attr :can_transfer_ownership?, :boolean, default: false
   attr :empty_seats, :integer, required: true
   attr :player_count, :integer, required: true
   attr :max_players, :integer, required: true
@@ -433,6 +434,33 @@ defmodule ForkaWeb.RoomComponents do
             <.badge :if={player.id == @owner_id} tone="accent">
               Anfitrião
             </.badge>
+            <div
+              :if={@can_transfer_ownership? and player.id != @current_player_id}
+              class="flex shrink-0 items-center"
+            >
+              <.icon_button
+                id={"transfer-ownership-mobile-#{player.id}"}
+                icon="hero-ellipsis-horizontal-solid"
+                aria_label={"Opções para #{player.username}"}
+                phx-click="open_transfer_sheet"
+                phx-value-player_id={player.id}
+                class="sm:hidden"
+              />
+              <span class="hidden sm:inline-flex">
+                <.button
+                  id={"transfer-ownership-#{player.id}"}
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  phx-click="open_transfer_sheet"
+                  phx-value-player_id={player.id}
+                  aria-label={"Passar a posse para #{player.username}"}
+                  class="whitespace-nowrap"
+                >
+                  Passar a posse
+                </.button>
+              </span>
+            </div>
           </li>
 
           <li

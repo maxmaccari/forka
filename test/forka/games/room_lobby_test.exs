@@ -106,5 +106,44 @@ defmodule Forka.Games.RoomLobbyTest do
         assert lobby.empty_seats == 0
       end
     end
+
+    test "UI-01: projects can_transfer_ownership? only for the owner while in lobby" do
+      owner = build_games_player("lia")
+      guest = build_games_player("bruno")
+      words = for word <- ~w(samba bossa frevo choro), do: Word.new(word, "Música", "Ritmo")
+
+      {:ok, state} =
+        Core.new(owner, "Sala Posse", 4, word_options: [language: "pt", category_ids: []])
+        |> Core.join_game(owner)
+
+      {:ok, state} = Core.join_game(state, guest)
+      summary = Core.to_game_summary(state)
+      payload = RoomLobby.payload(state, [], 4)
+
+      for lobby <- [
+            RoomLobby.from_game_summary(scope_for(owner), state.id, summary, [], 4),
+            RoomLobby.from_payload(scope_for(owner), payload)
+          ] do
+        assert lobby.can_transfer_ownership? == true
+      end
+
+      for lobby <- [
+            RoomLobby.from_game_summary(scope_for(guest), state.id, summary, [], 4),
+            RoomLobby.from_payload(scope_for(guest), payload)
+          ] do
+        assert lobby.can_transfer_ownership? == false
+      end
+
+      {:ok, playing} = state |> Core.set_words(words) |> Core.start_game(owner.id)
+      playing_summary = Core.to_game_summary(playing)
+      playing_payload = RoomLobby.payload(playing, [], nil)
+
+      for lobby <- [
+            RoomLobby.from_game_summary(scope_for(owner), state.id, playing_summary, [], nil),
+            RoomLobby.from_payload(scope_for(owner), playing_payload)
+          ] do
+        assert lobby.can_transfer_ownership? == false
+      end
+    end
   end
 end

@@ -2,6 +2,7 @@ defmodule ForkaWeb.RoomFormLive do
   use ForkaWeb, :live_view
 
   alias Forka.Games
+  alias Forka.Games.RoomLobby
   alias Forka.Games.RoomSettings
   alias Forka.Words
   alias ForkaWeb.Layouts
@@ -26,47 +27,70 @@ defmodule ForkaWeb.RoomFormLive do
   end
 
   def mount(%{"id" => game_id}, _session, %{assigns: %{live_action: :edit}} = socket) do
-    case Games.get_room_settings_for_edit(socket.assigns.current_scope, game_id) do
+    scope = socket.assigns.current_scope
+
+    case Games.get_room_settings_for_edit(scope, game_id) do
       {:ok, %{settings: settings, min_players: min_players}} ->
-        categories = Words.list_categories(language: settings.word_options.language)
+        mount_edit_room(socket, scope, game_id, settings, min_players)
 
-        {:ok,
-         socket
-         |> assign(:page_title, "Configurações da sala")
-         |> assign(:mode, :edit)
-         |> assign(:game_id, game_id)
-         |> assign(:min_players, min_players)
-         |> assign(:name, settings.name)
-         |> assign(:max_players, settings.max_players)
-         |> assign(:language, settings.word_options.language)
-         |> assign(:selected_category_ids, settings.word_options.category_ids)
-         |> assign(:categories, categories)
-         |> assign(:form, build_form(settings, %{}, min_players))}
-
-      {:error, :not_found} ->
-        {:ok,
-         socket
-         |> put_flash(:error, "Sala não encontrada.")
-         |> push_navigate(to: ~p"/")}
-
-      {:error, :unauthorized} ->
-        {:ok,
-         socket
-         |> put_flash(:error, "Apenas quem criou a sala pode editar as configurações.")
-         |> push_navigate(to: ~p"/rooms/#{game_id}")}
-
-      {:error, :game_not_in_lobby} ->
-        {:ok,
-         socket
-         |> put_flash(:error, "As configurações só podem ser alteradas antes da partida começar.")
-         |> push_navigate(to: ~p"/rooms/#{game_id}")}
-
-      {:error, :game_archived} ->
-        {:ok,
-         socket
-         |> put_flash(:error, "Esta sala foi arquivada.")
-         |> push_navigate(to: ~p"/")}
+      {:error, reason} ->
+        {:ok, handle_edit_access_error(socket, game_id, reason)}
     end
+  end
+
+  defp mount_edit_room(socket, scope, game_id, initial_settings, initial_min_players) do
+    if connected?(socket) do
+      with :ok <- Games.subscribe_to_room_lobby(scope, game_id),
+           {:ok, %{settings: fresh_settings, min_players: fresh_min_players}} <-
+             Games.get_room_settings_for_edit(scope, game_id) do
+        {:ok, assign_edit_form(socket, game_id, fresh_settings, fresh_min_players)}
+      else
+        {:error, reason} ->
+          {:ok, handle_edit_access_error(socket, game_id, reason)}
+      end
+    else
+      {:ok, assign_edit_form(socket, game_id, initial_settings, initial_min_players)}
+    end
+  end
+
+  defp assign_edit_form(socket, game_id, settings, min_players) do
+    categories = Words.list_categories(language: settings.word_options.language)
+
+    socket
+    |> assign(:page_title, "Configurações da sala")
+    |> assign(:mode, :edit)
+    |> assign(:game_id, game_id)
+    |> assign(:min_players, min_players)
+    |> assign(:name, settings.name)
+    |> assign(:max_players, settings.max_players)
+    |> assign(:language, settings.word_options.language)
+    |> assign(:selected_category_ids, settings.word_options.category_ids)
+    |> assign(:categories, categories)
+    |> assign(:form, build_form(settings, %{}, min_players))
+  end
+
+  defp handle_edit_access_error(socket, _game_id, :game_archived) do
+    socket
+    |> put_flash(:error, "Esta sala foi arquivada.")
+    |> push_navigate(to: ~p"/")
+  end
+
+  defp handle_edit_access_error(socket, game_id, :unauthorized) do
+    socket
+    |> put_flash(:error, "Apenas quem criou a sala pode editar as configurações.")
+    |> push_navigate(to: ~p"/rooms/#{game_id}")
+  end
+
+  defp handle_edit_access_error(socket, game_id, :game_not_in_lobby) do
+    socket
+    |> put_flash(:error, "As configurações só podem ser alteradas antes da partida começar.")
+    |> push_navigate(to: ~p"/rooms/#{game_id}")
+  end
+
+  defp handle_edit_access_error(socket, _game_id, _reason) do
+    socket
+    |> put_flash(:error, "Sala não encontrada.")
+    |> push_navigate(to: ~p"/")
   end
 
   @impl true
@@ -200,6 +224,49 @@ defmodule ForkaWeb.RoomFormLive do
 
   def handle_event("save", _params, socket) do
     {:noreply, assign_form(socket, socket.assigns.name, :validate)}
+  end
+
+  @impl true
+  def handle_info({:room_lobby_updated, payload}, %{assigns: %{mode: :edit}} = socket) do
+    case Games.room_lobby_from_payload(socket.assigns.current_scope, payload) do
+      {:ok, %RoomLobby{status: :archived}} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Esta sala foi arquivada.")
+         |> push_navigate(to: ~p"/")}
+
+      {:ok, %RoomLobby{participant?: false}} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Você saiu da sala.")
+         |> push_navigate(to: ~p"/")}
+
+      {:ok, %RoomLobby{status: status, id: id}}
+      when status in [:playing, :finished, :game_over] ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "As configurações só podem ser alteradas antes da partida começar.")
+         |> push_navigate(to: ~p"/rooms/#{id}/match")}
+
+      {:ok, %RoomLobby{is_owner?: false, id: id, owner_username: owner_username}} ->
+        notice =
+          if owner_username != "" do
+            "Agora #{owner_username} comanda a sala."
+          else
+            "Você não comanda mais esta sala."
+          end
+
+        {:noreply,
+         socket
+         |> put_flash(:error, notice)
+         |> push_navigate(to: ~p"/rooms/#{id}")}
+
+      {:ok, %RoomLobby{player_count: count}} ->
+        {:noreply, assign(socket, :min_players, max(2, count))}
+
+      {:error, _reason} ->
+        {:noreply, socket}
+    end
   end
 
   @impl true

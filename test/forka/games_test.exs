@@ -2,6 +2,7 @@ defmodule Forka.GamesTest do
   use Forka.DataCase
 
   alias Forka.Games
+  alias Forka.Games.Core
   alias Forka.Games.GameServer
   alias Forka.Games.Repository
   alias Forka.Games.Schemas.Event
@@ -1640,6 +1641,24 @@ defmodule Forka.GamesTest do
       refute_receive {:game_updated, _}
       assert Games.get_game_summary(game.id).game_status == :playing
     end
+
+    test "STALE-01: transfer_ownership/4 with lobby_only: true rejects started and archived rooms",
+         %{game: game, owner_scope: owner_scope, member: member, member_scope: member_scope} do
+      assert :ok = Games.start_game(owner_scope, game.id)
+
+      assert {:error, :game_not_in_lobby} =
+               Games.transfer_ownership(owner_scope, game.id, member.id, lobby_only: true)
+
+      assert {:error, :unauthorized} =
+               Games.transfer_ownership(member_scope, game.id, member.id, lobby_only: true)
+
+      assert :ok = Games.give_up_game(owner_scope, game.id)
+      assert :ok = Games.give_up_game(member_scope, game.id)
+      assert :ok = Games.archive_game(owner_scope, game.id)
+
+      assert {:error, :game_archived} =
+               Games.transfer_ownership(owner_scope, game.id, member.id, lobby_only: true)
+    end
   end
 
   describe "REQ-04 & REQ-06: scoped participant commands and crafted player_id protection" do
@@ -1864,5 +1883,978 @@ defmodule Forka.GamesTest do
       assert playing_lobby.status == :playing
       assert playing_lobby.word_availability == nil
     end
+  end
+
+  describe "OWN-04: fallback handling for ownerless rooms" do
+    test "OWN-04: list_directory_rooms_page/1 hides ownerless rooms without repairing them and keeps pagination counts accurate" do
+      base = ~U[2026-11-27 10:00:00Z]
+
+      set_inserted_at = fn game_id, offset_seconds ->
+        ts = DateTime.add(base, offset_seconds, :second)
+
+        from(g in Forka.Games.Schemas.Game, where: g.id == ^game_id)
+        |> Repo.update_all(set: [inserted_at: ts])
+      end
+
+      healthy_owner = insert(:player, username: "lia")
+      member = insert(:player, username: "bruno")
+
+      {:ok, healthy} =
+        Repository.insert_game(healthy_owner.id, %{name: "Saudavel", max_players: 4})
+
+      set_inserted_at.(healthy.id, 10)
+
+      # Ownerless populated room ahead of healthy room
+      shared_owner = insert(:player, username: "ex_dono")
+
+      {:ok, shared_orphan} =
+        Repository.insert_game(shared_owner.id, %{name: "Orfa Com Membro", max_players: 4})
+
+      {:ok, shared_state} = Repository.get_game_state(shared_orphan.id)
+      {:ok, shared_state} = Core.join_game(shared_state, Repository.get_player(member.id))
+      {:ok, _} = Repository.save_game_state(shared_state)
+      set_inserted_at.(shared_orphan.id, 30)
+      Repo.delete!(shared_owner)
+
+      # Ownerless empty rooms both ahead of and behind the healthy room
+      solo_owner1 = insert(:player, username: "caio")
+
+      {:ok, empty_ahead} =
+        Repository.insert_game(solo_owner1.id, %{name: "Vazia 1", max_players: 4})
+
+      set_inserted_at.(empty_ahead.id, 20)
+      Repo.delete!(solo_owner1)
+
+      solo_owner2 = insert(:player, username: "duda")
+
+      {:ok, empty_behind} =
+        Repository.insert_game(solo_owner2.id, %{name: "Vazia 2", max_players: 4})
+
+      set_inserted_at.(empty_behind.id, 5)
+      Repo.delete!(solo_owner2)
+
+      page = Games.list_directory_rooms_page(limit: 1)
+      assert Enum.map(page.rooms, & &1.id) == [healthy.id]
+      assert page.has_more? == false
+
+      # Directory read does not repair ownerless rooms or start servers
+      assert GameServer.whereis(shared_orphan.id) == nil
+      assert GameServer.whereis(empty_ahead.id) == nil
+      assert GameServer.whereis(empty_behind.id) == nil
+      assert {:ok, %{owner: nil, status: :lobby}} = Repository.get_game_state(shared_orphan.id)
+      assert {:ok, %{owner: nil, status: :lobby}} = Repository.get_game_state(empty_ahead.id)
+      assert {:ok, %{owner: nil, status: :lobby}} = Repository.get_game_state(empty_behind.id)
+    end
+
+    test "OWN-04: opening an ownerless room repairs it by promoting next seat or archiving when empty" do
+      owner1 = insert(:player, username: "lia")
+      p2 = insert(:player, username: "bruno")
+      owner2 = insert(:player, username: "caio")
+
+      {:ok, shared_game} = Repository.insert_game(owner1.id, %{name: "Com Bruno", max_players: 4})
+      {:ok, shared_state} = Repository.get_game_state(shared_game.id)
+      {:ok, shared_state} = Core.join_game(shared_state, Repository.get_player(p2.id))
+      {:ok, _} = Repository.save_game_state(shared_state)
+
+      {:ok, solo_game} = Repository.insert_game(owner2.id, %{name: "Solo Orfa", max_players: 4})
+
+      on_exit(fn ->
+        if pid = GameServer.whereis(shared_game.id) do
+          DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
+        end
+      end)
+
+      Repo.delete!(owner1)
+      Repo.delete!(owner2)
+
+      # Invite preview heals shared room in persistence without starting a GameServer
+      assert GameServer.whereis(shared_game.id) == nil
+      :ok = Games.subscribe_to_game_list()
+      flush_messages()
+
+      assert {:ok, %Forka.Games.RoomInvite{owner_username: "bruno", player_count: 1}} =
+               Games.get_room_invite(shared_game.id)
+
+      assert GameServer.whereis(shared_game.id) == nil
+
+      assert_receive {:game_list_updated,
+                      %{id: shared_id, owner_username: "bruno", player_count: 1}}
+
+      assert shared_id == shared_game.id
+
+      {:ok, persisted_shared} = Repository.get_game_state(shared_game.id)
+      assert persisted_shared.owner.id == p2.id
+      assert Map.keys(persisted_shared.game_players) == [0]
+      assert persisted_shared.game_players[0].player.id == p2.id
+
+      assert Enum.count(persisted_shared.events, &(&1.type == :ownership_transferred_to)) == 1
+
+      # Directory now shows the repaired room
+      %{rooms: rooms} = Games.list_directory_rooms_page()
+      assert Enum.find(rooms, &(&1.id == shared_game.id)).owner_username == "bruno"
+
+      # Invite preview archives empty ownerless room without starting a GameServer
+      assert {:error, :game_archived} = Games.get_room_invite(solo_game.id)
+      assert GameServer.whereis(solo_game.id) == nil
+      assert {:ok, %{status: :archived, owner: nil}} = Repository.get_game_state(solo_game.id)
+    end
+
+    test "OWN-04: get_room_lobby/2 reconciles a running GameServer whose sole owner was deleted and returns :game_archived" do
+      owner = insert(:player, username: "lia")
+      outsider = insert(:player, username: "bruno")
+
+      {:ok, game} =
+        Games.create_room(Scope.for_player(owner), %{name: "Running Solo", max_players: 4})
+
+      pid = GameServer.whereis(game.id)
+      ref = Process.monitor(pid)
+
+      Repo.delete!(owner)
+
+      assert {:error, :game_archived} = Games.get_room_lobby(Scope.for_player(outsider), game.id)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+      assert {:error, :game_archived} = Games.get_room_invite(game.id)
+    end
+
+    @tag sandbox: :auto
+    test "F-01 & F-13: concurrent previews of an empty cold orphan serialize, archive once, and never start a GameServer" do
+      owner = insert(:player, username: "f13_solo")
+      {:ok, game} = Repository.insert_game(owner.id, %{name: "Solo Paralela", max_players: 4})
+
+      on_exit(fn ->
+        if pid = GameServer.whereis(game.id) do
+          DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
+        end
+
+        cleanup_unboxed_records([game.id], [owner.id])
+      end)
+
+      Repo.delete!(owner)
+
+      task_supervisor = start_supervised!(Task.Supervisor)
+      games_sup = Process.whereis(Forka.GamesSupervisor)
+      {lock_holder, holder_pid, holder_pg_pid} = hold_game_row_lock(task_supervisor, game.id)
+      on_exit(fn -> send(holder_pid, :release_lock) end)
+
+      tasks =
+        try do
+          :erlang.trace(games_sup, true, [:receive])
+
+          first_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.get_room_invite(game.id)
+            end)
+
+          wait_for_pg_blocker(holder_pg_pid, 2_000)
+
+          second_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              receive do: (:go -> Games.get_room_invite(game.id))
+            end)
+
+          second_pid = second_task.pid
+          :erlang.trace(second_pid, true, [:send])
+          send(second_pid, :go)
+
+          # Second preview contends on the per-room lifecycle lock while first holds it
+          assert_receive {:trace, ^second_pid, :send, {:"$gen_call", _, {:set_lock, _}}, _},
+                         2_000
+
+          send(holder_pid, :release_lock)
+          [first_task, second_task]
+        after
+          :erlang.trace(:all, false, [:receive, :send])
+        end
+
+      assert :ok = Task.await(lock_holder, 5_000)
+      results = Enum.map(tasks, &Task.await(&1, 5_000))
+      assert results == [{:error, :game_archived}, {:error, :game_archived}]
+      assert GameServer.whereis(game.id) == nil
+      refute_receive {:trace, ^games_sup, :receive, {:"$gen_call", _, {:start_child, _}}}
+
+      {:ok, persisted} = Repository.get_game_state(game.id)
+      assert persisted.status == :archived
+      assert persisted.owner == nil
+      assert persisted.game_players == %{}
+      assert Enum.count(persisted.events, &(&1.type == :game_archived)) == 1
+    end
+
+    @tag sandbox: :auto
+    test "F-13: preview-first race with join serializes on lifecycle lock, keeps unrelated room B unblocked, and preserves join and transfer" do
+      owner_a = insert(:player, username: "f13_pf_lia")
+      member_a = insert(:player, username: "f13_pf_bruno")
+      joiner_a = insert(:player, username: "f13_pf_caio")
+      owner_b = insert(:player, username: "f13_pf_duda")
+      joiner_b = insert(:player, username: "f13_pf_eva")
+
+      {:ok, game_a} = Repository.insert_game(owner_a.id, %{name: "Orfa PF A", max_players: 4})
+      {:ok, state_a} = Repository.get_game_state(game_a.id)
+      {:ok, state_a} = Core.join_game(state_a, Repository.get_player(member_a.id))
+      {:ok, _} = Repository.save_game_state(state_a)
+
+      {:ok, game_b} = Repository.insert_game(owner_b.id, %{name: "Sala PF B", max_players: 4})
+
+      on_exit(fn ->
+        for id <- [game_a.id, game_b.id] do
+          if pid = GameServer.whereis(id) do
+            DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
+          end
+        end
+
+        cleanup_unboxed_records([game_a.id, game_b.id], [
+          owner_a.id,
+          member_a.id,
+          joiner_a.id,
+          owner_b.id,
+          joiner_b.id
+        ])
+      end)
+
+      Repo.delete!(owner_a)
+
+      task_supervisor = start_supervised!(Task.Supervisor)
+      games_sup = Process.whereis(Forka.GamesSupervisor)
+      {lock_holder, holder_pid, holder_pg_pid} = hold_game_row_lock(task_supervisor, game_a.id)
+      on_exit(fn -> send(holder_pid, :release_lock) end)
+
+      {preview_task, join_task} =
+        try do
+          preview_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.get_room_invite(game_a.id)
+            end)
+
+          # Preview acquired the lifecycle lock and is blocked on room A's FOR UPDATE row lock
+          wait_for_pg_blocker(holder_pg_pid, 2_000)
+          assert GameServer.whereis(game_a.id) == nil
+
+          :erlang.trace(games_sup, true, [:send, :set_on_spawn])
+
+          join_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.join_room(Scope.for_player(joiner_a), game_a.id)
+            end)
+
+          # Join registers A's child promptly; the child (not supervisor) waits on A's lifecycle lock
+          child_a = wait_for_registered_game_server(game_a.id, 2_000)
+
+          receive do
+            {:trace, ^child_a, :send, {:"$gen_call", _, {:set_lock, _}}, _} ->
+              :ok
+          after
+            2_000 -> flunk("child_a did not contend on room A's lifecycle lock")
+          end
+
+          # Unrelated room B opens and accepts joins while room A is blocked
+          assert {:ok, :joined} = Games.join_room(Scope.for_player(joiner_b), game_b.id)
+          assert is_pid(GameServer.whereis(game_b.id))
+
+          send(holder_pid, :release_lock)
+          {preview_task, join_task}
+        after
+          :erlang.trace(:all, false, [:send, :set_on_spawn])
+        end
+
+      assert :ok = Task.await(lock_holder, 5_000)
+
+      assert {:ok, %Forka.Games.RoomInvite{owner_username: "f13_pf_bruno"}} =
+               Task.await(preview_task, 5_000)
+
+      assert {:ok, :joined} = Task.await(join_task, 5_000)
+
+      # Subsequent ownership transfer and both seats persist cleanly
+      assert :ok =
+               Games.transfer_ownership(Scope.for_player(member_a), game_a.id, joiner_a.id)
+
+      {:ok, persisted} = Repository.get_game_state(game_a.id)
+      assert persisted.owner.id == joiner_a.id
+
+      assert persisted.game_players
+             |> Map.values()
+             |> Enum.map(& &1.player.id)
+             |> Enum.sort() == Enum.sort([member_a.id, joiner_a.id])
+
+      # Exactly one promotion from repair plus one explicit transfer
+      handoff_events =
+        Enum.filter(persisted.events, &(&1.type == :ownership_transferred_to))
+
+      assert length(handoff_events) == 2
+
+      assert Enum.count(handoff_events, fn ev ->
+               ev.payload["to_player_id"] == member_a.id
+             end) == 1
+    end
+
+    @tag sandbox: :auto
+    test "F-13: startup-first race with preview and caller waits past 5s via readiness path with one repair" do
+      owner_a = insert(:player, username: "f13_sf_lia")
+      member_a = insert(:player, username: "f13_sf_bruno")
+      joiner_a = insert(:player, username: "f13_sf_caio")
+
+      {:ok, game_a} = Repository.insert_game(owner_a.id, %{name: "Orfa SF A", max_players: 4})
+      {:ok, state_a} = Repository.get_game_state(game_a.id)
+      {:ok, state_a} = Core.join_game(state_a, Repository.get_player(member_a.id))
+      {:ok, _} = Repository.save_game_state(state_a)
+
+      on_exit(fn ->
+        if pid = GameServer.whereis(game_a.id) do
+          DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
+        end
+
+        cleanup_unboxed_records([game_a.id], [owner_a.id, member_a.id, joiner_a.id])
+      end)
+
+      Repo.delete!(owner_a)
+
+      task_supervisor = start_supervised!(Task.Supervisor)
+      {lock_holder, holder_pid, holder_pg_pid} = hold_game_row_lock(task_supervisor, game_a.id)
+      on_exit(fn -> send(holder_pid, :release_lock) end)
+
+      {join_task, preview_task, lobby_task} =
+        try do
+          join_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.join_room(Scope.for_player(joiner_a), game_a.id)
+            end)
+
+          child_a = wait_for_registered_game_server(game_a.id, 2_000)
+          wait_for_pg_blocker(holder_pg_pid, 2_000)
+
+          :erlang.trace(child_a, true, [:receive])
+
+          preview_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.get_room_invite(game_a.id)
+            end)
+
+          lobby_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.get_room_lobby(Scope.for_player(member_a), game_a.id)
+            end)
+
+          expected_callers = MapSet.new([preview_task.pid, lobby_task.pid])
+          wait_for_ensure_ready_calls(child_a, expected_callers, 2_000)
+
+          Process.send_after(holder_pid, :release_lock, 5_200)
+          {join_task, preview_task, lobby_task}
+        after
+          :erlang.trace(:all, false, [:receive])
+        end
+
+      assert :ok = Task.await(lock_holder, 10_000)
+      assert {:ok, :joined} = Task.await(join_task, 10_000)
+
+      assert {:ok, %Forka.Games.RoomInvite{owner_username: "f13_sf_bruno"}} =
+               Task.await(preview_task, 10_000)
+
+      assert {:ok, %Forka.Games.RoomLobby{owner_username: "f13_sf_bruno"}} =
+               Task.await(lobby_task, 10_000)
+
+      {:ok, persisted} = Repository.get_game_state(game_a.id)
+      assert persisted.owner.id == member_a.id
+
+      assert persisted.game_players
+             |> Map.values()
+             |> Enum.map(& &1.player.id)
+             |> Enum.sort() == Enum.sort([member_a.id, joiner_a.id])
+
+      assert Enum.count(persisted.events, &(&1.type == :ownership_transferred_to)) == 1
+    end
+
+    test "F-13: preview retries cold repair without starting a child when observed PID disappears" do
+      owner = insert(:player, username: "f13_dis_lia")
+      member = insert(:player, username: "f13_dis_bruno")
+
+      {:ok, game} =
+        Games.create_room(Scope.for_player(owner), %{name: "Desaparece", max_players: 4})
+
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(member), game.id)
+
+      pid = GameServer.whereis(game.id)
+      ref = Process.monitor(pid)
+      games_sup = Process.whereis(Forka.GamesSupervisor)
+      task_supervisor = start_supervised!(Task.Supervisor)
+
+      on_exit(fn ->
+        if running = GameServer.whereis(game.id) do
+          DynamicSupervisor.terminate_child(Forka.GamesSupervisor, running)
+        end
+      end)
+
+      # Delete owner directly so DB row is ownerless while old GameServer pid is still registered
+      Repo.delete!(owner)
+      :ok = :sys.suspend(pid)
+
+      preview_task =
+        try do
+          :erlang.trace(pid, true, [:receive])
+          :erlang.trace(games_sup, true, [:receive])
+
+          task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.get_room_invite(game.id)
+            end)
+
+          assert_receive {:trace, ^pid, :receive, {:"$gen_call", _, {:get_game, _}}}, 2_000
+
+          # Terminate the observed PID normally before it processes :get_game
+          :ok = :sys.terminate(pid, :normal)
+          assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 2_000
+          task
+        after
+          :erlang.trace(:all, false, [:receive])
+        end
+
+      assert {:ok, %Forka.Games.RoomInvite{owner_username: "f13_dis_bruno", player_count: 1}} =
+               Task.await(preview_task, 5_000)
+
+      assert GameServer.whereis(game.id) == nil
+      refute_receive {:trace, ^games_sup, :receive, {:"$gen_call", _, {:start_child, _}}}
+
+      {:ok, persisted} = Repository.get_game_state(game.id)
+      assert persisted.owner.id == member.id
+      assert persisted.status == :lobby
+    end
+  end
+
+  describe "remove_player_from_games/1" do
+    test "validates UUID input and handles a player in no active rooms" do
+      assert {:error, :invalid_player_id} = Games.remove_player_from_games("not-a-uuid")
+
+      player = insert(:player)
+      assert :ok = Games.remove_player_from_games(player.id)
+    end
+
+    test "removes a player across multiple running, cold, playing, non-owner, and archived rooms" do
+      target = insert(:player, username: "lia")
+      p2 = insert(:player, username: "bruno")
+      p3 = insert(:player, username: "caio")
+      insert_list(6, :word)
+
+      # 1. Running lobby room owned by target with p2 -> promotes p2
+      {:ok, running_shared} =
+        Games.create_room(Scope.for_player(target), %{name: "Lobby Viva", max_players: 4})
+
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(p2), running_shared.id)
+
+      # 2. Cold sole-owner lobby room (no running GameServer) -> archived, no server left behind
+      {:ok, cold_solo} = Repository.insert_game(target.id, %{name: "Fria Solo", max_players: 4})
+      assert GameServer.whereis(cold_solo.id) == nil
+
+      # 3. Cold shared lobby room (no running GameServer) -> promoted to p2
+      {:ok, cold_shared} =
+        Repository.insert_game(target.id, %{name: "Fria Com Bruno", max_players: 4})
+
+      {:ok, cs} = Repository.get_game_state(cold_shared.id)
+      {:ok, cs} = Core.join_game(cs, Repository.get_player(p2.id))
+      {:ok, _} = Repository.save_game_state(cs)
+      assert GameServer.whereis(cold_shared.id) == nil
+
+      # 4. Running playing match owned by target with p2 & p3 -> continues without target
+      {:ok, playing_game} =
+        Games.create_room(Scope.for_player(target), %{name: "Partida", max_players: 4})
+
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(p2), playing_game.id)
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(p3), playing_game.id)
+      assert :ok = Games.start_game(Scope.for_player(target), playing_game.id)
+
+      # 5. Room owned by p2 where target is a non-owner member -> target dropped, p2 stays owner
+      {:ok, non_owner_room} =
+        Games.create_room(Scope.for_player(p2), %{name: "Do Bruno", max_players: 4})
+
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(target), non_owner_room.id)
+
+      # 6. Already-archived room owned by target -> untouched, no server started
+      {:ok, archived_room} =
+        Repository.insert_game(target.id, %{name: "Ja Arquivada", max_players: 4})
+
+      {:ok, as} = Repository.get_game_state(archived_room.id)
+      {:ok, arch} = Core.archive_game(as)
+      {:ok, _} = Repository.save_game_state(arch)
+
+      on_exit(fn ->
+        for id <- [running_shared.id, cold_shared.id, playing_game.id, non_owner_room.id] do
+          if pid = GameServer.whereis(id) do
+            DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
+          end
+        end
+      end)
+
+      assert :ok = Games.remove_player_from_games(target.id)
+
+      assert Games.get_game_summary(running_shared.id).owner.id == p2.id
+      assert map_size(Games.get_game_summary(running_shared.id).players) == 1
+
+      assert GameServer.whereis(cold_solo.id) == nil
+      assert {:ok, %{status: :archived, owner: nil}} = Repository.get_game_state(cold_solo.id)
+
+      assert Games.get_game_summary(cold_shared.id).owner.id == p2.id
+
+      playing_summary = Games.get_game_summary(playing_game.id)
+      assert playing_summary.game_status == :playing
+      assert playing_summary.owner.id in [p2.id, p3.id]
+      refute Enum.any?(playing_summary.players, fn {_, gp} -> gp.player.id == target.id end)
+
+      non_owner_summary = Games.get_game_summary(non_owner_room.id)
+      assert non_owner_summary.owner.id == p2.id
+      assert Map.keys(non_owner_summary.players) == [0]
+      assert non_owner_summary.players[0].player.id == p2.id
+
+      assert GameServer.whereis(archived_room.id) == nil
+      assert {:ok, %{status: :archived}} = Repository.get_game_state(archived_room.id)
+    end
+
+    test "sequentially removing all players of a room archives it and stops the server" do
+      p1 = insert(:player, username: "lia")
+      p2 = insert(:player, username: "bruno")
+
+      {:ok, game} = Games.create_room(Scope.for_player(p1), %{name: "Lote", max_players: 4})
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(p2), game.id)
+
+      pid = GameServer.whereis(game.id)
+      ref = Process.monitor(pid)
+
+      assert :ok = Games.remove_player_from_games(p1.id)
+      assert Games.get_game_summary(game.id).owner.id == p2.id
+
+      assert :ok = Games.remove_player_from_games(p2.id)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+      assert {:ok, %{status: :archived, owner: nil}} = Repository.get_game_state(game.id)
+    end
+
+    test "returns an error tuple instead of crashing when a room server fails during removal" do
+      owner = insert(:player, username: "lia")
+      p2 = insert(:player, username: "bruno")
+
+      {:ok, game} = Games.create_room(Scope.for_player(owner), %{name: "Falha", max_players: 4})
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(p2), game.id)
+
+      pid = GameServer.whereis(game.id)
+      task_supervisor = start_supervised!(Task.Supervisor)
+      :ok = :sys.suspend(pid)
+
+      task =
+        try do
+          :erlang.trace(pid, true, [:receive])
+
+          t =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.remove_player_from_games(owner.id)
+            end)
+
+          assert_receive {:trace, ^pid, :receive, {:"$gen_call", _, {:remove_player, _}}}, 2_000
+          Process.exit(pid, :kill)
+          t
+        after
+          :erlang.trace(:all, false, [:receive])
+        end
+
+      assert {:error, _reason} = Task.await(task, 5_000)
+
+      # Wait for DynamicSupervisor to finish handling the :transient restart before sandbox teardown
+      _ = :sys.get_state(Process.whereis(Forka.GamesSupervisor))
+
+      if restarted_pid = GameServer.whereis(game.id) do
+        DynamicSupervisor.terminate_child(Forka.GamesSupervisor, restarted_pid)
+      end
+    end
+
+    test "fallback recovers if a player rejoins or creates a room between removal and account deletion" do
+      target = insert(:player, username: "lia")
+      p2 = insert(:player, username: "bruno")
+
+      {:ok, shared} =
+        Games.create_room(Scope.for_player(target), %{name: "Rejoin", max_players: 4})
+
+      on_exit(fn ->
+        if pid = GameServer.whereis(shared.id) do
+          DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
+        end
+      end)
+
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(p2), shared.id)
+
+      assert :ok = Games.remove_player_from_games(target.id)
+
+      # Target rejoins shared room and creates a brand new room before the DB delete runs
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(target), shared.id)
+
+      {:ok, brand_new} =
+        Games.create_room(Scope.for_player(target), %{name: "Nova Antes Delete", max_players: 4})
+
+      Repo.delete!(target)
+
+      # Public directory hides the ownerless brand_new room
+      %{rooms: rooms} = Games.list_directory_rooms_page()
+      refute Enum.any?(rooms, &(&1.id == brand_new.id))
+
+      # Opening brand_new archives it via fallback
+      assert {:error, :game_archived} = Games.get_room_invite(brand_new.id)
+
+      # Next read on shared drops the deleted rejoined player via running reconciliation
+      summary = Games.get_game_summary(shared.id)
+      assert summary.owner.id == p2.id
+      assert Map.keys(summary.players) == [0]
+      assert summary.players[0].player.id == p2.id
+    end
+
+    test "F-14: acknowledges removal when a GameServer crashes after persisting the handoff before replying" do
+      owner = insert(:player, username: "f14_lost_lia")
+      p2 = insert(:player, username: "f14_lost_bruno")
+
+      {:ok, game} =
+        Games.create_room(Scope.for_player(owner), %{name: "Reply Perdido", max_players: 4})
+
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(p2), game.id)
+      pid = GameServer.whereis(game.id)
+      ref = Process.monitor(pid)
+      handler_id = "f14-kill-after-commit-#{System.unique_integer([:positive])}"
+
+      :ok =
+        :telemetry.attach(
+          handler_id,
+          [:forka, :repo, :query],
+          fn _event, _measurements, metadata, target_pid ->
+            # count_available_words queries "words" inside broadcast_lobby! only after save_game_state committed
+            if self() == target_pid and is_binary(metadata[:query]) and
+                 String.contains?(metadata[:query], ~s|FROM "words"|) do
+              :telemetry.detach(handler_id)
+              Process.exit(self(), :kill)
+            end
+          end,
+          pid
+        )
+
+      on_exit(fn ->
+        :telemetry.detach(handler_id)
+        _ = :sys.get_state(Process.whereis(Forka.GamesSupervisor))
+
+        if restarted = GameServer.whereis(game.id) do
+          DynamicSupervisor.terminate_child(Forka.GamesSupervisor, restarted)
+        end
+      end)
+
+      assert :ok = Games.remove_player_from_games(owner.id)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :killed}, 2_000
+
+      {:ok, persisted} = Repository.get_game_state(game.id)
+      assert persisted.owner.id == p2.id
+      assert Map.keys(persisted.game_players) == [0]
+      assert persisted.game_players[0].player.id == p2.id
+    end
+
+    test "F-14: reports uncertain removal outcome when exit cannot confirm cancellation while player remains persisted" do
+      owner = insert(:player, username: "f14_noconn_lia")
+      p2 = insert(:player, username: "f14_noconn_bruno")
+      owner_id = owner.id
+
+      {:ok, game} =
+        Games.create_room(Scope.for_player(owner), %{name: "Sem Conexao", max_players: 4})
+
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(p2), game.id)
+      pid = GameServer.whereis(game.id)
+      task_supervisor = start_supervised!(Task.Supervisor)
+
+      on_exit(fn ->
+        _ = :sys.get_state(Process.whereis(Forka.GamesSupervisor))
+
+        if restarted = GameServer.whereis(game.id) do
+          DynamicSupervisor.terminate_child(Forka.GamesSupervisor, restarted)
+        end
+      end)
+
+      :ok = :sys.suspend(pid)
+
+      task =
+        try do
+          :erlang.trace(pid, true, [:receive])
+
+          t =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.remove_player_from_games(owner.id)
+            end)
+
+          assert_receive {:trace, ^pid, :receive, {:"$gen_call", _, {:remove_player, ^owner_id}}},
+                         2_000
+
+          Process.exit(pid, :noconnection)
+          t
+        after
+          :erlang.trace(:all, false, [:receive])
+        end
+
+      assert {:error, {:removal_outcome_unknown, _reason}} = Task.await(task, 5_000)
+      assert {:ok, %{owner: %{id: ^owner_id}}} = Repository.get_game_state(game.id)
+    end
+  end
+
+  describe "F-12: isolated per-room startup and readiness" do
+    @tag sandbox: :auto
+    test "F-12: holding room A's row lock does not block room B startup and callers on A wait past 5s for readiness" do
+      owner_a = insert(:player, username: "f12_lia")
+      joiner_a = insert(:player, username: "f12_bruno")
+      owner_b = insert(:player, username: "f12_caio")
+      joiner_b = insert(:player, username: "f12_duda")
+
+      {:ok, game_a} = Repository.insert_game(owner_a.id, %{name: "Sala A", max_players: 4})
+      {:ok, game_b} = Repository.insert_game(owner_b.id, %{name: "Sala B", max_players: 4})
+
+      on_exit(fn ->
+        for id <- [game_a.id, game_b.id] do
+          if pid = GameServer.whereis(id) do
+            DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
+          end
+        end
+
+        cleanup_unboxed_records([game_a.id, game_b.id], [
+          owner_a.id,
+          joiner_a.id,
+          owner_b.id,
+          joiner_b.id
+        ])
+      end)
+
+      task_supervisor = start_supervised!(Task.Supervisor)
+      {lock_holder, holder_pid, holder_pg_pid} = hold_game_row_lock(task_supervisor, game_a.id)
+
+      on_exit(fn -> send(holder_pid, :release_lock) end)
+
+      {task_a1, task_a2} =
+        try do
+          task_a1 =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.join_room(Scope.for_player(joiner_a), game_a.id)
+            end)
+
+          # Room A registers its child promptly and blocks on its DB row lock inside handle_continue/2
+          child_a = wait_for_registered_game_server(game_a.id, 2_000)
+          wait_for_pg_blocker(holder_pg_pid, 2_000)
+
+          # Unrelated cold room B starts and serves requests before room A is released
+          assert {:ok, :joined} = Games.join_room(Scope.for_player(joiner_b), game_b.id)
+          assert is_pid(GameServer.whereis(game_b.id))
+          summary_b = Games.get_game_summary(game_b.id)
+
+          assert summary_b.players |> Map.values() |> Enum.map(& &1.player.id) |> Enum.sort() ==
+                   Enum.sort([owner_b.id, joiner_b.id])
+
+          # Issue a second operation on room A through the already-registered branch while A is blocked
+          :erlang.trace(child_a, true, [:receive])
+
+          task_a2 =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.get_room_lobby(Scope.for_player(owner_a), game_a.id)
+            end)
+
+          assert_receive {:trace, ^child_a, :receive,
+                          {:"$gen_call", {caller_pid, _}, :ensure_ready}},
+                         2_000
+
+          assert caller_pid == task_a2.pid
+
+          # Hold past the default 5_000ms GenServer.call timeout, then release
+          Process.send_after(holder_pid, :release_lock, 5_200)
+
+          {task_a1, task_a2}
+        after
+          :erlang.trace(:all, false, [:receive])
+        end
+
+      assert :ok = Task.await(lock_holder, 10_000)
+      assert {:ok, :joined} = Task.await(task_a1, 10_000)
+
+      assert {:ok, %Forka.Games.RoomLobby{owner_id: owner_a_id}} = Task.await(task_a2, 10_000)
+      assert owner_a_id == owner_a.id
+    end
+
+    @tag sandbox: :auto
+    test "F-12: empty cold orphan stops normally with :game_archived and leaves sibling room running" do
+      orphan_owner = insert(:player, username: "f12_orfa")
+      sibling_owner = insert(:player, username: "f12_irma")
+      outsider = insert(:player, username: "f12_visitante")
+
+      {:ok, orphan} = Repository.insert_game(orphan_owner.id, %{name: "Orfa F12", max_players: 4})
+
+      {:ok, sibling} =
+        Games.create_room(Scope.for_player(sibling_owner), %{name: "Irma F12", max_players: 4})
+
+      sibling_pid = GameServer.whereis(sibling.id)
+      sibling_ref = Process.monitor(sibling_pid)
+
+      on_exit(fn ->
+        for id <- [orphan.id, sibling.id] do
+          if pid = GameServer.whereis(id) do
+            DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
+          end
+        end
+
+        cleanup_unboxed_records([orphan.id, sibling.id], [
+          orphan_owner.id,
+          sibling_owner.id,
+          outsider.id
+        ])
+      end)
+
+      Repo.delete!(orphan_owner)
+
+      task_supervisor = start_supervised!(Task.Supervisor)
+      {lock_holder, holder_pid, holder_pg_pid} = hold_game_row_lock(task_supervisor, orphan.id)
+
+      on_exit(fn -> send(holder_pid, :release_lock) end)
+
+      {task_join, task_lobby, orphan_pid, orphan_ref} =
+        try do
+          task_join =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.join_room(Scope.for_player(outsider), orphan.id)
+            end)
+
+          orphan_pid = wait_for_registered_game_server(orphan.id, 2_000)
+          orphan_ref = Process.monitor(orphan_pid)
+          wait_for_pg_blocker(holder_pg_pid, 2_000)
+
+          :erlang.trace(orphan_pid, true, [:receive])
+
+          task_lobby =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.get_room_lobby(Scope.for_player(outsider), orphan.id)
+            end)
+
+          assert_receive {:trace, ^orphan_pid, :receive,
+                          {:"$gen_call", {caller_pid, _}, :ensure_ready}},
+                         2_000
+
+          assert caller_pid == task_lobby.pid
+
+          send(holder_pid, :release_lock)
+          {task_join, task_lobby, orphan_pid, orphan_ref}
+        after
+          :erlang.trace(:all, false, [:receive])
+        end
+
+      assert :ok = Task.await(lock_holder, 5_000)
+      assert {:error, :game_archived} = Task.await(task_join, 5_000)
+      assert {:error, :game_archived} = Task.await(task_lobby, 5_000)
+      assert_receive {:DOWN, ^orphan_ref, :process, ^orphan_pid, :normal}, 2_000
+      assert GameServer.whereis(orphan.id) == nil
+      assert {:ok, %{status: :archived, owner: nil}} = Repository.get_game_state(orphan.id)
+
+      refute_receive {:DOWN, ^sibling_ref, :process, ^sibling_pid, _}, 100
+      assert GameServer.whereis(sibling.id) == sibling_pid
+      assert Games.get_game_summary(sibling.id).game_status == :lobby
+    end
+  end
+
+  defp hold_game_row_lock(task_supervisor, game_id) do
+    test_pid = self()
+    {:ok, uuid_bin} = Ecto.UUID.dump(game_id)
+
+    task =
+      Task.Supervisor.async_nolink(task_supervisor, fn ->
+        {:ok, :ok} =
+          Repo.transaction(
+            fn ->
+              %{rows: [[pg_pid]]} = Repo.query!("SELECT pg_backend_pid()", [])
+              Repo.query!("SELECT id FROM games WHERE id = $1 FOR UPDATE", [uuid_bin])
+              send(test_pid, {:row_locked, self(), pg_pid})
+
+              receive do
+                :release_lock -> :ok
+              end
+            end,
+            timeout: :infinity
+          )
+
+        :ok
+      end)
+
+    receive do
+      {:row_locked, holder_pid, pg_pid} -> {task, holder_pid, pg_pid}
+    after
+      2_000 -> flunk("could not acquire PostgreSQL FOR UPDATE lock on game #{game_id}")
+    end
+  end
+
+  defp wait_for_registered_game_server(game_id, timeout_ms) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    do_wait_for_registered_game_server(game_id, deadline)
+  end
+
+  defp do_wait_for_registered_game_server(game_id, deadline) do
+    case GameServer.whereis(game_id) do
+      pid when is_pid(pid) ->
+        pid
+
+      nil ->
+        if System.monotonic_time(:millisecond) >= deadline do
+          flunk("GameServer for #{game_id} did not register before timeout")
+        else
+          receive do
+          after
+            10 -> do_wait_for_registered_game_server(game_id, deadline)
+          end
+        end
+    end
+  end
+
+  defp wait_for_pg_blocker(holder_pg_pid, timeout_ms) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    do_wait_for_pg_blocker(holder_pg_pid, deadline)
+  end
+
+  defp do_wait_for_pg_blocker(holder_pg_pid, deadline) do
+    %{rows: [[count]]} =
+      Repo.query!(
+        "SELECT count(*) FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))",
+        [holder_pg_pid]
+      )
+
+    if count > 0 do
+      :ok
+    else
+      if System.monotonic_time(:millisecond) >= deadline do
+        flunk("no PostgreSQL backend blocked on lock holder #{holder_pg_pid}")
+      else
+        receive do
+        after
+          10 -> do_wait_for_pg_blocker(holder_pg_pid, deadline)
+        end
+      end
+    end
+  end
+
+  defp wait_for_ensure_ready_calls(child_pid, expected_pids, timeout_ms) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    do_wait_for_ensure_ready_calls(child_pid, expected_pids, deadline)
+  end
+
+  defp do_wait_for_ensure_ready_calls(child_pid, remaining, deadline) do
+    if MapSet.size(remaining) == 0 do
+      :ok
+    else
+      remaining_ms = max(deadline - System.monotonic_time(:millisecond), 0)
+
+      receive do
+        {:trace, ^child_pid, :receive, {:"$gen_call", {caller_pid, _}, :ensure_ready}} ->
+          do_wait_for_ensure_ready_calls(
+            child_pid,
+            MapSet.delete(remaining, caller_pid),
+            deadline
+          )
+
+        {:trace, ^child_pid, :receive, _other} ->
+          do_wait_for_ensure_ready_calls(child_pid, remaining, deadline)
+      after
+        remaining_ms ->
+          flunk(
+            "callers did not queue :ensure_ready on #{inspect(child_pid)}: #{inspect(remaining)}"
+          )
+      end
+    end
+  end
+
+  defp cleanup_unboxed_records(game_ids, player_ids) do
+    from(g in Forka.Games.Schemas.Game, where: g.id in ^game_ids) |> Repo.delete_all()
+    from(p in Forka.Players.Player, where: p.id in ^player_ids) |> Repo.delete_all()
   end
 end

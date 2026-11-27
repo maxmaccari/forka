@@ -39,6 +39,15 @@ defmodule Forka.DataCase do
   @doc """
   Sets up the sandbox based on the test tags.
   """
+  def setup_sandbox(%{sandbox: :auto} = tags) do
+    if tags[:async] do
+      raise "sandbox: :auto cannot be used in async tests"
+    end
+
+    Sandbox.mode(Forka.Repo, :auto)
+    on_exit(fn -> Sandbox.mode(Forka.Repo, :manual) end)
+  end
+
   def setup_sandbox(tags) do
     pid = Sandbox.start_owner!(Forka.Repo, shared: not tags[:async])
     on_exit(fn -> Sandbox.stop_owner(pid) end)

@@ -923,4 +923,289 @@ defmodule ForkaWeb.RoomLiveTest do
       assert lobby.status == :lobby
     end
   end
+
+  describe "manual ownership transfer and stale target handling" do
+    test "UI-02: owner confirms transfer via sheet and switches edit, transfer, badge, waiting status, notice, and directory live across all clients",
+         %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      target = insert(:player, username: "bruno")
+      third = insert(:player, username: "caio")
+      insert_list(6, :word)
+
+      {:ok, game} = Games.create_game(owner.id, %{name: "Noite de palavras", max_players: 4})
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(target), game.id)
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(third), game.id)
+
+      {:ok, owner_lv, _} = conn |> log_in_player(owner) |> live(~p"/rooms/#{game.id}")
+      {:ok, target_lv, _} = build_conn() |> log_in_player(target) |> live(~p"/rooms/#{game.id}")
+      {:ok, third_lv, _} = build_conn() |> log_in_player(third) |> live(~p"/rooms/#{game.id}")
+      {:ok, dir_lv, _} = build_conn() |> live(~p"/")
+      _ = render_async(dir_lv)
+
+      assert visible_text(render(dir_lv)) =~ "de lia"
+      assert has_element?(owner_lv, "#transfer-ownership-#{target.id}", "Passar a posse")
+      assert has_element?(owner_lv, "#transfer-ownership-mobile-#{target.id}")
+      refute has_element?(owner_lv, "#transfer-ownership-#{owner.id}")
+      refute has_element?(target_lv, "#transfer-ownership-#{owner.id}")
+      refute has_element?(target_lv, "#edit-room-settings")
+
+      # Open sheet from desktop button, verify gender-neutral copy, cancel keeps owner unchanged
+      owner_lv |> element("#transfer-ownership-#{target.id}") |> render_click()
+      assert has_element?(owner_lv, "#transfer-ownership-sheet", "Passar a sala para bruno?")
+
+      assert has_element?(
+               owner_lv,
+               ~s|#transfer-ownership-sheet [role="dialog"][aria-describedby="transfer-ownership-sheet-description"]|
+             )
+
+      assert has_element?(
+               owner_lv,
+               "#transfer-ownership-sheet-description",
+               "bruno passa a mudar as configurações e a começar a partida. Você continua na sala como participante."
+             )
+
+      assert has_element?(owner_lv, "#confirm-transfer-ownership", "Passar a posse")
+      assert has_element?(owner_lv, "#cancel-transfer-ownership", "Cancelar")
+
+      owner_lv |> element("#cancel-transfer-ownership") |> render_click()
+      refute has_element?(owner_lv, "#transfer-ownership-sheet")
+      assert has_element?(owner_lv, "#edit-room-settings")
+
+      # Open sheet from mobile options button and confirm
+      owner_lv |> element("#transfer-ownership-mobile-#{target.id}") |> render_click()
+      assert has_element?(owner_lv, "#transfer-ownership-sheet", "Passar a sala para bruno?")
+
+      owner_lv |> element("#confirm-transfer-ownership") |> render_click()
+      refute has_element?(owner_lv, "#transfer-ownership-sheet")
+
+      # Former owner loses edit/transfer controls and sees new owner state
+      refute has_element?(owner_lv, "#edit-room-settings")
+      refute has_element?(owner_lv, "#transfer-ownership-#{target.id}")
+      refute has_element?(owner_lv, "#transfer-ownership-#{third.id}")
+      assert has_element?(owner_lv, "#room-waiting-status", "Esperando bruno começar")
+      assert has_element?(owner_lv, "#room-lobby-notice", "Agora bruno comanda a sala.")
+
+      assert visible_text(element(owner_lv, "#room-lobby-player-#{target.id}") |> render()) =~
+               "Anfitrião"
+
+      refute visible_text(element(owner_lv, "#room-lobby-player-#{owner.id}") |> render()) =~
+               "Anfitrião"
+
+      # New owner gains edit and transfer controls immediately
+      assert has_element?(target_lv, ~s|#edit-room-settings[href="/rooms/#{game.id}/settings"]|)
+      assert has_element?(target_lv, "#transfer-ownership-#{owner.id}", "Passar a posse")
+      assert has_element?(target_lv, "#transfer-ownership-#{third.id}", "Passar a posse")
+      refute has_element?(target_lv, "#transfer-ownership-#{target.id}")
+      assert has_element?(target_lv, "#room-lobby-notice", "Agora você comanda a sala.")
+      assert has_element?(target_lv, "#room-waiting-status", "Sala pronta com 3 jogadores")
+
+      # Third participant sees updated badge, waiting status, and notice
+      refute has_element?(third_lv, "#edit-room-settings")
+      refute has_element?(third_lv, "#transfer-ownership-#{owner.id}")
+      assert has_element?(third_lv, "#room-waiting-status", "Esperando bruno começar")
+      assert has_element?(third_lv, "#room-lobby-notice", "Agora bruno comanda a sala.")
+
+      # Live directory reflects the new owner
+      assert visible_text(render(dir_lv)) =~ "de bruno"
+    end
+
+    test "STALE-02: rejects forged non-owner and self-target transfer events", %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      guest = insert(:player, username: "bruno")
+
+      {:ok, game} = Games.create_game(owner.id, %{name: "Sala Segura", max_players: 4})
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(guest), game.id)
+
+      {:ok, owner_lv, _} = conn |> log_in_player(owner) |> live(~p"/rooms/#{game.id}")
+      {:ok, guest_lv, _} = build_conn() |> log_in_player(guest) |> live(~p"/rooms/#{game.id}")
+
+      # Non-owner forged events cannot open sheet or transfer ownership
+      render_hook(guest_lv, "open_transfer_sheet", %{"player_id" => owner.id})
+      refute has_element?(guest_lv, "#transfer-ownership-sheet")
+
+      render_hook(guest_lv, "confirm_transfer_ownership", %{"player_id" => guest.id})
+
+      assert has_element?(
+               guest_lv,
+               "#room-lobby-notice",
+               "Apenas quem comanda a sala pode passar a posse."
+             )
+
+      # Owner forged self-target rejected cleanly
+      render_hook(owner_lv, "open_transfer_sheet", %{"player_id" => owner.id})
+      refute has_element?(owner_lv, "#transfer-ownership-sheet")
+
+      render_hook(owner_lv, "confirm_transfer_ownership", %{"player_id" => owner.id})
+      assert has_element?(owner_lv, "#room-lobby-notice", "Você já comanda esta sala.")
+
+      {:ok, lobby} = Games.get_room_lobby(Forka.Scope.for_player(owner), game.id)
+      assert lobby.owner_id == owner.id
+    end
+
+    test "STALE-02: closes sheet with notice when chosen target leaves while sheet is open or before confirm",
+         %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      target = insert(:player, username: "bruno")
+      third = insert(:player, username: "caio")
+
+      {:ok, game} = Games.create_game(owner.id, %{name: "Sala Saiu", max_players: 4})
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(target), game.id)
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(third), game.id)
+
+      {:ok, owner_lv, _} = conn |> log_in_player(owner) |> live(~p"/rooms/#{game.id}")
+
+      # Case 1: target leaves while sheet is open -> PubSub closes sheet and says so
+      owner_lv |> element("#transfer-ownership-#{target.id}") |> render_click()
+      assert has_element?(owner_lv, "#transfer-ownership-sheet", "Passar a sala para bruno?")
+
+      assert :ok = Games.leave_game(Forka.Scope.for_player(target), game.id)
+      _ = render(owner_lv)
+
+      refute has_element?(owner_lv, "#transfer-ownership-sheet")
+      assert has_element?(owner_lv, "#room-lobby-notice", "bruno saiu da sala.")
+
+      # Case 2: in-flight confirm for a departed player arriving after PubSub -> closes with notice
+      render_hook(owner_lv, "confirm_transfer_ownership", %{"player_id" => target.id})
+      assert has_element?(owner_lv, "#room-lobby-notice", "Esse jogador não está mais na sala.")
+
+      # Case 3: owner loses ownership from another session while sheet is open -> sheet closes with notice
+      owner_lv |> element("#transfer-ownership-#{third.id}") |> render_click()
+      assert has_element?(owner_lv, "#transfer-ownership-sheet", "Passar a sala para caio?")
+
+      assert :ok = Games.transfer_ownership(Forka.Scope.for_player(owner), game.id, third.id)
+      _ = render(owner_lv)
+
+      refute has_element?(owner_lv, "#transfer-ownership-sheet")
+      assert has_element?(owner_lv, "#room-lobby-notice", "Agora caio comanda a sala.")
+    end
+
+    test "STALE-02: confirm raced behind start_game does not transfer during match and redirects to match; confirm raced behind archive redirects to directory",
+         %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      target = insert(:player, username: "bruno")
+      owner_scope = Forka.Scope.for_player(owner)
+      insert_list(4, :word)
+
+      {:ok, game} = Games.create_game(owner.id, %{name: "Sala Corrida Start", max_players: 4})
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(target), game.id)
+
+      owner_conn = conn |> log_in_player(owner)
+      {:ok, owner_lv, _} = live(owner_conn, ~p"/rooms/#{game.id}")
+      owner_lv |> element("#transfer-ownership-#{target.id}") |> render_click()
+      assert has_element?(owner_lv, "#transfer-ownership-sheet")
+
+      game_pid = GameServer.whereis(game.id)
+      task_supervisor = start_supervised!(Task.Supervisor)
+      owner_id = owner.id
+
+      :ok = :sys.suspend(game_pid)
+
+      {start_task, confirm_task} =
+        try do
+          :erlang.trace(game_pid, true, [:receive])
+
+          start_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.start_game(owner_scope, game.id)
+            end)
+
+          assert_receive {:trace, ^game_pid, :receive, {:"$gen_call", _, msg}}, 1_000
+          assert elem(msg, 0) == :start_game and elem(msg, 1) == owner_id
+
+          confirm_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              owner_lv |> element("#confirm-transfer-ownership") |> render_click()
+            end)
+
+          assert_receive {:trace, ^game_pid, :receive, {:"$gen_call", _, transfer_msg}}, 1_000
+
+          assert elem(transfer_msg, 0) == :transfer_ownership and
+                   elem(transfer_msg, 1) == owner_id
+
+          {start_task, confirm_task}
+        after
+          :erlang.trace(game_pid, false, [:receive])
+          :sys.resume(game_pid)
+        end
+
+      assert :ok = Task.await(start_task, 5_000)
+      assert {:error, {:live_redirect, %{to: redirect_to}}} = Task.await(confirm_task, 5_000)
+      assert redirect_to == ~p"/rooms/#{game.id}/match"
+      assert Games.get_game_summary(game.id).owner.id == owner.id
+
+      # Second room: confirm raced behind archive_game redirects to directory with unified flash
+      {:ok, archived_game} =
+        Games.create_game(owner.id, %{name: "Sala Corrida Arch", max_players: 4})
+
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(target), archived_game.id)
+
+      owner_conn2 = build_conn() |> log_in_player(owner)
+      {:ok, lv2, _} = live(owner_conn2, ~p"/rooms/#{archived_game.id}")
+      lv2 |> element("#transfer-ownership-#{target.id}") |> render_click()
+
+      arch_pid = GameServer.whereis(archived_game.id)
+      arch_ref = Process.monitor(arch_pid)
+      :ok = :sys.suspend(arch_pid)
+
+      {arch_task, confirm_arch_task} =
+        try do
+          :erlang.trace(arch_pid, true, [:receive])
+
+          arch_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.archive_game(owner_scope, archived_game.id)
+            end)
+
+          assert_receive {:trace, ^arch_pid, :receive, {:"$gen_call", _, msg}}, 1_000
+          assert elem(msg, 0) == :archive_game
+
+          confirm_arch_task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              lv2 |> element("#confirm-transfer-ownership") |> render_click()
+            end)
+
+          assert_receive {:trace, ^arch_pid, :receive, {:"$gen_call", _, tmsg}}, 1_000
+          assert elem(tmsg, 0) == :transfer_ownership
+
+          {arch_task, confirm_arch_task}
+        after
+          :erlang.trace(arch_pid, false, [:receive])
+          :sys.resume(arch_pid)
+        end
+
+      assert :ok = Task.await(arch_task, 5_000)
+      assert_receive {:DOWN, ^arch_ref, :process, ^arch_pid, :normal}
+
+      {:ok, _dir_lv, dir_html} =
+        confirm_arch_task
+        |> Task.await(5_000)
+        |> follow_redirect(owner_conn2, ~p"/")
+
+      assert dir_html =~ "Esta sala foi arquivada."
+    end
+
+    test "OWN-05: opening an ownerless room in RoomLive promotes next seat or redirects archived when empty",
+         %{conn: conn} do
+      owner = insert(:player, username: "lia")
+      member = insert(:player, username: "bruno")
+
+      {:ok, shared} = Games.create_game(owner.id, %{name: "Sala Orfa Membro", max_players: 4})
+      {:ok, :joined} = Games.join_room(Forka.Scope.for_player(member), shared.id)
+      Forka.Repo.delete!(owner)
+
+      {:ok, lv, _html} = conn |> log_in_player(member) |> live(~p"/rooms/#{shared.id}")
+      assert has_element?(lv, ~s|#edit-room-settings[href="/rooms/#{shared.id}/settings"]|)
+
+      assert visible_text(element(lv, "#room-lobby-player-#{member.id}") |> render()) =~
+               "Anfitrião"
+
+      solo_owner = insert(:player, username: "caio")
+      {:ok, solo} = Games.create_game(solo_owner.id, %{name: "Sala Orfa Vazia", max_players: 4})
+      Forka.Repo.delete!(solo_owner)
+
+      assert {:error,
+              {:live_redirect, %{to: "/", flash: %{"error" => "Esta sala foi arquivada."}}}} =
+               build_conn() |> log_in_player(member) |> live(~p"/rooms/#{solo.id}")
+    end
+  end
 end
