@@ -262,25 +262,29 @@ defmodule Forka.Games do
   defp start_supervised_game(game_id, retries \\ 1) do
     case DynamicSupervisor.start_child(Forka.GamesSupervisor, {GameServer, game_id}) do
       {:ok, pid} ->
-        GameServer.await_ready(pid, game_id)
+        await_supervised_game(pid, game_id, retries)
 
       {:ok, pid, _info} ->
-        GameServer.await_ready(pid, game_id)
+        await_supervised_game(pid, game_id, retries)
 
       {:error, {:already_started, pid}} ->
-        case GameServer.await_ready(pid, game_id) do
-          {:error, :game_server_unavailable} when retries > 0 ->
-            start_supervised_game(game_id, retries - 1)
-
-          result ->
-            result
-        end
+        await_supervised_game(pid, game_id, retries)
 
       :ignore ->
         {:error, :game_server_unavailable}
 
       {:error, _reason} = error ->
         error
+    end
+  end
+
+  defp await_supervised_game(pid, game_id, retries) do
+    case GameServer.await_ready(pid, game_id) do
+      {:error, :game_server_unavailable} when retries > 0 ->
+        start_supervised_game(game_id, retries - 1)
+
+      result ->
+        result
     end
   end
 

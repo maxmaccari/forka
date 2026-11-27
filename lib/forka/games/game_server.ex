@@ -66,6 +66,8 @@ defmodule Forka.Games.GameServer do
       {:ok, _status} -> {:error, :game_server_unavailable}
       {:error, :not_found} -> {:error, :not_found}
     end
+  rescue
+    error in [DBConnection.ConnectionError, Postgrex.Error] -> {:error, error}
   end
 
   @doc false
