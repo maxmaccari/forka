@@ -4,6 +4,7 @@ defmodule Forka.GamesTest do
   alias Forka.Games
   alias Forka.Games.Core
   alias Forka.Games.GameServer
+  alias Forka.Games.OwnerlessRoomRepairer
   alias Forka.Games.Repository
   alias Forka.Games.Schemas.Event
   alias Forka.Games.Schemas.WordOptions
@@ -2083,10 +2084,11 @@ defmodule Forka.GamesTest do
 
       assert_receive {:cold_repair_loaded, repair_pid}, 2_000
 
-      # While cold repair is paused after loading, start the server via join_room and transfer ownership
+      # While cold repair is paused after loading, start the server via join_room and transfer ownership.
+      # The lifecycle wait happens inside the room's GameServer child, never inside Forka.GamesSupervisor.
       join_transfer_task =
         try do
-          :erlang.trace(games_sup, true, [:send])
+          :erlang.trace(games_sup, true, [:send, :set_on_spawn])
 
           task =
             Task.Supervisor.async_nolink(task_supervisor, fn ->
@@ -2097,16 +2099,23 @@ defmodule Forka.GamesTest do
             end)
 
           receive do
-            {:trace, ^games_sup, :send, {:"$gen_call", _, {:set_lock, _}}, _} -> :ok
-            :join_transfer_done -> :ok
+            {:trace, locker_pid, :send, {:"$gen_call", _, {:set_lock, _}}, _} ->
+              refute locker_pid == games_sup
+
+            :join_transfer_done ->
+              :ok
           after
             2_000 ->
               flunk("join_room/transfer_ownership neither contended on the lock nor finished")
           end
 
+          # Forka.GamesSupervisor itself remains responsive while room A's child waits on A's lock
+          assert %{active: active} = DynamicSupervisor.count_children(Forka.GamesSupervisor)
+          assert active >= 1
+
           task
         after
-          :erlang.trace(games_sup, false, [:send])
+          :erlang.trace(:all, false, [:send, :set_on_spawn])
           send(repair_pid, :finish_reconcile)
         end
 
@@ -2129,6 +2138,89 @@ defmodule Forka.GamesTest do
       # Calling reconcile_cold_game once the server is running delegates instead of overwriting
       assert {:running, pid} = GameServer.reconcile_cold_game(game.id)
       assert pid == GameServer.whereis(game.id)
+    end
+
+    test "F-06: cold-starting an unrelated room succeeds while another room's repair holds its lifecycle lock" do
+      owner_a = insert(:player, username: "lia")
+      member_a = insert(:player, username: "bruno")
+      joiner_a = insert(:player, username: "caio")
+      owner_b = insert(:player, username: "duda")
+      joiner_b = insert(:player, username: "eva")
+
+      {:ok, game_a} = Repository.insert_game(owner_a.id, %{name: "Sala A", max_players: 4})
+      {:ok, state_a} = Repository.get_game_state(game_a.id)
+      {:ok, state_a} = Core.join_game(state_a, Repository.get_player(member_a.id))
+      {:ok, _} = Repository.save_game_state(state_a)
+      Repo.delete!(owner_a)
+
+      {:ok, game_b} = Repository.insert_game(owner_b.id, %{name: "Sala B", max_players: 4})
+
+      on_exit(fn ->
+        for id <- [game_a.id, game_b.id] do
+          if pid = GameServer.whereis(id) do
+            DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
+          end
+        end
+      end)
+
+      test_pid = self()
+      task_supervisor = start_supervised!(Task.Supervisor)
+      games_sup = Process.whereis(Forka.GamesSupervisor)
+
+      # Hold room A's lifecycle lock (simulating a paused cold repair on room A)
+      lock_holder =
+        Task.Supervisor.async_nolink(task_supervisor, fn ->
+          :global.trans({{GameServer, :lifecycle, game_a.id}, self()}, fn ->
+            send(test_pid, {:room_a_lock_held, self()})
+            receive do: (:release_lock -> :ok)
+          end)
+        end)
+
+      assert_receive {:room_a_lock_held, holder_pid}, 2_000
+
+      room_a_task =
+        try do
+          :erlang.trace(games_sup, true, [:send, :set_on_spawn])
+
+          task =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.join_room(Scope.for_player(joiner_a), game_a.id)
+            end)
+
+          # Confirm room A's GameServer child (not GamesSupervisor) is contending on room A's lock
+          receive do
+            {:trace, locker_pid, :send, {:"$gen_call", _, {:set_lock, _}}, _} ->
+              refute locker_pid == games_sup
+          after
+            2_000 ->
+              flunk("room A startup did not contend on its per-room lifecycle lock")
+          end
+
+          # While room A's lock is still held and room A's join is waiting, room B starts and joins immediately
+          assert {:ok, :joined} = Games.join_room(Scope.for_player(joiner_b), game_b.id)
+          assert is_pid(GameServer.whereis(game_b.id))
+          summary_b = Games.get_game_summary(game_b.id)
+
+          assert summary_b.players |> Map.values() |> Enum.map(& &1.player.id) |> Enum.sort() ==
+                   Enum.sort([owner_b.id, joiner_b.id])
+
+          # Room A is still waiting on its own lock
+          assert Task.yield(task, 0) == nil
+
+          task
+        after
+          :erlang.trace(:all, false, [:send, :set_on_spawn])
+          send(holder_pid, :release_lock)
+        end
+
+      assert :ok = Task.await(lock_holder, 5_000)
+      assert {:ok, :joined} = Task.await(room_a_task, 5_000)
+
+      summary_a = Games.get_game_summary(game_a.id)
+      assert summary_a.owner.id == member_a.id
+
+      assert summary_a.players |> Map.values() |> Enum.map(& &1.player.id) |> Enum.sort() ==
+               Enum.sort([member_a.id, joiner_a.id])
     end
 
     test "F-02: list_directory_rooms_page/1 reconciles ownerless rooms across multiple batches for both page items and has_more?" do
@@ -2206,6 +2298,107 @@ defmodule Forka.GamesTest do
       assert page_c.has_more? == true
 
       for orphan <- [orphan7, orphan8, orphan9] do
+        assert {:ok, %{status: :archived}} = Repository.get_game_state(orphan.id)
+      end
+    end
+
+    test "F-05: list_directory_rooms_page/1 bounds synchronous repairs, excludes ownerless rows from page and has_more?, and queues remaining repairs" do
+      repairer = Process.whereis(OwnerlessRoomRepairer)
+      repair_limit = Games.directory_repair_limit()
+      base = ~U[2026-11-27 11:00:00Z]
+
+      set_inserted_at = fn game_id, offset_seconds ->
+        ts = DateTime.add(base, offset_seconds, :second)
+
+        from(g in Forka.Games.Schemas.Game, where: g.id == ^game_id)
+        |> Repo.update_all(set: [inserted_at: ts])
+      end
+
+      insert_empty_orphan = fn name, offset_seconds ->
+        owner = insert(:player)
+        {:ok, game} = Repository.insert_game(owner.id, %{name: name, max_players: 4})
+        set_inserted_at.(game.id, offset_seconds)
+        Repo.delete!(owner)
+        game
+      end
+
+      :ok = OwnerlessRoomRepairer.await_idle()
+      :ok = :sys.suspend(repairer)
+
+      on_exit(fn ->
+        :sys.resume(repairer)
+        :ok = OwnerlessRoomRepairer.await_idle()
+      end)
+
+      # Case 1: Only empty ownerless rooms exceeding the synchronous repair cap
+      only_orphans =
+        for i <- 1..(repair_limit + 4) do
+          insert_empty_orphan.("Vazia #{i}", 100 + i)
+        end
+
+      empty_page = Games.list_directory_rooms_page(limit: 1)
+      assert empty_page.rooms == []
+      assert empty_page.has_more? == false
+
+      archived_after_sync_only =
+        Enum.count(only_orphans, fn orphan ->
+          match?({:ok, %{status: :archived}}, Repository.get_game_state(orphan.id))
+        end)
+
+      assert archived_after_sync_only == repair_limit
+
+      :ok = :sys.resume(repairer)
+      :ok = OwnerlessRoomRepairer.await_idle()
+
+      for orphan <- only_orphans do
+        assert {:ok, %{status: :archived}} = Repository.get_game_state(orphan.id)
+      end
+
+      # Case 2: Many empty ownerless rooms ahead of a shared ownerless room and a healthy room
+      :ok = :sys.suspend(repairer)
+
+      healthy_owner = insert(:player, username: "lia")
+
+      {:ok, healthy} =
+        Repository.insert_game(healthy_owner.id, %{name: "Saudavel", max_players: 4})
+
+      set_inserted_at.(healthy.id, 10)
+
+      shared_owner = insert(:player, username: "ex_dono")
+      member = insert(:player, username: "bruno")
+
+      {:ok, shared} =
+        Repository.insert_game(shared_owner.id, %{name: "Compartilhada", max_players: 4})
+
+      {:ok, shared_state} = Repository.get_game_state(shared.id)
+      {:ok, shared_state} = Core.join_game(shared_state, Repository.get_player(member.id))
+      {:ok, _} = Repository.save_game_state(shared_state)
+      set_inserted_at.(shared.id, 20)
+      Repo.delete!(shared_owner)
+
+      ahead_orphans =
+        for i <- 1..(repair_limit + 5) do
+          insert_empty_orphan.("Orfa Frente #{i}", 200 + i)
+        end
+
+      page = Games.list_directory_rooms_page(limit: 2)
+      assert Enum.map(page.rooms, & &1.id) == [shared.id, healthy.id]
+      assert hd(page.rooms).owner_username == "bruno"
+      # Remaining unarchived empty ownerless rooms must not inflate has_more?
+      assert page.has_more? == false
+
+      # Only (repair_limit - 1) empty orphans were archived synchronously alongside promoting `shared`
+      archived_ahead_sync =
+        Enum.count(ahead_orphans, fn orphan ->
+          match?({:ok, %{status: :archived}}, Repository.get_game_state(orphan.id))
+        end)
+
+      assert archived_ahead_sync == repair_limit - 1
+
+      :ok = :sys.resume(repairer)
+      :ok = OwnerlessRoomRepairer.await_idle()
+
+      for orphan <- ahead_orphans do
         assert {:ok, %{status: :archived}} = Repository.get_game_state(orphan.id)
       end
     end

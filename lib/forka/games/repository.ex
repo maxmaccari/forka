@@ -146,6 +146,24 @@ defmodule Forka.Games.Repository do
   end
 
   @doc """
+  Returns up to `limit` non-archived, ownerless game IDs matching `statuses`,
+  prioritizing rooms with remaining players before empty rooms, newest first.
+  """
+  @spec list_ownerless_visible_game_ids([GameState.status()], pos_integer()) :: [Ecto.UUID.t()]
+  def list_ownerless_visible_game_ids(statuses, limit)
+      when is_list(statuses) and is_integer(limit) and limit > 0 do
+    from(g in Game,
+      left_join: gp in assoc(g, :game_players),
+      where: g.status in ^statuses and is_nil(g.owner_id),
+      group_by: [g.id, g.inserted_at],
+      order_by: [desc: fragment("COUNT(?) > 0", gp.id), desc: g.inserted_at, desc: g.id],
+      limit: ^limit,
+      select: g.id
+    )
+    |> Repo.all()
+  end
+
+  @doc """
   Gets a game state from the database by its ID.
 
   This function retrieves a game by ID, preloads its associations,

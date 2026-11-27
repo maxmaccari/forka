@@ -22,11 +22,10 @@ defmodule Forka.Games do
 
   import Ecto.Query
 
-  alias Forka.Games.Core
-  alias Forka.Games.Core.GameState
   alias Forka.Games.GameListNotifier
   alias Forka.Games.GameServer
   alias Forka.Games.GameSummary
+  alias Forka.Games.OwnerlessRoomRepairer
   alias Forka.Games.Repository
   alias Forka.Games.RoomInvite
   alias Forka.Games.RoomListItem
@@ -41,12 +40,19 @@ defmodule Forka.Games do
   alias Forka.Words
 
   @directory_limit 60
+  @directory_repair_limit 10
 
   @doc """
   Returns the maximum number of rooms returned by the public directory query.
   """
   @spec directory_limit() :: pos_integer()
   def directory_limit, do: @directory_limit
+
+  @doc """
+  Returns the maximum number of ownerless rooms repaired synchronously per public directory load.
+  """
+  @spec directory_repair_limit() :: pos_integer()
+  def directory_repair_limit, do: @directory_repair_limit
 
   @doc """
   Lists games with pagination and optional filtering.
@@ -136,7 +142,8 @@ defmodule Forka.Games do
         }
   def list_directory_rooms_page(opts \\ []) do
     limit = opts |> Keyword.get(:limit, @directory_limit) |> cap_directory_limit()
-    rows = fetch_healthy_directory_rows(limit)
+    repair_bounded_ownerless_rooms(@directory_repair_limit)
+    rows = fetch_directory_rows(limit)
 
     {page_rows, extra_rows} = Enum.split(rows, limit)
 
@@ -168,7 +175,7 @@ defmodule Forka.Games do
     from(g in Game,
       left_join: gp in assoc(g, :game_players),
       left_join: o in assoc(g, :owner),
-      where: g.status in ^visible_statuses,
+      where: g.status in ^visible_statuses and not is_nil(g.owner_id),
       group_by: [g.id, o.id],
       order_by: [desc: g.inserted_at, desc: g.id],
       limit: ^(limit + 1),
@@ -181,36 +188,27 @@ defmodule Forka.Games do
     |> Repo.all()
   end
 
-  defp fetch_healthy_directory_rows(limit) do
-    rows = fetch_directory_rows(limit)
+  defp repair_bounded_ownerless_rooms(budget) do
+    visible_statuses = RoomListItem.visible_statuses()
 
-    case heal_ownerless_rows(rows) do
-      :clean ->
-        rows
-
-      :healed ->
-        fetch_healthy_directory_rows(limit)
-
-      :failed ->
-        Enum.reject(rows, &match?(%{game: %Game{owner_id: nil}}, &1))
-    end
-  end
-
-  # Visible statuses never include :archived, so every ownerless row here needs healing.
-  defp heal_ownerless_rows(rows) do
-    case for %{game: %Game{id: id, owner_id: nil}} <- rows, do: id do
+    case Repository.list_ownerless_visible_game_ids(visible_statuses, budget + 1) do
       [] ->
-        :clean
+        :ok
 
       ownerless_ids ->
-        if ownerless_ids |> Enum.map(&reconcile_made_progress?/1) |> Enum.any?(),
-          do: :healed,
-          else: :failed
+        {batch_ids, remaining_ids} = Enum.split(ownerless_ids, budget)
+        made_progress? = batch_ids |> Enum.map(&reconcile_made_progress?/1) |> Enum.any?()
+
+        if remaining_ids != [] and made_progress? do
+          OwnerlessRoomRepairer.schedule_drain()
+        end
+
+        :ok
     end
   end
 
   defp reconcile_made_progress?(game_id) do
-    case reconcile_ownerless_room(game_id) do
+    case GameServer.reconcile_ownerless_room(game_id) do
       {:ok, _summary} -> true
       {:error, reason} when reason in [:game_archived, :not_found] -> true
       {:error, _other} -> false
@@ -300,10 +298,7 @@ defmodule Forka.Games do
   end
 
   defp start_supervised_game(game_id) do
-    case DynamicSupervisor.start_child(Forka.GamesSupervisor, {GameServer, game_id}) do
-      {:error, {:already_started, pid}} -> {:ok, pid}
-      result -> result
-    end
+    GameServer.start_supervised(Forka.GamesSupervisor, game_id)
   end
 
   @doc "Updates room settings for the scoped authenticated owner while the room is in lobby."
@@ -349,7 +344,7 @@ defmodule Forka.Games do
 
   defp heal_ownerless_row(%{game: %Game{id: id, status: status, owner_id: nil}})
        when status != :archived do
-    with {:ok, %GameSummary{}} <- reconcile_ownerless_room(id) do
+    with {:ok, %GameSummary{}} <- GameServer.reconcile_ownerless_room(id) do
       {:ok, fetch_persisted_room_invite_row(id)}
     end
   end
@@ -699,46 +694,6 @@ defmodule Forka.Games do
     ensure_game_server_available(game_id, fn -> GameServer.unsubscribe(game_id) end)
   end
 
-  defp reconcile_ownerless_room(game_id, retries \\ 1) do
-    if GameServer.exists?(game_id),
-      do: reconcile_running_room(game_id, retries),
-      else: reconcile_cold_room(game_id, retries)
-  end
-
-  defp reconcile_running_room(game_id, retries) do
-    case GameServer.get_game(game_id) do
-      %GameSummary{game_status: :archived} -> {:error, :game_archived}
-      %GameSummary{} = summary -> {:ok, summary}
-    end
-  catch
-    :exit, {reason, _call} when reason in [:normal, :noproc] ->
-      handle_reconcile_shutdown_race(game_id, retries)
-
-    :exit, reason when reason in [:normal, :noproc] ->
-      handle_reconcile_shutdown_race(game_id, retries)
-  end
-
-  defp handle_reconcile_shutdown_race(game_id, retries) when retries > 0 do
-    reconcile_ownerless_room(game_id, retries - 1)
-  end
-
-  defp handle_reconcile_shutdown_race(game_id, _retries) do
-    case Repository.get_game_state(game_id) do
-      {:ok, %{status: :archived}} -> {:error, :game_archived}
-      {:ok, _game_state} -> {:error, :game_server_unavailable}
-      {:error, _reason} = error -> error
-    end
-  end
-
-  defp reconcile_cold_room(game_id, retries) do
-    case GameServer.reconcile_cold_game(game_id) do
-      {:running, _pid} -> reconcile_running_room(game_id, retries)
-      {:ok, %GameState{status: :archived}} -> {:error, :game_archived}
-      {:ok, %GameState{} = state} -> {:ok, Core.to_game_summary(state)}
-      {:error, _} = error -> error
-    end
-  end
-
   defp fetch_game_summary(game_id) do
     case ensure_game_server_available(game_id, fn -> {:ok, GameServer.get_game(game_id)} end) do
       {:ok, %GameSummary{game_status: :archived}} -> {:error, :game_archived}
@@ -779,6 +734,12 @@ defmodule Forka.Games do
   defp call_server_action(game_id, action, retries) do
     action.()
   catch
+    :exit, {{:shutdown, {:load_error, reason}}, _call} ->
+      {:error, reason}
+
+    :exit, {:shutdown, {:load_error, reason}} ->
+      {:error, reason}
+
     :exit, {reason, _call} when reason in [:normal, :noproc] ->
       handle_server_shutdown_race(game_id, action, retries)
 
