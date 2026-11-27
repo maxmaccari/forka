@@ -60,14 +60,15 @@ defmodule ForkaWeb.Admin.PlayerLive do
         )
 
         {:error,
-         "Could not confirm whether the player was removed from active rooms. Deletion was cancelled."}
+         "Account deletion stopped because room cleanup outcome could not be confirmed. Some rooms may already have changed."}
 
       {:error, reason} ->
         Logger.error(
           "Failed to remove player #{player_id} from active games before deletion: #{inspect(reason)}"
         )
 
-        {:error, "Could not remove player from active rooms. Deletion was cancelled."}
+        {:error,
+         "Could not remove player from active rooms. Account deletion stopped. Some rooms may already have changed."}
     end
   end
 
