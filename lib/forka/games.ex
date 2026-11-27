@@ -136,8 +136,7 @@ defmodule Forka.Games do
         }
   def list_directory_rooms_page(opts \\ []) do
     limit = opts |> Keyword.get(:limit, @directory_limit) |> cap_directory_limit()
-    rows = fetch_directory_rows(limit)
-    rows = if heal_ownerless_rows(rows), do: fetch_directory_rows(limit), else: rows
+    rows = fetch_healthy_directory_rows(limit)
 
     {page_rows, extra_rows} = Enum.split(rows, limit)
 
@@ -182,12 +181,40 @@ defmodule Forka.Games do
     |> Repo.all()
   end
 
-  # Returns true when at least one ownerless room was reconciled, so the caller re-reads.
+  defp fetch_healthy_directory_rows(limit) do
+    rows = fetch_directory_rows(limit)
+
+    case heal_ownerless_rows(rows) do
+      :clean ->
+        rows
+
+      :healed ->
+        fetch_healthy_directory_rows(limit)
+
+      :failed ->
+        Enum.reject(rows, &match?(%{game: %Game{owner_id: nil}}, &1))
+    end
+  end
+
   # Visible statuses never include :archived, so every ownerless row here needs healing.
   defp heal_ownerless_rows(rows) do
-    ownerless_ids = for %{game: %Game{id: id, owner_id: nil}} <- rows, do: id
-    Enum.each(ownerless_ids, &reconcile_ownerless_room/1)
-    ownerless_ids != []
+    case for %{game: %Game{id: id, owner_id: nil}} <- rows, do: id do
+      [] ->
+        :clean
+
+      ownerless_ids ->
+        if ownerless_ids |> Enum.map(&reconcile_made_progress?/1) |> Enum.any?(),
+          do: :healed,
+          else: :failed
+    end
+  end
+
+  defp reconcile_made_progress?(game_id) do
+    case reconcile_ownerless_room(game_id) do
+      {:ok, _summary} -> true
+      {:error, reason} when reason in [:game_archived, :not_found] -> true
+      {:error, _other} -> false
+    end
   end
 
   defp cap_directory_limit(limit) when is_integer(limit) and limit > 0,

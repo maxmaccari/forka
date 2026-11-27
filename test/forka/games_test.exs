@@ -2130,5 +2130,84 @@ defmodule Forka.GamesTest do
       assert {:running, pid} = GameServer.reconcile_cold_game(game.id)
       assert pid == GameServer.whereis(game.id)
     end
+
+    test "F-02: list_directory_rooms_page/1 reconciles ownerless rooms across multiple batches for both page items and has_more?" do
+      base = ~U[2026-11-27 10:00:00Z]
+
+      set_inserted_at = fn game_id, offset_seconds ->
+        ts = DateTime.add(base, offset_seconds, :second)
+
+        from(g in Forka.Games.Schemas.Game, where: g.id == ^game_id)
+        |> Repo.update_all(set: [inserted_at: ts])
+      end
+
+      insert_empty_orphan = fn name, offset_seconds ->
+        owner = insert(:player)
+        {:ok, game} = Repository.insert_game(owner.id, %{name: name, max_players: 4})
+        set_inserted_at.(game.id, offset_seconds)
+        Repo.delete!(owner)
+        game
+      end
+
+      # Case A: 3 empty ownerless rooms ahead of 1 healthy room with limit: 1 (2+ batches)
+      healthy_owner = insert(:player, username: "lia")
+
+      {:ok, healthy} =
+        Repository.insert_game(healthy_owner.id, %{name: "Saudavel", max_players: 4})
+
+      set_inserted_at.(healthy.id, 10)
+
+      orphan1 = insert_empty_orphan.("Orfa 1", 20)
+      orphan2 = insert_empty_orphan.("Orfa 2", 30)
+      orphan3 = insert_empty_orphan.("Orfa 3", 40)
+
+      page_a = Games.list_directory_rooms_page(limit: 1)
+      assert Enum.map(page_a.rooms, & &1.id) == [healthy.id]
+      assert page_a.has_more? == false
+
+      for orphan <- [orphan1, orphan2, orphan3] do
+        assert {:ok, %{status: :archived}} = Repository.get_game_state(orphan.id)
+      end
+
+      # Case B: empty ownerless rooms strictly behind the visible page must not trigger has_more?
+      orphan4 = insert_empty_orphan.("Orfa 4", 5)
+      orphan5 = insert_empty_orphan.("Orfa 5", 4)
+      orphan6 = insert_empty_orphan.("Orfa 6", 3)
+
+      page_b = Games.list_directory_rooms_page(limit: 1)
+      assert Enum.map(page_b.rooms, & &1.id) == [healthy.id]
+      assert page_b.has_more? == false
+
+      for orphan <- [orphan4, orphan5, orphan6] do
+        assert {:ok, %{status: :archived}} = Repository.get_game_state(orphan.id)
+      end
+
+      # Case C: ownerless room with a remaining member behind an initial batch of empty orphans
+      # gets promoted and returned without stale ownerless rooms in has_more?
+      shared_owner = insert(:player, username: "ex_dono")
+      member = insert(:player, username: "bruno")
+
+      {:ok, shared} =
+        Repository.insert_game(shared_owner.id, %{name: "Orfa Com Membro", max_players: 4})
+
+      {:ok, shared_state} = Repository.get_game_state(shared.id)
+      {:ok, shared_state} = Core.join_game(shared_state, Repository.get_player(member.id))
+      {:ok, _} = Repository.save_game_state(shared_state)
+      set_inserted_at.(shared.id, 100)
+      Repo.delete!(shared_owner)
+
+      orphan7 = insert_empty_orphan.("Orfa 7", 110)
+      orphan8 = insert_empty_orphan.("Orfa 8", 120)
+      orphan9 = insert_empty_orphan.("Orfa 9", 90)
+
+      page_c = Games.list_directory_rooms_page(limit: 1)
+      assert [%{id: shared_id, owner_username: "bruno"}] = page_c.rooms
+      assert shared_id == shared.id
+      assert page_c.has_more? == true
+
+      for orphan <- [orphan7, orphan8, orphan9] do
+        assert {:ok, %{status: :archived}} = Repository.get_game_state(orphan.id)
+      end
+    end
   end
 end
