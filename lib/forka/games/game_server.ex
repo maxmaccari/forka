@@ -82,6 +82,11 @@ defmodule Forka.Games.GameServer do
   end
 
   @doc false
+  def remove_player(game_id, player_id) when is_binary(game_id) and is_binary(player_id) do
+    GenServer.call(global_name(game_id), {:remove_player, player_id})
+  end
+
+  @doc false
   def update_settings(game_id, actor_id, settings)
       when is_binary(game_id) and is_binary(actor_id) and is_map(settings) do
     GenServer.call(global_name(game_id), {:update_settings, actor_id, settings})
@@ -190,6 +195,25 @@ defmodule Forka.Games.GameServer do
 
       {:error, error} ->
         {:reply, {:error, error}, game, @timeout_ms}
+    end
+  end
+
+  defp handle_reconciled_call({:remove_player, player_id}, _from, game) do
+    case Core.remove_player(game, player_id) do
+      :unchanged ->
+        {:reply, :ok, game, @timeout_ms}
+
+      {:changed, %GameState{status: :archived} = archived} ->
+        case save_and_publish(game, archived) do
+          {:ok, saved_game} -> {:stop, :normal, :ok, saved_game}
+          {:error, reason} -> {:reply, {:error, reason}, game, @timeout_ms}
+        end
+
+      {:changed, updated} ->
+        case save_and_publish(game, updated) do
+          {:ok, saved_game} -> {:reply, :ok, saved_game, @timeout_ms}
+          {:error, reason} -> {:reply, {:error, reason}, game, @timeout_ms}
+        end
     end
   end
 
@@ -395,6 +419,13 @@ defmodule Forka.Games.GameServer do
 
       %Ecto.Changeset{valid?: false} = changeset ->
         {:error, changeset}
+    end
+  end
+
+  defp save_and_publish(previous, updated) do
+    with {:ok, saved} <- Repository.save_game_state(updated) do
+      publish_state!(previous, saved)
+      {:ok, saved}
     end
   end
 

@@ -492,6 +492,46 @@ defmodule Forka.Games do
 
   def leave_game(_scope, _game_id, _opts), do: {:error, :unauthorized}
 
+  @doc """
+  Removes a player from every non-archived room they own or participate in.
+
+  Each affected room is updated through its `GameServer` so live clients stay in sync:
+  ownership hands off to the next remaining seat, matches in progress continue without
+  that seat (transitioning to `:game_over` if no alive player remains), and rooms left
+  without any remaining players are archived. Already-archived rooms are left untouched.
+  """
+  @spec remove_player_from_games(Ecto.UUID.t()) :: :ok | {:error, term()}
+  def remove_player_from_games(player_id) when is_binary(player_id) do
+    case Ecto.UUID.cast(player_id) do
+      {:ok, valid_player_id} ->
+        valid_player_id
+        |> Repository.list_active_game_ids_for_player()
+        |> Enum.reduce_while(:ok, fn game_id, :ok ->
+          case remove_player_from_game(game_id, valid_player_id) do
+            :ok -> {:cont, :ok}
+            {:error, reason} -> {:halt, {:error, reason}}
+          end
+        end)
+
+      :error ->
+        {:error, :invalid_player_id}
+    end
+  rescue
+    error in [DBConnection.ConnectionError, Postgrex.Error] -> {:error, error}
+  end
+
+  defp remove_player_from_game(game_id, player_id) do
+    case ensure_game_server_available(game_id, fn ->
+           GameServer.remove_player(game_id, player_id)
+         end) do
+      :ok -> :ok
+      {:error, reason} when reason in [:game_archived, :not_found] -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  catch
+    :exit, reason -> {:error, reason}
+  end
+
   @doc "Starts a lobby game for the scoped authenticated owner."
   @spec start_game(Scope.t() | nil, Ecto.UUID.t()) ::
           :ok

@@ -1455,4 +1455,71 @@ defmodule Forka.Games.GameServerTest do
       assert summary.current_player_id == owner.id
     end
   end
+
+  describe "remove_player/2" do
+    test "hands off ownership in a running lobby, broadcasts updates, and stops when last player is removed",
+         %{game_state: game_state, pid: pid} do
+      owner = game_state.owner
+      p2 = insert(:player, username: "bruno")
+      outsider = insert(:player, username: "caio")
+
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, owner.id)
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, p2.id)
+      :ok = GameServer.subscribe_lobby(game_state.id)
+      :ok = Forka.Games.subscribe_to_game_list()
+      flush_messages()
+
+      # Removing a non-participant is a clean no-op
+      assert :ok = GameServer.remove_player(game_state.id, outsider.id)
+      refute_receive {:room_lobby_updated, _}
+      refute_receive {:game_list_updated, _}
+
+      # Removing the owner promotes p2 and broadcasts to lobby, game, and directory
+      assert :ok = GameServer.remove_player(game_state.id, owner.id)
+      assert_receive {:room_lobby_updated, %{owner_id: promoted_id, player_count: 1}}
+      assert promoted_id == p2.id
+      assert_receive {:game_list_updated, %{owner_username: "bruno", player_count: 1}}
+
+      # Removing the last remaining player archives the room, broadcasts, and stops the server
+      ref = Process.monitor(pid)
+      assert :ok = GameServer.remove_player(game_state.id, p2.id)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+      assert_receive {:room_lobby_updated, %{status: :archived, player_count: 0}}
+      assert_receive {:game_list_updated, %{status: :archived, player_count: 0}}
+
+      assert {:ok, %{status: :archived, owner: nil, game_players: %{}}} =
+               Repository.get_game_state(game_state.id)
+    end
+
+    test "continues a playing match without the removed player and returns error without crashing on save failure",
+         %{game_state: game_state, pid: pid} do
+      owner = game_state.owner
+      p2 = insert(:player, username: "bruno")
+      p3 = insert(:player, username: "caio")
+      insert_list(6, :word)
+
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, owner.id)
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, p2.id)
+      assert {:ok, :joined} = GameServer.join_room(game_state.id, p3.id)
+      assert :ok = GameServer.start_game(game_state.id, owner.id)
+      flush_messages()
+
+      assert :ok = GameServer.remove_player(game_state.id, owner.id)
+
+      summary = GameServer.get_game(game_state.id)
+      assert summary.game_status == :playing
+      assert summary.owner.id in [p2.id, p3.id]
+      assert map_size(summary.players) == 2
+
+      # Simulate an out-of-band DB conflict (row archived in DB while server still running):
+      # remove_player returns {:error, changeset} instead of crashing the GameServer.
+      import Ecto.Query, only: [from: 2]
+
+      from(g in Forka.Games.Schemas.Game, where: g.id == ^game_state.id)
+      |> Repo.update_all(set: [status: :archived])
+
+      assert {:error, %Ecto.Changeset{}} = GameServer.remove_player(game_state.id, p2.id)
+      assert Process.alive?(pid)
+    end
+  end
 end

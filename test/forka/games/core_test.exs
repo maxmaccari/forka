@@ -1473,4 +1473,140 @@ defmodule Forka.Games.CoreTest do
       end
     end
   end
+
+  describe "remove_player/2" do
+    test "removes owner or non-owner in lobby, handing off to next seat or archiving when empty" do
+      owner = build_games_player("lia")
+      p2 = build_games_player("bruno")
+      p3 = build_games_player("caio")
+      outsider = build_games_player("duda")
+
+      {:ok, g1} = Core.new(owner, "Lobby", 4) |> Core.join_game(owner)
+      {:ok, g2} = Core.join_game(g1, p2)
+      {:ok, g3} = Core.join_game(g2, p3)
+
+      # Non-participant is a no-op
+      assert :unchanged = Core.remove_player(g3, outsider.id)
+
+      # Removing a non-owner keeps owner and compacts seats
+      assert {:changed, without_p2} = Core.remove_player(g3, p2.id)
+      assert without_p2.owner.id == owner.id
+
+      assert Enum.map(without_p2.game_players, fn {pos, gp} -> {pos, gp.player.id} end) == [
+               {0, owner.id},
+               {1, p3.id}
+             ]
+
+      # Removing owner hands off to next seat (p3)
+      assert {:changed, handoff} = Core.remove_player(without_p2, owner.id)
+      assert handoff.status == :lobby
+      assert handoff.owner.id == p3.id
+      assert Map.keys(handoff.game_players) == [0]
+      assert handoff.game_players[0].player.id == p3.id
+
+      tick_events =
+        handoff.events
+        |> Enum.filter(&(&1.tick == handoff.tick))
+        |> Enum.map(&{&1.type, &1.payload})
+
+      assert {:player_left, %{player_id: owner.id}} in tick_events
+
+      assert {:ownership_transferred_to, %{from_player_id: owner.id, to_player_id: p3.id}} in tick_events
+
+      # Removing the last remaining player archives the room
+      assert {:changed, archived} = Core.remove_player(handoff, p3.id)
+      assert archived.status == :archived
+      assert archived.owner == nil
+      assert archived.game_players == %{}
+
+      # Archived room is unchanged
+      assert :unchanged = Core.remove_player(archived, p3.id)
+    end
+
+    test "handles playing, finished, and game_over rooms with turn, finisher, and game_over rules" do
+      owner = build_games_player("lia")
+      p2 = build_games_player("bruno")
+      p3 = build_games_player("caio")
+
+      words =
+        for text <- ~w(alfa bravo charlie delta echo foxtrot),
+            do: Word.new(text, "Geral")
+
+      {:ok, g1} = Core.new(owner, "Partida", 4) |> Core.join_game(owner)
+      {:ok, g2} = Core.join_game(g1, p2)
+      {:ok, g3} = Core.join_game(g2, p3)
+      {:ok, playing} = g3 |> Core.set_words(words) |> Core.start_game(owner.id)
+
+      word0 = %{playing.game_words[0] | finished_by_id: owner.id}
+      word1 = %{playing.game_words[1] | finished_by_id: p2.id}
+
+      playing = %{
+        playing
+        | current_game_player_index: 2,
+          game_words: playing.game_words |> Map.put(0, word0) |> Map.put(1, word1)
+      }
+
+      # Removing owner in playing match promotes seat 0 (p2), preserves p3's turn, clears owner's finisher
+      assert {:changed, after_owner} = Core.remove_player(playing, owner.id)
+      assert after_owner.status == :playing
+      assert after_owner.owner.id == p2.id
+      assert Core.get_current_player(after_owner).id == p3.id
+      assert after_owner.game_words[0].finished_by_id == nil
+      assert after_owner.game_words[1].finished_by_id == p2.id
+
+      # If p2 is dead and p3 (last alive) is removed, match transitions to :game_over with p2 still owner
+      {:ok, p2_dead} = Core.give_up_game(after_owner, p2.id)
+      assert {:changed, game_over} = Core.remove_player(p2_dead, p3.id)
+      assert game_over.status == :game_over
+      assert game_over.owner.id == p2.id
+      assert game_over.current_game_player_index == nil
+      assert game_over.current_game_word_index == nil
+
+      # Removing the final player in :game_over archives the room
+      assert {:changed, archived} = Core.remove_player(game_over, p2.id)
+      assert archived.status == :archived
+      assert archived.owner == nil
+      assert archived.game_players == %{}
+    end
+
+    property "removing a player never leaves them as owner or seated, and preserves owner invariant" do
+      check all(
+              status <- StreamData.member_of([:lobby, :playing, :finished, :game_over]),
+              player_count <- StreamData.integer(1..4),
+              target_idx <- StreamData.integer(0..(player_count - 1))
+            ) do
+        players = for idx <- 1..player_count, do: build_games_player("P#{idx}")
+        [owner | _] = players
+        target = Enum.at(players, target_idx)
+
+        state =
+          Enum.reduce(players, Core.new(owner, "Prop Remove", 4), fn p, acc ->
+            {:ok, next} = Core.join_game(acc, p)
+            next
+          end)
+
+        state = %{
+          state
+          | status: status,
+            current_game_player_index: if(status == :playing, do: 0, else: nil),
+            current_game_word_index: if(status == :playing, do: 0, else: nil)
+        }
+
+        assert {:changed, final} = Core.remove_player(state, target.id)
+        seated_ids = final.game_players |> Map.values() |> Enum.map(& &1.player.id)
+        refute target.id in seated_ids
+
+        if player_count == 1 do
+          assert final.status == :archived
+          assert final.owner == nil
+          assert final.game_players == %{}
+        else
+          assert final.status != :archived
+          assert final.owner != nil
+          refute final.owner.id == target.id
+          assert final.owner.id in seated_ids
+        end
+      end
+    end
+  end
 end

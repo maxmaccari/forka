@@ -2024,4 +2024,186 @@ defmodule Forka.GamesTest do
       assert {:ok, %{status: :archived, owner: nil}} = Repository.get_game_state(game.id)
     end
   end
+
+  describe "remove_player_from_games/1" do
+    test "validates UUID input and handles a player in no active rooms" do
+      assert {:error, :invalid_player_id} = Games.remove_player_from_games("not-a-uuid")
+
+      player = insert(:player)
+      assert :ok = Games.remove_player_from_games(player.id)
+    end
+
+    test "removes a player across multiple running, cold, playing, non-owner, and archived rooms" do
+      target = insert(:player, username: "lia")
+      p2 = insert(:player, username: "bruno")
+      p3 = insert(:player, username: "caio")
+      insert_list(6, :word)
+
+      # 1. Running lobby room owned by target with p2 -> promotes p2
+      {:ok, running_shared} =
+        Games.create_room(Scope.for_player(target), %{name: "Lobby Viva", max_players: 4})
+
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(p2), running_shared.id)
+
+      # 2. Cold sole-owner lobby room (no running GameServer) -> archived, no server left behind
+      {:ok, cold_solo} = Repository.insert_game(target.id, %{name: "Fria Solo", max_players: 4})
+      assert GameServer.whereis(cold_solo.id) == nil
+
+      # 3. Cold shared lobby room (no running GameServer) -> promoted to p2
+      {:ok, cold_shared} =
+        Repository.insert_game(target.id, %{name: "Fria Com Bruno", max_players: 4})
+
+      {:ok, cs} = Repository.get_game_state(cold_shared.id)
+      {:ok, cs} = Core.join_game(cs, Repository.get_player(p2.id))
+      {:ok, _} = Repository.save_game_state(cs)
+      assert GameServer.whereis(cold_shared.id) == nil
+
+      # 4. Running playing match owned by target with p2 & p3 -> continues without target
+      {:ok, playing_game} =
+        Games.create_room(Scope.for_player(target), %{name: "Partida", max_players: 4})
+
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(p2), playing_game.id)
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(p3), playing_game.id)
+      assert :ok = Games.start_game(Scope.for_player(target), playing_game.id)
+
+      # 5. Room owned by p2 where target is a non-owner member -> target dropped, p2 stays owner
+      {:ok, non_owner_room} =
+        Games.create_room(Scope.for_player(p2), %{name: "Do Bruno", max_players: 4})
+
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(target), non_owner_room.id)
+
+      # 6. Already-archived room owned by target -> untouched, no server started
+      {:ok, archived_room} =
+        Repository.insert_game(target.id, %{name: "Ja Arquivada", max_players: 4})
+
+      {:ok, as} = Repository.get_game_state(archived_room.id)
+      {:ok, arch} = Core.archive_game(as)
+      {:ok, _} = Repository.save_game_state(arch)
+
+      on_exit(fn ->
+        for id <- [running_shared.id, cold_shared.id, playing_game.id, non_owner_room.id] do
+          if pid = GameServer.whereis(id) do
+            DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
+          end
+        end
+      end)
+
+      assert :ok = Games.remove_player_from_games(target.id)
+
+      assert Games.get_game_summary(running_shared.id).owner.id == p2.id
+      assert map_size(Games.get_game_summary(running_shared.id).players) == 1
+
+      assert GameServer.whereis(cold_solo.id) == nil
+      assert {:ok, %{status: :archived, owner: nil}} = Repository.get_game_state(cold_solo.id)
+
+      assert Games.get_game_summary(cold_shared.id).owner.id == p2.id
+
+      playing_summary = Games.get_game_summary(playing_game.id)
+      assert playing_summary.game_status == :playing
+      assert playing_summary.owner.id in [p2.id, p3.id]
+      refute Enum.any?(playing_summary.players, fn {_, gp} -> gp.player.id == target.id end)
+
+      non_owner_summary = Games.get_game_summary(non_owner_room.id)
+      assert non_owner_summary.owner.id == p2.id
+      assert Map.keys(non_owner_summary.players) == [0]
+      assert non_owner_summary.players[0].player.id == p2.id
+
+      assert GameServer.whereis(archived_room.id) == nil
+      assert {:ok, %{status: :archived}} = Repository.get_game_state(archived_room.id)
+    end
+
+    test "sequentially removing all players of a room archives it and stops the server" do
+      p1 = insert(:player, username: "lia")
+      p2 = insert(:player, username: "bruno")
+
+      {:ok, game} = Games.create_room(Scope.for_player(p1), %{name: "Lote", max_players: 4})
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(p2), game.id)
+
+      pid = GameServer.whereis(game.id)
+      ref = Process.monitor(pid)
+
+      assert :ok = Games.remove_player_from_games(p1.id)
+      assert Games.get_game_summary(game.id).owner.id == p2.id
+
+      assert :ok = Games.remove_player_from_games(p2.id)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+      assert {:ok, %{status: :archived, owner: nil}} = Repository.get_game_state(game.id)
+    end
+
+    test "returns an error tuple instead of crashing when a room server fails during removal" do
+      owner = insert(:player, username: "lia")
+      p2 = insert(:player, username: "bruno")
+
+      {:ok, game} = Games.create_room(Scope.for_player(owner), %{name: "Falha", max_players: 4})
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(p2), game.id)
+
+      pid = GameServer.whereis(game.id)
+      task_supervisor = start_supervised!(Task.Supervisor)
+      :ok = :sys.suspend(pid)
+
+      task =
+        try do
+          :erlang.trace(pid, true, [:receive])
+
+          t =
+            Task.Supervisor.async_nolink(task_supervisor, fn ->
+              Games.remove_player_from_games(owner.id)
+            end)
+
+          assert_receive {:trace, ^pid, :receive, {:"$gen_call", _, {:remove_player, _}}}, 2_000
+          Process.exit(pid, :kill)
+          t
+        after
+          :erlang.trace(:all, false, [:receive])
+        end
+
+      assert {:error, _reason} = Task.await(task, 5_000)
+
+      # Wait for DynamicSupervisor to finish handling the :transient restart before sandbox teardown
+      _ = :sys.get_state(Process.whereis(Forka.GamesSupervisor))
+
+      if restarted_pid = GameServer.whereis(game.id) do
+        DynamicSupervisor.terminate_child(Forka.GamesSupervisor, restarted_pid)
+      end
+    end
+
+    test "fallback recovers if a player rejoins or creates a room between removal and account deletion" do
+      target = insert(:player, username: "lia")
+      p2 = insert(:player, username: "bruno")
+
+      {:ok, shared} =
+        Games.create_room(Scope.for_player(target), %{name: "Rejoin", max_players: 4})
+
+      on_exit(fn ->
+        if pid = GameServer.whereis(shared.id) do
+          DynamicSupervisor.terminate_child(Forka.GamesSupervisor, pid)
+        end
+      end)
+
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(p2), shared.id)
+
+      assert :ok = Games.remove_player_from_games(target.id)
+
+      # Target rejoins shared room and creates a brand new room before the DB delete runs
+      assert {:ok, :joined} = Games.join_room(Scope.for_player(target), shared.id)
+
+      {:ok, brand_new} =
+        Games.create_room(Scope.for_player(target), %{name: "Nova Antes Delete", max_players: 4})
+
+      Repo.delete!(target)
+
+      # Public directory hides the ownerless brand_new room
+      %{rooms: rooms} = Games.list_directory_rooms_page()
+      refute Enum.any?(rooms, &(&1.id == brand_new.id))
+
+      # Opening brand_new archives it via fallback
+      assert {:error, :game_archived} = Games.get_room_invite(brand_new.id)
+
+      # Next read on shared drops the deleted rejoined player via running reconciliation
+      summary = Games.get_game_summary(shared.id)
+      assert summary.owner.id == p2.id
+      assert Map.keys(summary.players) == [0]
+      assert summary.players[0].player.id == p2.id
+    end
+  end
 end

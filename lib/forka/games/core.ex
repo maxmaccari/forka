@@ -835,14 +835,51 @@ defmodule Forka.Games.Core do
       previous_turn_player_id = current_turn_player_id(game_state)
       previous_owner_id = game_state.owner && game_state.owner.id
 
+      removed_finisher_ids =
+        if owner_missing? and is_binary(previous_owner_id) do
+          Enum.uniq([previous_owner_id | removed_ids])
+        else
+          removed_ids
+        end
+
       updated =
         %{game_state | game_players: remaining_players}
-        |> clear_removed_word_finishers(removed_ids)
+        |> clear_removed_word_finishers(removed_finisher_ids)
         |> increment_tick()
         |> push_removed_player_events(removed_entries)
         |> reconcile_owner_and_status(owner_missing?, previous_owner_id, previous_turn_player_id)
 
       {:changed, updated}
+    end
+  end
+
+  @doc """
+  Removes `player_id` from `game_state` in any non-archived phase, reusing
+  `reconcile_missing_players/2` for seat compaction, ownership handoff, archival when
+  empty, word finishers, turn realignment, and game over.
+
+  Returns `:unchanged` when the game is `:archived` or `player_id` is neither the
+  owner nor seated in the room.
+  """
+  @spec remove_player(GameState.t(), Ecto.UUID.t()) :: :unchanged | {:changed, GameState.t()}
+  def remove_player(%GameState{status: :archived}, player_id) when is_binary(player_id),
+    do: :unchanged
+
+  def remove_player(%GameState{} = game_state, player_id) when is_binary(player_id) do
+    remaining_ids =
+      game_state
+      |> referenced_player_ids()
+      |> Enum.reject(&(&1 == player_id))
+
+    reconcile_missing_players(game_state, remaining_ids)
+  end
+
+  defp referenced_player_ids(%GameState{owner: owner, game_players: game_players}) do
+    seated_ids = Enum.map(game_players, fn {_idx, gp} -> gp.player.id end)
+
+    case owner do
+      %{id: owner_id} when is_binary(owner_id) -> Enum.uniq([owner_id | seated_ids])
+      _ -> Enum.uniq(seated_ids)
     end
   end
 

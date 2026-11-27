@@ -594,6 +594,45 @@ defmodule Forka.Games.RepositoryTest do
     end
   end
 
+  describe "list_active_game_ids_for_player/1" do
+    test "returns distinct non-archived game IDs where the player is owner or seated and excludes archived rooms" do
+      player = insert(:player, username: "lia")
+      other = insert(:player, username: "bruno")
+
+      # Owned + seated lobby room
+      {:ok, owned_seated} = Repository.insert_game(player.id, %{name: "Dona", max_players: 4})
+
+      # Owned room without game_players row
+      owned_only = insert(:game, owner: player, status: :lobby, name: "So Dona")
+
+      # Seated as non-owner in another player's playing room
+      {:ok, seated_non_owner} =
+        Repository.insert_game(other.id, %{name: "Convidada", max_players: 4})
+
+      {:ok, state} = Repository.get_game_state(seated_non_owner.id)
+      {:ok, state} = Core.join_game(state, Repository.get_player(player.id))
+      {:ok, _} = Repository.save_game_state(%{state | status: :playing})
+
+      # Archived rooms (owned and seated) must be excluded
+      {:ok, archived_owned} =
+        Repository.insert_game(player.id, %{name: "Arquivada", max_players: 4})
+
+      {:ok, arch_state} = Repository.get_game_state(archived_owned.id)
+      {:ok, archived} = Core.archive_game(arch_state)
+      {:ok, _} = Repository.save_game_state(archived)
+
+      # Unrelated active room must be excluded
+      {:ok, _unrelated} = Repository.insert_game(other.id, %{name: "Outra", max_players: 4})
+
+      ids = Repository.list_active_game_ids_for_player(player.id)
+
+      assert Enum.sort(ids) ==
+               Enum.sort([owned_seated.id, owned_only.id, seated_non_owner.id])
+
+      assert length(ids) == 3
+    end
+  end
+
   describe "reconcile_game_state/2" do
     test "F-01: locks and reconciles an ownerless game atomically, and treats archived or missing games cleanly" do
       owner = insert(:player, username: "lia")

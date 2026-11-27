@@ -5,6 +5,7 @@ defmodule Forka.Games.Repository do
 
   alias Forka.Games.Core.GameState
   alias Forka.Games.Schemas.Game
+  alias Forka.Games.Schemas.GamePlayer
   alias Forka.Games.Schemas.Player
   alias Forka.Games.Schemas.Word
   alias Forka.Games.Schemas.WordOptions
@@ -101,6 +102,19 @@ defmodule Forka.Games.Repository do
     ids = Enum.uniq(player_ids)
 
     from(p in Player, where: p.id in ^ids, select: p.id)
+    |> Repo.all()
+  end
+
+  @doc "Returns distinct IDs of non-archived games where `player_id` is the owner or a seated player."
+  @spec list_active_game_ids_for_player(Ecto.UUID.t()) :: [Ecto.UUID.t()]
+  def list_active_game_ids_for_player(player_id) when is_binary(player_id) do
+    from(g in Game,
+      left_join: gp in GamePlayer,
+      on: gp.game_id == g.id and gp.player_id == ^player_id,
+      where: g.status != :archived and (g.owner_id == ^player_id or not is_nil(gp.id)),
+      distinct: g.id,
+      select: g.id
+    )
     |> Repo.all()
   end
 
