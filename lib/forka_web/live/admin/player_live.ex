@@ -1,4 +1,8 @@
 defmodule ForkaWeb.Admin.PlayerLive do
+  require Logger
+
+  alias Forka.Backoffice.Admin
+  alias Forka.Games
   alias Forka.Players.Player
 
   use Backpex.LiveResource,
@@ -43,4 +47,23 @@ defmodule ForkaWeb.Admin.PlayerLive do
   def can?(_assigns, :new, _item), do: false
   def can?(_assigns, action, _item) when action in [:index, :edit, :delete], do: true
   def can?(_assigns, _action, _item), do: false
+
+  @impl Backpex.LiveResource
+  def on_item_deleting(%{assigns: %{current_admin: %Admin{}}}, %Player{id: player_id}) do
+    case Games.remove_player_from_games(player_id) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error(
+          "Failed to remove player #{player_id} from active games before deletion: #{inspect(reason)}"
+        )
+
+        {:error, "Could not remove player from active rooms. Deletion was cancelled."}
+    end
+  end
+
+  def on_item_deleting(_socket, _item) do
+    {:error, "You are not authorized to delete players."}
+  end
 end
