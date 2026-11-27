@@ -142,7 +142,11 @@ defmodule Forka.Games do
         }
   def list_directory_rooms_page(opts \\ []) do
     limit = opts |> Keyword.get(:limit, @directory_limit) |> cap_directory_limit()
-    repair_bounded_ownerless_rooms(@directory_repair_limit)
+
+    if Keyword.get(opts, :repair, true) do
+      repair_bounded_ownerless_rooms(@directory_repair_limit)
+    end
+
     rows = fetch_directory_rows(limit)
 
     {page_rows, extra_rows} = Enum.split(rows, limit)

@@ -4,7 +4,15 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
   import Phoenix.LiveViewTest
 
   alias Forka.Games
+  alias Forka.Games.Core
+  alias Forka.Games.GameServer
+  alias Forka.Games.OwnerlessRoomRepairer
+  alias Forka.Games.Repository
+  alias Forka.Games.Schemas.Game
+  alias Forka.Repo
   alias ForkaWeb.RoomDirectoryLive
+
+  import Ecto.Query, only: [from: 2]
 
   describe "initial render, loading, empty state, and room list" do
     test "AC-07: GET / renders player header with active Salas nav and initial loading skeleton",
@@ -368,6 +376,237 @@ defmodule ForkaWeb.RoomDirectoryLiveTest do
 
       assert text =~ "Ao vivo · #{limit} salas"
       refute text =~ "mostrando as #{limit} mais recentes"
+    end
+
+    test "F-07: deferred repair of a populated ownerless room refreshes an open capped directory",
+         %{conn: conn} do
+      repairer = Process.whereis(OwnerlessRoomRepairer)
+      limit = Games.directory_limit()
+      repair_limit = Games.directory_repair_limit()
+      base = ~U[2026-11-27 12:00:00Z]
+
+      set_inserted_at = fn game_id, offset_seconds ->
+        ts = DateTime.add(base, offset_seconds, :second)
+
+        from(g in Game, where: g.id == ^game_id)
+        |> Repo.update_all(set: [inserted_at: ts])
+      end
+
+      :ok = OwnerlessRoomRepairer.await_idle()
+      :ok = :sys.suspend(repairer)
+
+      on_exit(fn ->
+        :sys.resume(repairer)
+        :ok = OwnerlessRoomRepairer.await_idle()
+      end)
+
+      healthy_owner = insert(:player, username: "lia")
+      member = insert(:player, username: "bruno")
+
+      # 61 older healthy rooms
+      healthy_games =
+        for i <- 1..(limit + 1) do
+          {:ok, game} =
+            Repository.insert_game(healthy_owner.id, %{name: "Saudavel #{i}", max_players: 4})
+
+          set_inserted_at.(game.id, i)
+          game
+        end
+
+      # 11 newer ownerless rooms with remaining players (exceeding sync repair_limit of 10)
+      orphan_games =
+        for i <- 1..(repair_limit + 1) do
+          owner = insert(:player)
+
+          {:ok, game} =
+            Repository.insert_game(owner.id, %{name: "Orfa Populada #{i}", max_players: 4})
+
+          {:ok, state} = Repository.get_game_state(game.id)
+          {:ok, state} = Core.join_game(state, Repository.get_player(member.id))
+          {:ok, _} = Repository.save_game_state(state)
+          set_inserted_at.(game.id, 1000 + i)
+          Repo.delete!(owner)
+          game
+        end
+
+      # The 11th (oldest of the 11 orphans) is deferred past the 10-room sync cap
+      deferred_orphan = hd(orphan_games)
+
+      # The 12th healthy room (index 11 -> 12th oldest of 61, i.e. 50th newest healthy) gets evicted
+      # once all 11 orphans are promoted (11 orphans + 49 newest healthy = 60)
+      evicted_healthy = Enum.at(healthy_games, limit + 1 - (limit - repair_limit))
+
+      {:ok, lv, _html} = live(conn, ~p"/")
+      initial_text = lv |> render_async() |> visible_text()
+
+      assert initial_text =~
+               "Ao vivo · #{limit} salas · mostrando as #{limit} mais recentes"
+
+      refute has_element?(lv, "#rooms-#{deferred_orphan.id}")
+      assert has_element?(lv, "#rooms-#{evicted_healthy.id}")
+
+      # Resume background repairer: deferred_orphan is promoted and must appear in the capped page
+      :ok = :sys.resume(repairer)
+      :ok = OwnerlessRoomRepairer.await_idle()
+
+      refreshed_text = lv |> render_async() |> visible_text()
+      assert has_element?(lv, "#rooms-#{deferred_orphan.id}")
+      refute has_element?(lv, "#rooms-#{evicted_healthy.id}")
+
+      assert refreshed_text =~
+               "Ao vivo · #{limit} salas · mostrando as #{limit} mais recentes"
+    end
+
+    test "F-07: deferred repair event arriving during initial loading still refreshes a capped directory",
+         %{conn: conn} do
+      repairer = Process.whereis(OwnerlessRoomRepairer)
+      limit = Games.directory_limit()
+      repair_limit = Games.directory_repair_limit()
+      base = ~U[2026-11-27 13:00:00Z]
+
+      set_inserted_at = fn game_id, offset_seconds ->
+        ts = DateTime.add(base, offset_seconds, :second)
+
+        from(g in Game, where: g.id == ^game_id)
+        |> Repo.update_all(set: [inserted_at: ts])
+      end
+
+      :ok = OwnerlessRoomRepairer.await_idle()
+      :ok = :sys.suspend(repairer)
+
+      on_exit(fn ->
+        :sys.resume(repairer)
+        :ok = OwnerlessRoomRepairer.await_idle()
+      end)
+
+      healthy_owner = insert(:player, username: "lia")
+      member = insert(:player, username: "bruno")
+
+      for i <- 1..(limit + 1) do
+        {:ok, game} =
+          Repository.insert_game(healthy_owner.id, %{name: "Saudavel Load #{i}", max_players: 4})
+
+        set_inserted_at.(game.id, i)
+      end
+
+      orphan_games =
+        for i <- 1..(repair_limit + 1) do
+          owner = insert(:player)
+
+          {:ok, game} =
+            Repository.insert_game(owner.id, %{name: "Orfa Load #{i}", max_players: 4})
+
+          {:ok, state} = Repository.get_game_state(game.id)
+          {:ok, state} = Core.join_game(state, Repository.get_player(member.id))
+          {:ok, _} = Repository.save_game_state(state)
+          set_inserted_at.(game.id, 1000 + i)
+          Repo.delete!(owner)
+          game
+        end
+
+      deferred_orphan = hd(orphan_games)
+
+      # Pause the directory's :load_rooms async task AFTER its page query (which excluded deferred_orphan)
+      # so we can deterministically deliver the deferred repair event while loading? is still true.
+      test_pid = self()
+      handler_id = "f07-during-load-#{System.unique_integer([:positive])}"
+      paused_ref = :atomics.new(1, [])
+
+      :ok =
+        :telemetry.attach(
+          handler_id,
+          [:forka, :repo, :query],
+          fn _event, _measurements, %{query: query}, %{parent: parent, paused: paused} ->
+            if String.contains?(query, ~s|LEFT OUTER JOIN "game_players"|) and
+                 String.contains?(query, ~s|LEFT OUTER JOIN "players"|) and
+                 :atomics.compare_exchange(paused, 1, 0, 1) == :ok do
+              send(parent, {:page_query_done, self()})
+              receive do: (:finish_load -> :ok)
+            end
+          end,
+          %{parent: test_pid, paused: paused_ref}
+        )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      {:ok, lv, _html} = live(conn, ~p"/")
+      assert_receive {:page_query_done, loader_pid}, 2_000
+
+      try do
+        # Run deferred repair while the LiveView is still in loading?: true;
+        # its PubSub broadcast is buffered in pending_events.
+        :ok = :sys.resume(repairer)
+        :ok = OwnerlessRoomRepairer.await_idle()
+        _ = :sys.get_state(lv.pid)
+      after
+        send(loader_pid, :finish_load)
+      end
+
+      # Wait for :load_rooms, then for any triggered :refresh_rooms async task
+      _ = render_async(lv)
+      final_text = lv |> render_async() |> visible_text()
+
+      assert has_element?(lv, "#rooms-#{deferred_orphan.id}")
+
+      assert final_text =~
+               "Ao vivo · #{limit} salas · mostrando as #{limit} mais recentes"
+    end
+
+    test "F-07: deferred repair of an older room beyond the cap does not displace newer rooms",
+         %{conn: conn} do
+      limit = Games.directory_limit()
+      base = ~U[2026-11-27 14:00:00Z]
+
+      set_inserted_at = fn game_id, offset_seconds ->
+        ts = DateTime.add(base, offset_seconds, :second)
+
+        from(g in Game, where: g.id == ^game_id)
+        |> Repo.update_all(set: [inserted_at: ts])
+      end
+
+      :ok = OwnerlessRoomRepairer.await_idle()
+
+      healthy_owner = insert(:player, username: "lia")
+      member = insert(:player, username: "bruno")
+
+      healthy_games =
+        for i <- 1..(limit + 1) do
+          {:ok, game} =
+            Repository.insert_game(healthy_owner.id, %{name: "Recente #{i}", max_players: 4})
+
+          set_inserted_at.(game.id, 1000 + i)
+          game
+        end
+
+      newest_healthy = List.last(healthy_games)
+      sixtieth_healthy = Enum.at(healthy_games, 1)
+
+      {:ok, lv, _html} = live(conn, ~p"/")
+      _ = render_async(lv)
+      assert has_element?(lv, "#rooms-#{newest_healthy.id}")
+      assert has_element?(lv, "#rooms-#{sixtieth_healthy.id}")
+
+      # Now create an older ownerless populated room (older than all 61 healthy rooms) and repair it
+      old_owner = insert(:player)
+
+      {:ok, old_orphan} =
+        Repository.insert_game(old_owner.id, %{name: "Orfa Antiga", max_players: 4})
+
+      {:ok, state} = Repository.get_game_state(old_orphan.id)
+      {:ok, state} = Core.join_game(state, Repository.get_player(member.id))
+      {:ok, _} = Repository.save_game_state(state)
+      set_inserted_at.(old_orphan.id, 1)
+      Repo.delete!(old_owner)
+
+      assert {:ok, _summary} = GameServer.reconcile_ownerless_room(old_orphan.id)
+
+      final_text = lv |> render_async() |> visible_text()
+      refute has_element?(lv, "#rooms-#{old_orphan.id}")
+      assert has_element?(lv, "#rooms-#{newest_healthy.id}")
+      assert has_element?(lv, "#rooms-#{sixtieth_healthy.id}")
+
+      assert final_text =~
+               "Ao vivo · #{limit} salas · mostrando as #{limit} mais recentes"
     end
   end
 

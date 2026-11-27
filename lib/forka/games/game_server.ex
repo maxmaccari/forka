@@ -456,7 +456,7 @@ defmodule Forka.Games.GameServer do
         {:ok, state}
 
       {:ok, :reconciled, previous, saved} ->
-        publish_state!(previous, saved)
+        publish_state!(previous, saved, reconciliation?: true)
         {:ok, saved}
 
       {:error, %Ecto.Changeset{}} when retries > 0 ->
@@ -484,7 +484,7 @@ defmodule Forka.Games.GameServer do
         {:archived, save_and_publish!(game_state, archived)}
 
       {:changed, updated} ->
-        {:ok, save_and_publish!(game_state, updated)}
+        {:ok, save_and_publish!(game_state, updated, reconciliation?: true)}
     end
   end
 
@@ -552,16 +552,16 @@ defmodule Forka.Games.GameServer do
     end
   end
 
-  defp save_and_publish!(previous, updated) do
+  defp save_and_publish!(previous, updated, opts \\ []) do
     saved = Repository.save_game_state!(updated)
-    publish_state!(previous, saved)
+    publish_state!(previous, saved, opts)
     saved
   end
 
-  defp publish_state!(previous, saved) do
+  defp publish_state!(previous, saved, opts) do
     broadcast!(saved)
     broadcast_lobby!(saved)
-    :ok = GameListNotifier.broadcast_update_if_changed(previous, saved)
+    :ok = GameListNotifier.broadcast_update_if_changed(previous, saved, opts)
   end
 
   defp do_start_game(game, actor_id) do
