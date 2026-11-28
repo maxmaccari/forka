@@ -10,7 +10,7 @@ defmodule ForkaWeb.E2E.FlashBannerTest do
   alias PhoenixTest.Playwright.Config
   alias PlaywrightEx.{Connection, Page, Route, Supervisor}
 
-  test "AC-01: desktop account menu opens while welcome flash shows in reserved slot, dismiss has zero shift, empty stuck slot is click-through, and scrolled in-place and real disconnect errors stick below header",
+  test "AC-01: desktop flash slot clears account menu, passes clicks when empty, and sticks on scroll and disconnect",
        %{conn: conn} do
     host = insert(:player, username: "anfitriao")
 
