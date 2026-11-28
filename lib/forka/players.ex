@@ -13,8 +13,7 @@ defmodule Forka.Players do
              [
                player_email_multi: 3,
                confirm_player_multi: 1,
-               update_player_password: 3,
-               reset_player_password: 2
+               update_player_password: 3
              ]}
 
   ## Database getters
@@ -403,27 +402,65 @@ defmodule Forka.Players do
   end
 
   @doc """
-  Resets the player password.
+  Resets the player password using the given reset token.
+
+  Locks the player row first, then rebuilds and re-runs token verification
+  inside the same transaction as the password update before deleting all tokens
+  for the player. Returns `{:error, :invalid_token}` when the token is
+  malformed, unknown, expired, already used, or invalidated by an email change.
 
   ## Examples
 
-      iex> reset_player_password(player, %{password: "new long password", password_confirmation: "new long password"})
+      iex> reset_player_password(token, %{password: "new long password", password_confirmation: "new long password"})
       {:ok, %Player{}}
 
-      iex> reset_player_password(player, %{password: "valid", password_confirmation: "not the same"})
+      iex> reset_player_password(token, %{password: "valid", password_confirmation: "not the same"})
       {:error, %Ecto.Changeset{}}
 
+      iex> reset_player_password("invalid", %{password: "new long password", password_confirmation: "new long password"})
+      {:error, :invalid_token}
+
   """
-  @spec reset_player_password(Player.t(), map()) ::
-          {:ok, Player.t()} | {:error, Ecto.Changeset.t(Player.t())}
-  def reset_player_password(player, attrs) do
-    Ecto.Multi.new()
-    |> Ecto.Multi.update(:player, Player.password_changeset(player, attrs))
-    |> Ecto.Multi.delete_all(:tokens, PlayerToken.by_player_and_contexts_query(player, :all))
-    |> Repo.transaction()
-    |> case do
-      {:ok, %{player: player}} -> {:ok, player}
-      {:error, :player, changeset, _} -> {:error, changeset}
+  @spec reset_player_password(String.t(), map()) ::
+          {:ok, Player.t()} | {:error, :invalid_token | Ecto.Changeset.t(Player.t())}
+  def reset_player_password(token, attrs) when is_binary(token) and is_map(attrs) do
+    case PlayerToken.verify_email_token_query(token, "reset_password") do
+      {:ok, discovery_query} ->
+        Repo.transaction(fn -> reset_verified_player_password(token, discovery_query, attrs) end)
+
+      :error ->
+        {:error, :invalid_token}
+    end
+  end
+
+  defp reset_verified_player_password(token, discovery_query, attrs) do
+    # Lock the player row first (matching update_player_password/3 lock order),
+    # then rebuild and run the verification query so expiry and sent_to are
+    # evaluated after any lock wait.
+    with %Player{id: player_id} <- Repo.one(discovery_query),
+         %Player{} = _locked_player <- lock_player_for_update(player_id),
+         {:ok, verified_query} <- PlayerToken.verify_email_token_query(token, "reset_password"),
+         %Player{} = player <- Repo.one(verified_query) do
+      apply_password_reset(player, attrs)
+    else
+      _ ->
+        Repo.rollback(:invalid_token)
+    end
+  end
+
+  defp lock_player_for_update(player_id) do
+    from(p in Player, where: p.id == ^player_id, lock: "FOR UPDATE")
+    |> Repo.one()
+  end
+
+  defp apply_password_reset(player, attrs) do
+    case player |> Player.password_changeset(attrs) |> Repo.update() do
+      {:ok, updated_player} ->
+        Repo.delete_all(PlayerToken.by_player_and_contexts_query(updated_player, :all))
+        updated_player
+
+      {:error, changeset} ->
+        Repo.rollback(changeset)
     end
   end
 end

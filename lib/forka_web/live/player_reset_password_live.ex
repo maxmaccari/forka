@@ -85,14 +85,17 @@ defmodule ForkaWeb.PlayerResetPasswordLive do
   # Do not log in the player after reset password to avoid a
   # leaked token giving the player access to the account.
   def handle_event("reset_password", %{"player" => player_params}, socket) do
-    case Players.reset_player_password(socket.assigns.player, player_params) do
+    case Players.reset_player_password(socket.assigns.token, player_params) do
       {:ok, _} ->
         {:noreply,
          socket
          |> put_flash(:info, "Senha redefinida com sucesso!")
          |> redirect(to: ~p"/players/log_in")}
 
-      {:error, changeset} ->
+      {:error, :invalid_token} ->
+        {:noreply, redirect_invalid_token(socket)}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply,
          socket
          |> assign(:check_errors, true)
@@ -109,10 +112,14 @@ defmodule ForkaWeb.PlayerResetPasswordLive do
     if player = Players.get_player_by_reset_password_token(token) do
       assign(socket, player: player, token: token)
     else
-      socket
-      |> put_flash(:error, "O link para redefinir a senha é inválido ou expirou.")
-      |> redirect(to: ~p"/players/reset_password")
+      redirect_invalid_token(socket)
     end
+  end
+
+  defp redirect_invalid_token(socket) do
+    socket
+    |> put_flash(:error, "O link para redefinir a senha é inválido ou expirou.")
+    |> redirect(to: ~p"/players/reset_password")
   end
 
   defp assign_form(socket, %Ecto.Changeset{} = changeset) do
