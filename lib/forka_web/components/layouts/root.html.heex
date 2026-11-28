@@ -20,37 +20,6 @@
         } catch (_) {}
       })();
     </script>
-    <script nonce={assigns[:csp_nonce]}>
-      (() => {
-        const WINDOW_MS = 1000;
-        const lastSubmitAt = new WeakMap();
-
-        window.addEventListener(
-          "submit",
-          (event) => {
-            const form = event.target;
-            if (
-              event.defaultPrevented ||
-              !(form instanceof HTMLFormElement) ||
-              !form.hasAttribute("data-prevent-double-submit")
-            ) {
-              return;
-            }
-
-            const now = performance.now();
-            const previous = lastSubmitAt.get(form);
-
-            if (previous !== undefined && now - previous < WINDOW_MS) {
-              event.preventDefault();
-              return;
-            }
-
-            lastSubmitAt.set(form, now);
-          },
-          true
-        );
-      })();
-    </script>
     <script defer phx-track-static src={~p"/assets/app.js"} nonce={assigns[:csp_nonce]}>
     </script>
   </head>

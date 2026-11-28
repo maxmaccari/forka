@@ -22,7 +22,6 @@ defmodule ForkaWeb.PlayerLoginLive do
           for={@form}
           id="login_form"
           action={~p"/players/log_in?#{ForkaWeb.PlayerAuth.return_to_query(@return_to)}"}
-          data-prevent-double-submit
           phx-update="ignore"
         >
           <.input
