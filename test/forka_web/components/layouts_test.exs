@@ -42,10 +42,16 @@ defmodule ForkaWeb.LayoutsTest do
     refute Enum.empty?(LazyHTML.query(doc, ".text-ink"))
     assert Enum.empty?(LazyHTML.query(doc, ".text-zinc-900"))
     assert LazyHTML.text(LazyHTML.query(doc, "#client-error")) =~ "Sem conexão com a internet"
+    assert LazyHTML.text(LazyHTML.query(doc, "#client-error")) =~ "Tentando reconectar"
+    assert LazyHTML.text(LazyHTML.query(doc, "#server-error")) =~ "Algo deu errado!"
 
-    assert LazyHTML.attribute(LazyHTML.query(doc, "#client-error button"), "aria-label") == [
-             "fechar"
-           ]
+    assert LazyHTML.text(LazyHTML.query(doc, "#server-error")) =~
+             "Aguarde enquanto restabelecemos a conexão"
+
+    assert Enum.empty?(LazyHTML.query(doc, "#client-error button"))
+    assert Enum.empty?(LazyHTML.query(doc, "#server-error button"))
+    assert LazyHTML.attribute(LazyHTML.query(doc, "#client-error"), "hidden") == []
+    assert LazyHTML.attribute(LazyHTML.query(doc, "#server-error"), "hidden") == []
   end
 
   test "admin routes use dedicated admin_root layout without player theme toggle", %{conn: conn} do
@@ -62,8 +68,19 @@ defmodule ForkaWeb.LayoutsTest do
     assert LazyHTML.text(LazyHTML.query(login_doc, "#client-error")) =~
              "We can't find the internet"
 
-    assert LazyHTML.attribute(LazyHTML.query(login_doc, "#client-error button"), "aria-label") ==
-             ["close"]
+    assert LazyHTML.text(LazyHTML.query(login_doc, "#client-error")) =~
+             "Attempting to reconnect"
+
+    assert LazyHTML.text(LazyHTML.query(login_doc, "#server-error")) =~
+             "Something went wrong!"
+
+    assert LazyHTML.text(LazyHTML.query(login_doc, "#server-error")) =~
+             "Hang in there while we get back on track"
+
+    assert Enum.empty?(LazyHTML.query(login_doc, "#client-error button"))
+    assert Enum.empty?(LazyHTML.query(login_doc, "#server-error button"))
+    assert LazyHTML.attribute(LazyHTML.query(login_doc, "#client-error"), "hidden") == []
+    assert LazyHTML.attribute(LazyHTML.query(login_doc, "#server-error"), "hidden") == []
 
     %{conn: admin_conn} = register_and_log_in_admin(%{conn: conn})
 

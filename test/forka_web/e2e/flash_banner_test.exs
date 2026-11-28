@@ -7,14 +7,17 @@ defmodule ForkaWeb.E2E.FlashBannerTest do
 
   alias Forka.Games.Schemas.Game
   alias Forka.Repo
+  alias PhoenixTest.Playwright.Config
+  alias PlaywrightEx.{Connection, Page, Route, Supervisor}
 
-  test "AC-01: desktop account menu opens while welcome flash shows in reserved slot, dismiss has zero shift, empty stuck slot is click-through, and scrolled in-place/disconnect errors stick below header",
+  test "AC-01: desktop account menu opens while welcome flash shows in reserved slot, dismiss has zero shift, empty stuck slot is click-through, and scrolled in-place and real disconnect errors stick below header",
        %{conn: conn} do
     host = insert(:player, username: "anfitriao")
 
-    room_ids =
+    rooms =
       for i <- 1..21 do
-        insert(:game, owner: host, name: "Sala #{i}", status: :lobby).id
+        name = "Sala #{String.pad_leading(Integer.to_string(i), 2, "0")}"
+        insert(:game, owner: host, name: name, status: :lobby)
       end
 
     player = insert(:player, username: "lia")
@@ -36,7 +39,6 @@ defmodule ForkaWeb.E2E.FlashBannerTest do
           const dropdown = document.querySelector("header details > div");
           const group = document.querySelector("#flash-group");
           const flash = document.querySelector("#flash-info");
-          const clientError = document.querySelector("#client-error");
           const main = document.querySelector("main");
           const heading = document.querySelector("main h1");
 
@@ -63,21 +65,6 @@ defmodule ForkaWeb.E2E.FlashBannerTest do
             (overlapTop + overlapBottom) / 2
           );
 
-          // Temporarily unhide #client-error to prove simultaneous flashes share the
-          // same slot with zero layout shift and #client-error draws above #flash-info.
-          const prevHidden = clientError.hidden;
-          const prevDisplay = clientError.style.display;
-          clientError.hidden = false;
-          clientError.style.display = "block";
-          const groupHeightWithBoth = Math.round(group.getBoundingClientRect().height);
-          const mainTopWithBoth = Math.round(main.getBoundingClientRect().top);
-          const topElAtSlotLeft = document.elementFromPoint(
-            flashRect.left + 40,
-            (flashRect.top + flashRect.bottom) / 2
-          );
-          clientError.hidden = prevHidden;
-          clientError.style.display = prevDisplay;
-
           const groupZ = Number(getComputedStyle(group).zIndex);
           const headerZ = Number(getComputedStyle(header).zIndex);
 
@@ -89,10 +76,6 @@ defmodule ForkaWeb.E2E.FlashBannerTest do
             flashAboveHeading: flashRect.bottom <= headingRect.top + 1,
             dropdownOverlapsFlash: overlapRight > overlapLeft && overlapBottom > overlapTop,
             dropdownAboveFlash: Boolean(topElAtDropdown && dropdown.contains(topElAtDropdown)),
-            slotStableWithTwoFlashes:
-              groupHeightWithBoth === Math.round(groupRect.height) &&
-              mainTopWithBoth === Math.round(mainRect.top),
-            clientErrorAboveInfo: Boolean(topElAtSlotLeft && clientError.contains(topElAtSlotLeft)),
             groupBelowHeaderAndModals: groupZ < headerZ && groupZ < 50
           };
         }
@@ -119,12 +102,6 @@ defmodule ForkaWeb.E2E.FlashBannerTest do
 
           assert layout["dropdownAboveFlash"],
                  "expected open dropdown above banner, got: #{inspect(layout)}"
-
-          assert layout["slotStableWithTwoFlashes"],
-                 "expected simultaneous flashes not to grow slot or shift main, got: #{inspect(layout)}"
-
-          assert layout["clientErrorAboveInfo"],
-                 "expected #client-error to draw above #flash-info in shared slot, got: #{inspect(layout)}"
 
           assert layout["groupBelowHeaderAndModals"],
                  "expected #flash-group z-index below header and z-50 modals, got: #{inspect(layout)}"
@@ -163,174 +140,377 @@ defmodule ForkaWeb.E2E.FlashBannerTest do
         end
       )
 
-    # Archive the listed rooms directly in the database so clicking an "Entrar"
-    # button while scrolled down triggers a real in-place put_flash(:error, ...).
-    Repo.update_all(from(g in Game, where: g.id in ^room_ids), set: [status: :archived])
+    # Pick one listed room midway down the directory and archive only that room
+    # in the database so clicking it while scrolled triggers a real in-place
+    # put_flash(:error, ...) while keeping 20 open rooms for the reconnect check.
+    session =
+      evaluate(
+        session,
+        """
+        () => {
+          const buttons = Array.from(document.querySelectorAll('#rooms-list button[phx-click="join_room"]'));
+          const targetBtn = buttons[6];
+          targetBtn.setAttribute("data-test-under-slot", "true");
+          return targetBtn.getAttribute("phx-value-id");
+        }
+        """,
+        [is_function: true],
+        fn target_id ->
+          assert Enum.any?(rooms, &(&1.id == target_id))
+          Repo.update_all(from(g in Game, where: g.id == ^target_id), set: [status: :archived])
+        end
+      )
 
-    session
-    |> evaluate(
-      """
-      () => {
-        const header = document.querySelector("header");
-        const group = document.querySelector("#flash-group");
-        const buttons = Array.from(document.querySelectorAll('#rooms-list button[phx-click="join_room"]'));
-        const targetBtn = buttons[6];
-        targetBtn.setAttribute("data-test-under-slot", "true");
+    session =
+      session
+      |> evaluate(
+        """
+        () => {
+          const header = document.querySelector("header");
+          const group = document.querySelector("#flash-group");
+          const targetBtn = document.querySelector('button[data-test-under-slot="true"]');
 
-        const headerHeight = header.getBoundingClientRect().height;
-        const btnDocTop = targetBtn.getBoundingClientRect().top + window.scrollY;
-        const btnHeight = targetBtn.getBoundingClientRect().height;
-        const desiredTopInViewport = headerHeight + Math.max(4, (64 - btnHeight) / 2);
-        window.scrollTo(0, Math.round(btnDocTop - desiredTopInViewport));
+          const headerHeight = header.getBoundingClientRect().height;
+          const btnDocTop = targetBtn.getBoundingClientRect().top + window.scrollY;
+          const btnHeight = targetBtn.getBoundingClientRect().height;
+          const desiredTopInViewport = headerHeight + Math.max(4, (64 - btnHeight) / 2);
+          window.scrollTo(0, Math.round(btnDocTop - desiredTopInViewport));
 
-        const headerRect = header.getBoundingClientRect();
-        const groupRect = group.getBoundingClientRect();
-        const btnRect = targetBtn.getBoundingClientRect();
-        const hitEl = document.elementFromPoint(
-          (btnRect.left + btnRect.right) / 2,
-          (btnRect.top + btnRect.bottom) / 2
-        );
+          const headerRect = header.getBoundingClientRect();
+          const groupRect = group.getBoundingClientRect();
+          const btnRect = targetBtn.getBoundingClientRect();
+          const hitEl = document.elementFromPoint(
+            (btnRect.left + btnRect.right) / 2,
+            (btnRect.top + btnRect.bottom) / 2
+          );
 
-        return {
-          scrolledY: window.scrollY,
-          slotSticksBelowHeader: Math.abs(groupRect.top - headerRect.bottom) <= 1,
-          buttonBehindEmptySlot:
-            btnRect.top >= groupRect.top - 1 && btnRect.bottom <= groupRect.bottom + 1,
-          emptySlotClickThrough: Boolean(hitEl && targetBtn.contains(hitEl))
-        };
-      }
-      """,
-      [is_function: true],
-      fn probe ->
-        assert probe["scrolledY"] >= 200,
-               "expected page to scroll down at least 200px, got: #{inspect(probe)}"
+          return {
+            scrolledY: window.scrollY,
+            slotSticksBelowHeader: Math.abs(groupRect.top - headerRect.bottom) <= 1,
+            buttonBehindEmptySlot:
+              btnRect.top >= groupRect.top - 1 && btnRect.bottom <= groupRect.bottom + 1,
+            emptySlotClickThrough: Boolean(hitEl && targetBtn.contains(hitEl))
+          };
+        }
+        """,
+        [is_function: true],
+        fn probe ->
+          assert probe["scrolledY"] >= 200,
+                 "expected page to scroll down at least 200px, got: #{inspect(probe)}"
 
-        assert probe["slotSticksBelowHeader"],
-               "expected #flash-group to stick directly below header when scrolled, got: #{inspect(probe)}"
+          assert probe["slotSticksBelowHeader"],
+                 "expected #flash-group to stick directly below header when scrolled, got: #{inspect(probe)}"
 
-        assert probe["buttonBehindEmptySlot"],
-               "expected target room button to sit behind empty stuck slot, got: #{inspect(probe)}"
+          assert probe["buttonBehindEmptySlot"],
+                 "expected target room button to sit behind empty stuck slot, got: #{inspect(probe)}"
 
-        assert probe["emptySlotClickThrough"],
-               "expected content under empty stuck slot to receive pointer events, got: #{inspect(probe)}"
-      end
-    )
-    |> click(~s|button[data-test-under-slot="true"]|)
-    |> assert_has("#flash-error", text: "Esta sala foi arquivada.")
-    |> click(~s|summary[aria-label="Conta"]|)
-    |> assert_has("header details[open]")
-    |> evaluate(
-      """
-      () => {
-        const header = document.querySelector("header");
-        const dropdown = document.querySelector("header details > div");
-        const flashError = document.querySelector("#flash-error");
-        const clientError = document.querySelector("#client-error");
-        const serverError = document.querySelector("#server-error");
+          assert probe["emptySlotClickThrough"],
+                 "expected content under empty stuck slot to receive pointer events, got: #{inspect(probe)}"
+        end
+      )
+      |> click(~s|button[data-test-under-slot="true"]|)
+      |> assert_has("#flash-error", text: "Esta sala foi arquivada.")
+      |> click(~s|summary[aria-label="Conta"]|)
+      |> assert_has("header details[open]")
+      |> evaluate(
+        """
+        () => {
+          const header = document.querySelector("header");
+          const dropdown = document.querySelector("header details > div");
+          const flashError = document.querySelector("#flash-error");
+          const headerRect = header.getBoundingClientRect();
+          const dropdownRect = dropdown.getBoundingClientRect();
+          const errorRect = flashError.getBoundingClientRect();
 
-        const headerRect = header.getBoundingClientRect();
-        const dropdownRect = dropdown.getBoundingClientRect();
-        const errorRect = flashError.getBoundingClientRect();
+          const errorHit = document.elementFromPoint(
+            errorRect.left + 40,
+            (errorRect.top + errorRect.bottom) / 2
+          );
 
-        const errorHit = document.elementFromPoint(
-          errorRect.left + 40,
-          (errorRect.top + errorRect.bottom) / 2
-        );
+          const overlapLeft = Math.max(dropdownRect.left, errorRect.left);
+          const overlapRight = Math.min(dropdownRect.right, errorRect.right);
+          const overlapTop = Math.max(dropdownRect.top, errorRect.top);
+          const overlapBottom = Math.min(dropdownRect.bottom, errorRect.bottom);
+          const dropdownHit = document.elementFromPoint(
+            (overlapLeft + overlapRight) / 2,
+            (overlapTop + overlapBottom) / 2
+          );
 
-        const overlapLeft = Math.max(dropdownRect.left, errorRect.left);
-        const overlapRight = Math.min(dropdownRect.right, errorRect.right);
-        const overlapTop = Math.max(dropdownRect.top, errorRect.top);
-        const overlapBottom = Math.min(dropdownRect.bottom, errorRect.bottom);
-        const dropdownHit = document.elementFromPoint(
-          (overlapLeft + overlapRight) / 2,
-          (overlapTop + overlapBottom) / 2
-        );
+          return {
+            scrolledY: window.scrollY,
+            errorBelowHeader:
+              Math.abs(errorRect.top - headerRect.bottom) <= 1 &&
+              errorRect.bottom <= window.innerHeight,
+            errorAboveContent: Boolean(errorHit && flashError.contains(errorHit)),
+            dropdownAboveError: Boolean(dropdownHit && dropdown.contains(dropdownHit))
+          };
+        }
+        """,
+        [is_function: true],
+        fn probe ->
+          assert probe["scrolledY"] >= 200,
+                 "expected page to stay scrolled after clicking archived room, got: #{inspect(probe)}"
 
-        // Probe #client-error while scrolled down.
-        const prevClientHidden = clientError.hidden;
-        const prevClientDisplay = clientError.style.display;
-        clientError.hidden = false;
-        clientError.style.display = "block";
-        const clientRect = clientError.getBoundingClientRect();
-        const clientHit = document.elementFromPoint(
-          clientRect.left + 40,
-          (clientRect.top + clientRect.bottom) / 2
-        );
-        const dropdownHitOverClient = document.elementFromPoint(
-          (overlapLeft + overlapRight) / 2,
-          (overlapTop + overlapBottom) / 2
-        );
-        clientError.hidden = prevClientHidden;
-        clientError.style.display = prevClientDisplay;
+          assert probe["errorBelowHeader"],
+                 "expected in-place #flash-error visible directly below sticky header after scroll, got: #{inspect(probe)}"
 
-        // Probe #server-error while scrolled down.
-        const prevServerHidden = serverError.hidden;
-        const prevServerDisplay = serverError.style.display;
-        serverError.hidden = false;
-        serverError.style.display = "block";
-        const serverRect = serverError.getBoundingClientRect();
-        const serverHit = document.elementFromPoint(
-          serverRect.left + 40,
-          (serverRect.top + serverRect.bottom) / 2
-        );
-        serverError.hidden = prevServerHidden;
-        serverError.style.display = prevServerDisplay;
+          assert probe["errorAboveContent"],
+                 "expected in-place #flash-error to sit above scrolled page content, got: #{inspect(probe)}"
 
-        return {
-          scrolledY: window.scrollY,
-          errorBelowHeader:
-            Math.abs(errorRect.top - headerRect.bottom) <= 1 &&
-            errorRect.bottom <= window.innerHeight,
-          errorAboveContent: Boolean(errorHit && flashError.contains(errorHit)),
-          dropdownAboveError: Boolean(dropdownHit && dropdown.contains(dropdownHit)),
-          clientErrorBelowHeader:
-            Math.abs(clientRect.top - headerRect.bottom) <= 1 &&
-            clientRect.bottom <= window.innerHeight,
-          clientErrorAboveContent: Boolean(clientHit && clientError.contains(clientHit)),
-          dropdownAboveClientError: Boolean(
-            dropdownHitOverClient && dropdown.contains(dropdownHitOverClient)
-          ),
-          serverErrorBelowHeader:
-            Math.abs(serverRect.top - headerRect.bottom) <= 1 &&
-            serverRect.bottom <= window.innerHeight,
-          serverErrorAboveContent: Boolean(serverHit && serverError.contains(serverHit))
-        };
-      }
-      """,
-      [is_function: true],
-      fn probe ->
-        assert probe["scrolledY"] >= 200,
-               "expected page to stay scrolled after clicking archived room, got: #{inspect(probe)}"
+          assert probe["dropdownAboveError"],
+                 "expected open account menu above sticky #flash-error after scroll, got: #{inspect(probe)}"
+        end
+      )
+      |> click(~s|summary[aria-label="Conta"]|)
+      |> refute_has("header details[open]")
 
-        assert probe["errorBelowHeader"],
-               "expected in-place #flash-error visible directly below sticky header after scroll, got: #{inspect(probe)}"
+    # Trigger a REAL WebSocket close while scrolled down and #flash-error is still
+    # visible, gating socket retries and blocking the LongPoll fallback so the
+    # disconnect notice renders genuinely without any attribute/style overrides.
+    timeout = Config.global(:timeout)
+    page_id = session.page_id
 
-        assert probe["errorAboveContent"],
-               "expected in-place #flash-error to sit above scrolled page content, got: #{inspect(probe)}"
+    {:ok, _} =
+      Page.route(
+        page_id,
+        "**/live/longpoll*",
+        fn route, _request ->
+          {:ok, _} = Route.abort(route, error_code: "failed")
+        end,
+        timeout: timeout
+      )
 
-        assert probe["dropdownAboveError"],
-               "expected open account menu above sticky #flash-error after scroll, got: #{inspect(probe)}"
+    try do
+      session
+      |> evaluate(
+        """
+        () => {
+          const group = document.querySelector("#flash-group");
+          const main = document.querySelector("main");
+          const clientError = document.querySelector("#client-error");
+          const roomButtons = Array.from(document.querySelectorAll('#rooms-list button[phx-click="join_room"]'));
+          const alreadyFocused = roomButtons[6];
+          alreadyFocused.focus({ preventScroll: true });
 
-        assert probe["clientErrorBelowHeader"],
-               "expected connection-lost #client-error visible directly below sticky header after scroll, got: #{inspect(probe)}"
+          window.__forkaSameDoc = true;
+          window.__forkaClientErrorHideStarted = false;
+          clientError.addEventListener("phx:hide-start", () => {
+            window.__forkaClientErrorHideStarted = true;
+          });
 
-        assert probe["clientErrorAboveContent"],
-               "expected #client-error to sit above scrolled page content, got: #{inspect(probe)}"
+          window.__forkaBeforeDisconnect = {
+            scrollY: Math.round(window.scrollY),
+            groupHeight: Math.round(group.getBoundingClientRect().height),
+            mainTop: Math.round(main.getBoundingClientRect().top)
+          };
 
-        assert probe["dropdownAboveClientError"],
-               "expected open account menu above sticky #client-error after scroll, got: #{inspect(probe)}"
+          const socket = window.liveSocket.socket;
+          const isWebSocket = socket.conn instanceof WebSocket;
+          socket.cancelFallback();
+          window.__forkaRestoreReconnect = {
+            timerCalc: socket.reconnectTimer.timerCalc,
+            longPollFallbackMs: socket.longPollFallbackMs
+          };
+          socket.longPollFallbackMs = undefined;
+          socket.reconnectTimer.timerCalc = () => 60000;
+          socket.conn.close();
 
-        assert probe["serverErrorBelowHeader"],
-               "expected #server-error visible directly below sticky header after scroll, got: #{inspect(probe)}"
+          return { isWebSocket };
+        }
+        """,
+        [is_function: true],
+        fn result ->
+          assert result["isWebSocket"],
+                 "expected an active WebSocket transport before disconnect, got: #{inspect(result)}"
+        end
+      )
+      |> assert_has("[data-phx-main].phx-client-error")
+      |> assert_has("#client-error", text: "Sem conexão com a internet")
+      |> assert_has("#client-error", text: "Tentando reconectar")
+      |> refute_has("#client-error button")
+      |> click(~s|summary[aria-label="Conta"]|)
+      |> assert_has("header details[open]")
+      |> evaluate(
+        """
+        () => {
+          const header = document.querySelector("header");
+          const dropdown = document.querySelector("header details > div");
+          const group = document.querySelector("#flash-group");
+          const main = document.querySelector("main");
+          const clientError = document.querySelector("#client-error");
 
-        assert probe["serverErrorAboveContent"],
-               "expected #server-error to sit above scrolled page content, got: #{inspect(probe)}"
-      end
-    )
-    |> click(~s|summary[aria-label="Conta"]|)
-    |> refute_has("header details[open]")
-    |> click(~s|#flash-error button[aria-label="fechar"]|)
-    |> refute_has("#flash-error")
+          const headerRect = header.getBoundingClientRect();
+          const dropdownRect = dropdown.getBoundingClientRect();
+          const clientRect = clientError.getBoundingClientRect();
+          const clientStyle = getComputedStyle(clientError);
+
+          const clientHit = document.elementFromPoint(
+            clientRect.left + 40,
+            (clientRect.top + clientRect.bottom) / 2
+          );
+
+          const overlapLeft = Math.max(dropdownRect.left, clientRect.left);
+          const overlapRight = Math.min(dropdownRect.right, clientRect.right);
+          const overlapTop = Math.max(dropdownRect.top, clientRect.top);
+          const overlapBottom = Math.min(dropdownRect.bottom, clientRect.bottom);
+          const dropdownHit = document.elementFromPoint(
+            (overlapLeft + overlapRight) / 2,
+            (overlapTop + overlapBottom) / 2
+          );
+
+          return {
+            before: window.__forkaBeforeDisconnect,
+            after: {
+              scrollY: Math.round(window.scrollY),
+              groupHeight: Math.round(group.getBoundingClientRect().height),
+              mainTop: Math.round(main.getBoundingClientRect().top)
+            },
+            disconnected: !window.liveSocket.isConnected(),
+            hasHiddenAttr: clientError.hasAttribute("hidden"),
+            hasPhxClick: clientError.hasAttribute("phx-click"),
+            cursor: clientStyle.cursor,
+            computedDisplay: clientStyle.display,
+            clientErrorPainted: clientRect.width > 0 && clientRect.height > 0,
+            clientErrorBelowHeader:
+              Math.abs(clientRect.top - headerRect.bottom) <= 1 &&
+              clientRect.bottom <= window.innerHeight,
+            clientErrorAboveFlashAndContent: Boolean(clientHit && clientError.contains(clientHit)),
+            dropdownAboveClientError: Boolean(dropdownHit && dropdown.contains(dropdownHit))
+          };
+        }
+        """,
+        [is_function: true],
+        fn probe ->
+          assert probe["disconnected"],
+                 "expected socket to remain disconnected while gated, got: #{inspect(probe)}"
+
+          refute probe["hasHiddenAttr"],
+                 "expected #client-error not to carry HTML hidden attribute, got: #{inspect(probe)}"
+
+          refute probe["hasPhxClick"],
+                 "expected #client-error not to carry phx-click, got: #{inspect(probe)}"
+
+          refute probe["cursor"] == "pointer",
+                 "expected #client-error not to use pointer cursor, got: #{inspect(probe)}"
+
+          assert probe["computedDisplay"] != "none" and probe["clientErrorPainted"],
+                 "expected #client-error to be genuinely painted, got: #{inspect(probe)}"
+
+          assert probe["clientErrorBelowHeader"],
+                 "expected #client-error painted directly below sticky header while scrolled, got: #{inspect(probe)}"
+
+          assert probe["clientErrorAboveFlashAndContent"],
+                 "expected #client-error to paint above #flash-error and scrolled page content, got: #{inspect(probe)}"
+
+          assert probe["dropdownAboveClientError"],
+                 "expected open account menu above sticky #client-error, got: #{inspect(probe)}"
+
+          assert probe["after"] == probe["before"],
+                 "expected no layout or scroll shift when #client-error appeared over already-focused control (before: #{inspect(probe["before"])}, after: #{inspect(probe["after"])})"
+        end
+      )
+      |> click(~s|summary[aria-label="Conta"]|)
+      |> refute_has("header details[open]")
+      |> click("#client-error")
+      |> assert_has("#client-error", text: "Tentando reconectar")
+      |> evaluate(
+        """
+        () => new Promise((resolve) => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              const header = document.querySelector("header");
+              const clientError = document.querySelector("#client-error");
+              const headerRect = header.getBoundingClientRect();
+              const clientRect = clientError.getBoundingClientRect();
+              resolve({
+                disconnected: !window.liveSocket.isConnected(),
+                hideStarted: window.__forkaClientErrorHideStarted,
+                computedDisplay: getComputedStyle(clientError).display,
+                stillBelowHeader:
+                  clientRect.height > 0 && Math.abs(clientRect.top - headerRect.bottom) <= 1
+              });
+            });
+          });
+        })
+        """,
+        [is_function: true],
+        fn probe ->
+          assert probe["disconnected"],
+                 "expected socket to stay disconnected after clicking #client-error, got: #{inspect(probe)}"
+
+          refute probe["hideStarted"],
+                 "expected clicking #client-error while offline not to trigger hide_flash, got: #{inspect(probe)}"
+
+          assert probe["computedDisplay"] != "none" and probe["stillBelowHeader"],
+                 "expected #client-error to remain painted below header after click, got: #{inspect(probe)}"
+        end
+      )
+      |> evaluate(
+        """
+        () => {
+          const socket = window.liveSocket.socket;
+          const saved = window.__forkaRestoreReconnect;
+          socket.reconnectTimer.timerCalc = saved.timerCalc;
+          socket.longPollFallbackMs = saved.longPollFallbackMs;
+          socket.reconnectTimer.reset();
+          socket.reconnectTimer.scheduleTimeout();
+        }
+        """,
+        is_function: true
+      )
+      |> assert_has("[data-phx-main].phx-connected")
+      |> refute_has("#client-error")
+      |> assert_has("#rooms-live-status", text: "20 salas")
+      |> evaluate(
+        """
+        () => {
+          const header = document.querySelector("header");
+          const group = document.querySelector("#flash-group");
+          const clientError = document.querySelector("#client-error");
+          const buttons = Array.from(document.querySelectorAll('#rooms-list button[phx-click="join_room"]'));
+          const targetBtn = buttons[6];
+
+          const headerHeight = header.getBoundingClientRect().height;
+          const btnDocTop = targetBtn.getBoundingClientRect().top + window.scrollY;
+          const btnHeight = targetBtn.getBoundingClientRect().height;
+          window.scrollTo(0, Math.round(btnDocTop - (headerHeight + Math.max(4, (64 - btnHeight) / 2))));
+
+          const groupRect = group.getBoundingClientRect();
+          const btnRect = targetBtn.getBoundingClientRect();
+          const hitEl = document.elementFromPoint(
+            (btnRect.left + btnRect.right) / 2,
+            (btnRect.top + btnRect.bottom) / 2
+          );
+          const conn = window.liveSocket.socket.conn;
+
+          return {
+            sameDocument: window.__forkaSameDoc === true,
+            reconnectedWebSocket: Boolean(conn instanceof WebSocket && conn.readyState === WebSocket.OPEN),
+            clientErrorHidden: getComputedStyle(clientError).display === "none",
+            buttonBehindEmptySlot:
+              btnRect.top >= groupRect.top - 1 && btnRect.bottom <= groupRect.bottom + 1,
+            emptySlotClickThrough: Boolean(hitEl && targetBtn.contains(hitEl))
+          };
+        }
+        """,
+        [is_function: true],
+        fn probe ->
+          assert probe["sameDocument"],
+                 "expected genuine LiveView rejoin in the same document, got: #{inspect(probe)}"
+
+          assert probe["reconnectedWebSocket"],
+                 "expected rejoined transport to be an open WebSocket, got: #{inspect(probe)}"
+
+          assert probe["clientErrorHidden"],
+                 "expected #client-error to be hidden after rejoin, got: #{inspect(probe)}"
+
+          assert probe["buttonBehindEmptySlot"] and probe["emptySlotClickThrough"],
+                 "expected empty stuck slot to pass clicks through after rejoin, got: #{inspect(probe)}"
+        end
+      )
+    after
+      {:ok, _} = Page.unroute_all(page_id, timeout: timeout)
+    end
   end
 
   @tag browser_context_opts: [viewport: %{width: 390, height: 844}, is_mobile: true]
@@ -599,7 +779,6 @@ defmodule ForkaWeb.E2E.FlashBannerTest do
         const main = document.querySelector("main");
         const group = document.querySelector("#flash-group");
         const flashError = document.querySelector("#flash-error");
-        const clientError = document.querySelector("#client-error");
 
         main.style.minHeight = "2000px";
         window.scrollTo(0, 400);
@@ -611,21 +790,12 @@ defmodule ForkaWeb.E2E.FlashBannerTest do
           (errorRect.top + errorRect.bottom) / 2
         );
 
-        const prevHidden = clientError.hidden;
-        const prevDisplay = clientError.style.display;
-        clientError.hidden = false;
-        clientError.style.display = "block";
-        const clientRect = clientError.getBoundingClientRect();
-        clientError.hidden = prevHidden;
-        clientError.style.display = prevDisplay;
-
         return {
           hasPlayerHeader: Boolean(document.querySelector("header[data-player-header]")),
           scrolledY: window.scrollY,
           groupAtTop: Math.abs(groupRect.top) <= 1,
           errorAtTop: Math.abs(errorRect.top) <= 1,
-          errorAboveContent: Boolean(errorHit && flashError.contains(errorHit)),
-          clientErrorAtTop: Math.abs(clientRect.top) <= 1
+          errorAboveContent: Boolean(errorHit && flashError.contains(errorHit))
         };
       }
       """,
@@ -645,9 +815,6 @@ defmodule ForkaWeb.E2E.FlashBannerTest do
 
         assert probe["errorAboveContent"],
                "expected #flash-error to paint over scrolled content, got: #{inspect(probe)}"
-
-        assert probe["clientErrorAtTop"],
-               "expected #client-error to stick at top: 0 with no gap on /admin/log_in, got: #{inspect(probe)}"
       end
     )
     |> click(~s|#flash-error button[aria-label="close"]|)
@@ -689,5 +856,286 @@ defmodule ForkaWeb.E2E.FlashBannerTest do
                "expected content under empty stuck slot on /admin/log_in to be clickable, got: #{inspect(probe)}"
       end
     )
+  end
+
+  test "EDGE-05: desktop Tab and Shift+Tab reveal newly keyboard-focused controls below a sticky flash banner",
+       %{conn: conn} do
+    assert_keyboard_focus_clears_sticky_banner(conn, forward_start: 5, reverse_start: 9)
+  end
+
+  @tag browser_context_opts: [viewport: %{width: 390, height: 844}, is_mobile: true]
+  test "EDGE-06: mobile (390x844) Tab and Shift+Tab reveal newly keyboard-focused controls below a sticky flash banner",
+       %{conn: conn} do
+    assert_keyboard_focus_clears_sticky_banner(conn, forward_start: 5, reverse_start: 7)
+  end
+
+  defp assert_keyboard_focus_clears_sticky_banner(conn, opts) do
+    forward_start = Keyword.fetch!(opts, :forward_start)
+    forward_dest = forward_start + 1
+    reverse_start = Keyword.fetch!(opts, :reverse_start)
+    reverse_dest = reverse_start - 1
+
+    host = insert(:player, username: "anfitriao")
+
+    rooms =
+      for i <- 1..21 do
+        name = "Sala #{String.pad_leading(Integer.to_string(i), 2, "0")}"
+        insert(:game, owner: host, name: name, status: :lobby)
+      end
+
+    player = insert(:player, username: "lia")
+
+    session =
+      conn
+      |> log_in(player)
+      |> assert_has("#rooms-live-status", text: "21 salas")
+      |> assert_has("#flash-info", text: "Bem-vindo de volta!")
+      |> click(~s|#flash-info button[aria-label="fechar"]|)
+      |> refute_has("#flash-info")
+
+    # Archive only the first displayed room so clicking its button produces a real
+    # in-place #flash-error while keeping 20 scrollable rooms in the directory.
+    session =
+      evaluate(
+        session,
+        """
+        () => {
+          const firstBtn = document.querySelector('#rooms-list button[phx-click="join_room"]');
+          firstBtn.setAttribute("data-test-stale-room", "true");
+          return firstBtn.getAttribute("phx-value-id");
+        }
+        """,
+        [is_function: true],
+        fn stale_id ->
+          assert Enum.any?(rooms, &(&1.id == stale_id))
+          Repo.update_all(from(g in Game, where: g.id == ^stale_id), set: [status: :archived])
+        end
+      )
+      |> click(~s|button[data-test-stale-room="true"]|)
+      |> assert_has("#flash-error", text: "Esta sala foi arquivada.")
+
+    # Forward Tab: reach forward_start via native Tab from the exposed Conta button,
+    # scroll so forward_dest sits completely beneath #flash-error inside the viewport,
+    # then press real page-level Tab without focusing forward_dest via any locator.
+    session =
+      session
+      |> tab_from_account_to_room_button(forward_start)
+      |> scroll_room_button_under_banner(forward_start, forward_dest)
+      |> page_press("Tab")
+      |> assert_focused_room_button_clears_banner(forward_dest, "Tab")
+
+    # Reverse Shift+Tab: advance via real Tab to reverse_start, scroll so reverse_dest
+    # sits completely beneath #flash-error inside the viewport, then press real
+    # page-level Shift+Tab.
+    session
+    |> advance_tabs_to_room_button(reverse_start)
+    |> scroll_room_button_under_banner(reverse_start, reverse_dest)
+    |> page_press("Shift+Tab")
+    |> assert_focused_room_button_clears_banner(reverse_dest, "Shift+Tab")
+  end
+
+  defp tab_from_account_to_room_button(session, target_index) do
+    session
+    |> click(~s|summary[aria-label="Conta"]|)
+    |> assert_has("header details[open]")
+    |> click(~s|summary[aria-label="Conta"]|)
+    |> refute_has("header details[open]")
+    |> advance_tabs_to_room_button(target_index)
+  end
+
+  defp advance_tabs_to_room_button(session, target_index, remaining \\ 20)
+
+  defp advance_tabs_to_room_button(_session, target_index, 0) do
+    flunk("did not reach room button index #{target_index} via native Tab navigation")
+  end
+
+  defp advance_tabs_to_room_button(session, target_index, remaining) do
+    reached? = :ets.new(:tab_reached, [:set, :private])
+
+    try do
+      session =
+        evaluate(
+          session,
+          """
+          () => {
+            const buttons = Array.from(document.querySelectorAll('#rooms-list button[phx-click="join_room"]'));
+            return document.activeElement === buttons[#{target_index}];
+          }
+          """,
+          [is_function: true],
+          fn matched -> :ets.insert(reached?, {:matched, matched}) end
+        )
+
+      case :ets.lookup(reached?, :matched) do
+        [{:matched, true}] ->
+          session
+
+        _ ->
+          session
+          |> page_press("Tab")
+          |> advance_tabs_to_room_button(target_index, remaining - 1)
+      end
+    after
+      :ets.delete(reached?)
+    end
+  end
+
+  defp scroll_room_button_under_banner(session, active_index, dest_index) do
+    evaluate(
+      session,
+      """
+      () => {
+        const header = document.querySelector("header");
+        const flashError = document.querySelector("#flash-error");
+        const buttons = Array.from(document.querySelectorAll('#rooms-list button[phx-click="join_room"]'));
+        const activeBtn = buttons[#{active_index}];
+        const destBtn = buttons[#{dest_index}];
+
+        const headerRect = header.getBoundingClientRect();
+        const bannerHeight = flashError.getBoundingClientRect().height;
+        const destDocTop = destBtn.getBoundingClientRect().top + window.scrollY;
+        const destHeight = destBtn.getBoundingClientRect().height;
+        const desiredTop = headerRect.bottom + Math.max(4, (bannerHeight - destHeight) / 2);
+
+        window.scrollTo({ top: Math.round(destDocTop - desiredTop), behavior: "instant" });
+
+        const bannerRect = flashError.getBoundingClientRect();
+        const destRect = destBtn.getBoundingClientRect();
+        const hitBefore = document.elementFromPoint(
+          (destRect.left + destRect.right) / 2,
+          (destRect.top + destRect.bottom) / 2
+        );
+
+        window.__forkaFocusExpectation = {
+          destLabel: destBtn.getAttribute("aria-label"),
+          scrollBefore: Math.round(window.scrollY)
+        };
+
+        return {
+          activeMatchesStart: document.activeElement === activeBtn,
+          destNotFocused: document.activeElement !== destBtn,
+          destInViewport: destRect.top >= 0 && destRect.bottom <= window.innerHeight,
+          destFullyBeneathBanner:
+            destRect.top >= bannerRect.top - 1 && destRect.bottom <= bannerRect.bottom + 1,
+          destCoveredByBanner: Boolean(hitBefore && flashError.contains(hitBefore)),
+          scrolledY: window.scrollY
+        };
+      }
+      """,
+      [is_function: true],
+      fn pre ->
+        assert pre["activeMatchesStart"],
+               "expected starting button to hold focus before key press, got: #{inspect(pre)}"
+
+        assert pre["destNotFocused"],
+               "expected destination button not to be focused before key press, got: #{inspect(pre)}"
+
+        assert pre["destInViewport"] and pre["destFullyBeneathBanner"],
+               "expected destination button inside viewport beneath banner before key press, got: #{inspect(pre)}"
+
+        assert pre["destCoveredByBanner"],
+               "expected banner to cover destination button before key press, got: #{inspect(pre)}"
+      end
+    )
+  end
+
+  defp assert_focused_room_button_clears_banner(session, expected_index, key_label) do
+    evaluate(
+      session,
+      """
+      () => new Promise((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const header = document.querySelector("header");
+            const flashError = document.querySelector("#flash-error");
+            const buttons = Array.from(document.querySelectorAll('#rooms-list button[phx-click="join_room"]'));
+            const expectedBtn = buttons[#{expected_index}];
+            const active = document.activeElement;
+
+            const headerRect = header.getBoundingClientRect();
+            const bannerRect = flashError.getBoundingClientRect();
+            const activeRect = active.getBoundingClientRect();
+            const activeStyle = getComputedStyle(active);
+            const outlineWidth = activeStyle.outlineStyle === "none" ? 0 : parseFloat(activeStyle.outlineWidth) || 0;
+            const outlineOffset = outlineWidth > 0 ? Math.max(0, parseFloat(activeStyle.outlineOffset) || 0) : 0;
+            const ringOutset = Math.max(4, Math.ceil(outlineWidth + outlineOffset));
+            const centerHit = document.elementFromPoint(
+              (activeRect.left + activeRect.right) / 2,
+              (activeRect.top + activeRect.bottom) / 2
+            );
+
+            resolve({
+              expectedLabel: window.__forkaFocusExpectation.destLabel,
+              actualLabel: active.getAttribute("aria-label"),
+              activeMatchesExpected: active === expectedBtn,
+              focusVisible: active.matches(":focus-visible"),
+              bannerBelowHeader:
+                bannerRect.height > 0 && Math.abs(bannerRect.top - headerRect.bottom) <= 1,
+              clearsBannerWithRing: activeRect.top >= bannerRect.bottom + ringOutset,
+              fitsInViewport: activeRect.bottom <= window.innerHeight,
+              minimalScroll: activeRect.top <= bannerRect.bottom + ringOutset + 16,
+              centerHitOnControl: Boolean(centerHit && active.contains(centerHit)),
+              scrollBefore: window.__forkaFocusExpectation.scrollBefore,
+              scrollAfter: Math.round(window.scrollY),
+              bannerBottom: Math.round(bannerRect.bottom),
+              activeTop: Math.round(activeRect.top),
+              ringOutset
+            });
+          });
+        });
+      })
+      """,
+      [is_function: true],
+      fn probe ->
+        assert probe["activeMatchesExpected"],
+               "expected #{key_label} to focus #{inspect(probe["expectedLabel"])}, got: #{inspect(probe)}"
+
+        assert probe["focusVisible"],
+               "expected #{key_label} focus target to match :focus-visible, got: #{inspect(probe)}"
+
+        assert probe["bannerBelowHeader"],
+               "expected #flash-error to stay visible directly below header after #{key_label}, got: #{inspect(probe)}"
+
+        assert probe["clearsBannerWithRing"],
+               "expected focused control and focus ring below banner after #{key_label}, got: #{inspect(probe)}"
+
+        assert probe["fitsInViewport"],
+               "expected focused control within viewport after #{key_label}, got: #{inspect(probe)}"
+
+        assert probe["minimalScroll"],
+               "expected minimal instant scroll after #{key_label}, got: #{inspect(probe)}"
+
+        assert probe["centerHitOnControl"],
+               "expected center hit-test after #{key_label} to land on focused control, got: #{inspect(probe)}"
+      end
+    )
+  end
+
+  defp page_press(session, "Tab") do
+    send_page_key(session, :keyboard_down, "Tab")
+    send_page_key(session, :keyboard_up, "Tab")
+    session
+  end
+
+  defp page_press(session, "Shift+Tab") do
+    send_page_key(session, :keyboard_down, "Shift")
+    send_page_key(session, :keyboard_down, "Tab")
+    send_page_key(session, :keyboard_up, "Tab")
+    send_page_key(session, :keyboard_up, "Shift")
+    session
+  end
+
+  defp send_page_key(session, method, key) do
+    timeout = Config.global(:timeout)
+
+    resp =
+      Connection.send(
+        Supervisor.connection_name(),
+        %{guid: session.page_id, method: method, params: %{key: key}},
+        timeout
+      )
+
+    refute Map.has_key?(resp, :error),
+           "Playwright #{method}(#{inspect(key)}) failed: #{inspect(resp)}"
   end
 end

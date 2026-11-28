@@ -6,12 +6,14 @@ import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 import { Hooks as BackpexHooks, backpexParams } from 'backpex';
 import { initThemeToggle } from "./theme"
+import { initFlashFocusReveal } from "./flash_focus"
 import GameKeyboard from "./hooks/game_keyboard"
 import RopeFeedback from "./hooks/rope_feedback"
 import SegmentedControl from "./hooks/segmented_control"
 import ShareInvite from "./hooks/share_invite"
 
 initThemeToggle()
+initFlashFocusReveal()
 
 const Hooks = {
   GameKeyboard,

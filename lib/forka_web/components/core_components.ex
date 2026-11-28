@@ -218,6 +218,7 @@ defmodule ForkaWeb.CoreComponents do
   attr :flash, :map, default: %{}, doc: "the map of flash messages to display"
   attr :title, :string, default: nil
   attr :kind, :atom, values: [:info, :error], doc: "used for styling and flash lookup"
+  attr :dismissible, :boolean, default: true, doc: "whether clicking the flash dismisses it"
   attr :class, :any, default: nil, doc: "layout classes (e.g. stacking order inside flash_group)"
   attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
 
@@ -230,10 +231,13 @@ defmodule ForkaWeb.CoreComponents do
     <div
       :if={msg = render_slot(@inner_block) || Phoenix.Flash.get(@flash, @kind)}
       id={@id}
-      phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide_flash("##{@id}")}
+      phx-click={
+        @dismissible && JS.push("lv:clear-flash", value: %{key: @kind}) |> hide_flash("##{@id}")
+      }
       role="alert"
       class={[
-        "pointer-events-auto absolute inset-0 cursor-pointer overflow-y-auto border-b px-4 sm:px-6",
+        "pointer-events-auto absolute inset-0 overflow-y-auto border-b px-4 sm:px-6",
+        @dismissible && "cursor-pointer",
         @kind == :info && "border-success-ink/30 bg-success-soft text-success-ink",
         @kind == :error && "border-danger-ink/30 bg-danger-soft text-danger-ink",
         @class
@@ -253,6 +257,7 @@ defmodule ForkaWeb.CoreComponents do
           </p>
         </div>
         <button
+          :if={@dismissible}
           type="button"
           class="inline-flex size-11 shrink-0 items-center justify-center rounded-md transition-colors hover:ring-1 hover:ring-inset hover:ring-current"
           aria-label={gettext("close")}
@@ -293,10 +298,10 @@ defmodule ForkaWeb.CoreComponents do
         id="client-error"
         kind={:error}
         title={gettext("We can't find the internet")}
-        class="z-20"
+        dismissible={false}
+        class="hidden z-20"
         phx-disconnected={show_flash(".phx-client-error #client-error")}
         phx-connected={hide_flash("#client-error")}
-        hidden
       >
         {gettext("Attempting to reconnect")}
         <.icon name="hero-arrow-path" class="size-4 animate-spin" />
@@ -306,10 +311,10 @@ defmodule ForkaWeb.CoreComponents do
         id="server-error"
         kind={:error}
         title={gettext("Something went wrong!")}
-        class="z-20"
+        dismissible={false}
+        class="hidden z-20"
         phx-disconnected={show_flash(".phx-server-error #server-error")}
         phx-connected={hide_flash("#server-error")}
-        hidden
       >
         {gettext("Hang in there while we get back on track")}
         <.icon name="hero-arrow-path" class="size-4 animate-spin" />
