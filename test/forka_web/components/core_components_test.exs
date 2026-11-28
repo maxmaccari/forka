@@ -560,7 +560,7 @@ defmodule ForkaWeb.CoreComponentsTest do
   end
 
   describe "flash/1 and flash_group/1" do
-    test "EDGE-01: flash_group reserves a non-sticky bounded slot below header z-index, layers disconnect errors above info/error, and uses fade-only transitions while keeping show/2 and hide/2 unchanged" do
+    test "EDGE-01: flash_group reserves a sticky click-through bounded slot below header and modal z-index, layers disconnect errors above info/error, and uses fade-only transitions while keeping show/2 and hide/2 unchanged" do
       long_info =
         "Se este e-mail estiver cadastrado, você receberá as instruções para redefinir sua senha em instantes."
 
@@ -573,12 +573,14 @@ defmodule ForkaWeb.CoreComponentsTest do
       group = LazyHTML.query(doc, "#flash-group")
       group_class = List.first(LazyHTML.attribute(group, "class"), "")
 
-      assert group_class =~ "relative"
-      assert group_class =~ "z-10"
+      assert group_class =~ "sticky"
+      assert group_class =~ "top-[var(--flash-slot-top,0px)]"
+      assert group_class =~ "pointer-events-none"
+      assert group_class =~ "z-20"
       assert group_class =~ "h-24"
       assert group_class =~ "sm:h-16"
-      refute group_class =~ "sticky"
       refute group_class =~ "fixed"
+      refute group_class =~ "z-50"
 
       for {id, expected_text, expected_z} <- [
             {"#flash-info", long_info, "z-10"},
@@ -593,6 +595,7 @@ defmodule ForkaWeb.CoreComponentsTest do
         assert Enum.count(LazyHTML.query(el, "button[aria-label]")) == 1
 
         el_class = List.first(LazyHTML.attribute(el, "class"), "")
+        assert el_class =~ "pointer-events-auto"
         assert el_class =~ "absolute"
         assert el_class =~ "inset-0"
         assert el_class =~ "overflow-y-auto"
@@ -620,7 +623,21 @@ defmodule ForkaWeb.CoreComponentsTest do
         end
       end
 
-      # Modals still use show/2 and hide/2 with their original transitions untouched.
+      # Modals still use z-50 and show/2 and hide/2 with their original transitions untouched.
+      modal_html =
+        render_component(&modal/1, %{
+          id: "m-stack",
+          inner_block: [%{__slot__: :inner_block, inner_block: fn _, _ -> "Conteúdo" end}]
+        })
+
+      modal_class =
+        modal_html
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#m-stack")
+        |> LazyHTML.attribute("class")
+        |> List.first("")
+
+      assert modal_class =~ "z-50"
       assert inspect(show("#modal-container")) =~ "translate-y-4"
       assert inspect(hide("#modal-container")) =~ "translate-y-4"
     end

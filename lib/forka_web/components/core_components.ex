@@ -196,12 +196,23 @@ defmodule ForkaWeb.CoreComponents do
   end
 
   @doc """
-  Renders flash notices.
+  Renders a flash notice positioned to fill a bounded, positioned parent container.
+
+  Prefer `<.flash_group flash={@flash} />`, which supplies the sticky reserved
+  slot below the header and layers connection errors above regular notices.
+  When rendering `<.flash>` directly, wrap it in a bounded positioned parent
+  (such as `relative h-24 w-full sm:h-16`) because the notice uses
+  `absolute inset-0`.
 
   ## Examples
 
-      <.flash kind={:info} flash={@flash} />
-      <.flash kind={:info} phx-mounted={show("#flash")}>Welcome Back!</.flash>
+      <div class="relative h-24 w-full sm:h-16">
+        <.flash kind={:info} flash={@flash} />
+      </div>
+
+      <div class="relative h-24 w-full sm:h-16">
+        <.flash kind={:info} title="Notice">Welcome back!</.flash>
+      </div>
   """
   attr :id, :string, doc: "the optional id of flash container"
   attr :flash, :map, default: %{}, doc: "the map of flash messages to display"
@@ -222,7 +233,7 @@ defmodule ForkaWeb.CoreComponents do
       phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide_flash("##{@id}")}
       role="alert"
       class={[
-        "absolute inset-0 cursor-pointer overflow-y-auto border-b px-4 sm:px-6",
+        "pointer-events-auto absolute inset-0 cursor-pointer overflow-y-auto border-b px-4 sm:px-6",
         @kind == :info && "border-success-ink/30 bg-success-soft text-success-ink",
         @kind == :error && "border-danger-ink/30 bg-danger-soft text-danger-ink",
         @class
@@ -254,7 +265,14 @@ defmodule ForkaWeb.CoreComponents do
   end
 
   @doc """
-  Shows the flash group with standard titles and content in a reserved slot below the header.
+  Shows the flash group with standard titles and content in a sticky reserved
+  slot directly below the player header (or at the top of the viewport on
+  headerless pages).
+
+  The wrapper reserves vertical space in normal flow so content never shifts
+  when notices appear or clear, sticks below the header while scrolling so
+  connection and in-place errors remain visible, and uses `pointer-events-none`
+  so an empty slot never blocks clicks on underlying content.
 
   ## Examples
 
@@ -265,7 +283,10 @@ defmodule ForkaWeb.CoreComponents do
 
   def flash_group(assigns) do
     ~H"""
-    <div id={@id} class="relative z-10 h-24 w-full sm:h-16">
+    <div
+      id={@id}
+      class="pointer-events-none sticky top-[var(--flash-slot-top,0px)] z-20 h-24 w-full sm:h-16"
+    >
       <.flash kind={:info} title={gettext("Success!")} flash={@flash} class="z-10" />
       <.flash kind={:error} title={gettext("Error!")} flash={@flash} class="z-10" />
       <.flash
