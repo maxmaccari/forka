@@ -98,7 +98,10 @@ defmodule ForkaWeb.Layouts do
 
   def player_header(assigns) do
     ~H"""
-    <header class="sticky top-0 z-30 h-16 border-b border-line bg-surface px-4 sm:px-6">
+    <header
+      data-player-header
+      class="sticky top-0 z-30 h-16 border-b border-line bg-surface px-4 sm:px-6"
+    >
       <div class="mx-auto flex h-full max-w-5xl items-center justify-between gap-4">
         <div class="flex items-center gap-6">
           <.link navigate={~p"/"} class="inline-flex items-center rounded-md py-1">

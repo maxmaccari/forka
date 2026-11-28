@@ -558,4 +558,150 @@ defmodule ForkaWeb.CoreComponentsTest do
                "Erro"
     end
   end
+
+  describe "flash/1 and flash_group/1" do
+    test "EDGE-01: flash_group reserves a sticky slot, layers non-dismissible disconnect notices with hidden class, and keeps fade-only transitions" do
+      long_info =
+        "Se este e-mail estiver cadastrado, você receberá as instruções para redefinir sua senha em instantes."
+
+      html =
+        render_component(&flash_group/1, %{
+          flash: %{"info" => long_info, "error" => "Algo deu errado."}
+        })
+
+      doc = LazyHTML.from_fragment(html)
+      group = LazyHTML.query(doc, "#flash-group")
+      group_class = List.first(LazyHTML.attribute(group, "class"), "")
+
+      assert group_class =~ "sticky"
+      assert group_class =~ "top-[var(--flash-slot-top,0px)]"
+      assert group_class =~ "pointer-events-none"
+      assert group_class =~ "z-20"
+      assert group_class =~ "h-24"
+      assert group_class =~ "sm:h-16"
+      refute group_class =~ "fixed"
+      refute group_class =~ "z-50"
+
+      for {id, expected_text} <- [
+            {"#flash-info", long_info},
+            {"#flash-error", "Algo deu errado."}
+          ] do
+        el = LazyHTML.query(doc, "#flash-group > #{id}")
+        assert Enum.count(el) == 1
+        assert LazyHTML.attribute(el, "role") == ["alert"]
+        assert LazyHTML.attribute(el, "hidden") == []
+        assert LazyHTML.text(el) =~ expected_text
+        assert Enum.count(LazyHTML.query(el, "button[aria-label]")) == 1
+
+        el_class = List.first(LazyHTML.attribute(el, "class"), "")
+        assert el_class =~ "pointer-events-auto"
+        assert el_class =~ "cursor-pointer"
+        assert el_class =~ "absolute"
+        assert el_class =~ "inset-0"
+        assert el_class =~ "overflow-y-auto"
+        assert el_class =~ "z-10"
+        refute el_class =~ "hidden"
+        refute el_class =~ "fixed"
+        refute el_class =~ "z-50"
+
+        click_js = List.first(LazyHTML.attribute(el, "phx-click"), "")
+        assert click_js =~ "motion-safe:transition-opacity"
+        assert click_js =~ "opacity-0"
+        refute click_js =~ "translate-y-4"
+        refute click_js =~ "scale-95"
+      end
+
+      for {id, expected_title, expected_text, expected_disconnected_target} <- [
+            {"#client-error", "We can't find the internet", "Attempting to reconnect",
+             ".phx-client-error #client-error"},
+            {"#server-error", "Something went wrong!", "Hang in there while we get back on track",
+             ".phx-server-error #server-error"}
+          ] do
+        el = LazyHTML.query(doc, "#flash-group > #{id}")
+        assert Enum.count(el) == 1
+        assert LazyHTML.attribute(el, "role") == ["alert"]
+        assert LazyHTML.attribute(el, "hidden") == []
+        assert LazyHTML.attribute(el, "phx-click") == []
+        assert Enum.empty?(LazyHTML.query(el, "button"))
+        assert LazyHTML.text(el) =~ expected_title
+        assert LazyHTML.text(el) =~ expected_text
+
+        el_class = List.first(LazyHTML.attribute(el, "class"), "")
+        assert el_class =~ "pointer-events-auto"
+        assert el_class =~ "absolute"
+        assert el_class =~ "inset-0"
+        assert el_class =~ "overflow-y-auto"
+        assert el_class =~ "z-20"
+        assert String.split(el_class) |> Enum.member?("hidden")
+        refute el_class =~ "cursor-pointer"
+        refute el_class =~ "fixed"
+        refute el_class =~ "z-50"
+
+        disconnected_js = List.first(LazyHTML.attribute(el, "phx-disconnected"), "")
+        assert disconnected_js =~ expected_disconnected_target
+        assert disconnected_js =~ "motion-safe:transition-opacity"
+        assert disconnected_js =~ "opacity-0"
+        refute disconnected_js =~ "translate-y-4"
+        refute disconnected_js =~ "scale-95"
+
+        connected_js = List.first(LazyHTML.attribute(el, "phx-connected"), "")
+        assert connected_js =~ id
+        assert connected_js =~ "motion-safe:transition-opacity"
+        assert connected_js =~ "opacity-0"
+        refute connected_js =~ "translate-y-4"
+        refute connected_js =~ "scale-95"
+      end
+
+      # Modals still use z-50 and show/2 and hide/2 with their original transitions untouched.
+      modal_html =
+        render_component(&modal/1, %{
+          id: "m-stack",
+          inner_block: [%{__slot__: :inner_block, inner_block: fn _, _ -> "Conteúdo" end}]
+        })
+
+      modal_class =
+        modal_html
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#m-stack")
+        |> LazyHTML.attribute("class")
+        |> List.first("")
+
+      assert modal_class =~ "z-50"
+      assert inspect(show("#modal-container")) =~ "translate-y-4"
+      assert inspect(hide("#modal-container")) =~ "translate-y-4"
+    end
+
+    test "flash/1 defaults to dismissible and omits close button, phx-click, and pointer cursor when dismissible is false" do
+      default_html =
+        render_component(&flash/1, %{
+          id: "custom-dismissible",
+          kind: :info,
+          inner_block: [%{__slot__: :inner_block, inner_block: fn _, _ -> "Ok" end}]
+        })
+
+      default_doc = LazyHTML.from_fragment(default_html)
+      default_el = LazyHTML.query(default_doc, "#custom-dismissible")
+      assert Enum.count(LazyHTML.query(default_el, "button[aria-label]")) == 1
+      assert List.first(LazyHTML.attribute(default_el, "phx-click"), "") =~ "lv:clear-flash"
+      assert List.first(LazyHTML.attribute(default_el, "class"), "") =~ "cursor-pointer"
+      assert List.first(LazyHTML.attribute(default_el, "class"), "") =~ "pointer-events-auto"
+
+      persistent_html =
+        render_component(&flash/1, %{
+          id: "custom-persistent",
+          kind: :error,
+          dismissible: false,
+          inner_block: [%{__slot__: :inner_block, inner_block: fn _, _ -> "Reconnect" end}]
+        })
+
+      persistent_doc = LazyHTML.from_fragment(persistent_html)
+      persistent_el = LazyHTML.query(persistent_doc, "#custom-persistent")
+      assert LazyHTML.attribute(persistent_el, "role") == ["alert"]
+      assert LazyHTML.attribute(persistent_el, "phx-click") == []
+      assert Enum.empty?(LazyHTML.query(persistent_el, "button"))
+      persistent_class = List.first(LazyHTML.attribute(persistent_el, "class"), "")
+      assert persistent_class =~ "pointer-events-auto"
+      refute persistent_class =~ "cursor-pointer"
+    end
+  end
 end
