@@ -337,7 +337,7 @@ defmodule ForkaWeb.E2E.AccountTest do
     assert session_token_count(player) == 1
   end
 
-  test "EDGE-02: stopping an in-flight sign-in keeps the button usable and retries after the window",
+  test "EDGE-02: stopping an in-flight sign-in keeps the button usable and retries after the window even if the wall clock moves back",
        %{conn: conn} do
     player = insert(:player)
     timeout = Config.global(:timeout)
@@ -381,7 +381,7 @@ defmodule ForkaWeb.E2E.AccountTest do
                   !event.defaultPrevented &&
                   window.__firstSubmitAt === null
                 ) {
-                  window.__firstSubmitAt = Date.now();
+                  window.__firstSubmitAt = performance.now();
                 }
               });
             }
@@ -409,10 +409,13 @@ defmodule ForkaWeb.E2E.AccountTest do
             frame_id,
             expression: """
             () => {
+              const realDateNow = Date.now.bind(Date);
+              Date.now = () => realDateNow() - 3_600_000;
+
               const form = document.querySelector("#login_form");
-              const submittedAt = window.__firstSubmitAt || Date.now();
+              const submittedAt = window.__firstSubmitAt ?? performance.now();
               const waitForWindow = () => {
-                if (Date.now() - submittedAt >= 1100) {
+                if (performance.now() - submittedAt >= 1100) {
                   form.dataset.retryWindowElapsed = "true";
                 } else {
                   requestAnimationFrame(waitForWindow);

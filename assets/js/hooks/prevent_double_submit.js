@@ -17,7 +17,7 @@ const PreventDoubleSubmit = {
     this._onSubmit = (event) => {
       if (event.defaultPrevented) return
 
-      const now = Date.now()
+      const now = performance.now()
 
       if (this._lastSubmitAt !== null && now - this._lastSubmitAt < DOUBLE_SUBMIT_WINDOW_MS) {
         event.preventDefault()
