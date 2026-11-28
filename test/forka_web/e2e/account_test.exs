@@ -447,6 +447,206 @@ defmodule ForkaWeb.E2E.AccountTest do
     assert session_token_count(player) == 1
   end
 
+  test "EDGE-02: double-clicking sign-in before LiveView connects signs in once without an error",
+       %{conn: conn} do
+    player = insert(:player)
+    timeout = Config.global(:timeout)
+    test_pid = self()
+    post_counter = :counters.new(1, [:atomics])
+    app_js_counter = :counters.new(1, [:atomics])
+
+    conn = route_pre_connect_login(conn, app_js_counter, post_counter, test_pid, timeout)
+
+    try do
+      conn =
+        conn
+        |> visit(~p"/players/log_in")
+        |> refute_has("[data-phx-main].phx-connected")
+        |> evaluate("typeof window.liveSocket", &assert(&1 == "undefined"))
+        |> fill_in("E-mail ou nome de usuário", with: player.email)
+        |> fill_in("Senha", with: "Password1!456")
+        |> unwrap(fn %{page_id: page_id, frame_id: frame_id} ->
+          track_login_submits(frame_id, timeout)
+          {x, y} = login_button_center(frame_id, timeout)
+
+          {:ok, _} = Page.mouse_move(page_id, x: x, y: y, timeout: timeout)
+          {:ok, _} = Page.mouse_down(page_id, timeout: timeout)
+          {:ok, _} = Page.mouse_up(page_id, timeout: timeout)
+        end)
+
+      assert_receive {:login_post, 1, first_route_pid}, timeout
+
+      conn
+      |> unwrap(fn %{page_id: page_id} ->
+        {:ok, _} = Page.mouse_down(page_id, timeout: timeout)
+        {:ok, _} = Page.mouse_up(page_id, timeout: timeout)
+
+        send(first_route_pid, :release)
+      end)
+      |> assert_path(~p"/")
+      |> assert_has("#flash-info", text: "Bem-vindo de volta!")
+      |> refute_has("#flash-error")
+      |> assert_has(~s|summary[aria-label="Conta"]|)
+      |> evaluate(
+        "Number(sessionStorage.getItem('__eligibleLoginSubmitCount'))",
+        &assert(&1 == 1)
+      )
+    after
+      unwrap(conn, fn %{page_id: page_id} ->
+        {:ok, _} = Page.unroute_all(page_id, timeout: timeout)
+      end)
+    end
+
+    assert :counters.get(app_js_counter, 1) >= 1
+    assert :counters.get(post_counter, 1) == 1
+    assert session_token_count(player) == 1
+  end
+
+  test "EDGE-02: repeating sign-in about 500ms apart before LiveView connects signs in once without an error",
+       %{conn: conn} do
+    player = insert(:player)
+    timeout = Config.global(:timeout)
+    test_pid = self()
+    post_counter = :counters.new(1, [:atomics])
+    app_js_counter = :counters.new(1, [:atomics])
+
+    conn = route_pre_connect_login(conn, app_js_counter, post_counter, test_pid, timeout)
+
+    try do
+      conn =
+        conn
+        |> visit(~p"/players/log_in")
+        |> refute_has("[data-phx-main].phx-connected")
+        |> evaluate("typeof window.liveSocket", &assert(&1 == "undefined"))
+        |> fill_in("E-mail ou nome de usuário", with: player.email)
+        |> fill_in("Senha", with: "Password1!456")
+        |> unwrap(fn %{page_id: page_id, frame_id: frame_id} ->
+          track_login_submits(frame_id, timeout, mark_after_ms: 500)
+          {x, y} = login_button_center(frame_id, timeout)
+
+          {:ok, _} = Page.mouse_move(page_id, x: x, y: y, timeout: timeout)
+          {:ok, _} = Page.mouse_down(page_id, timeout: timeout)
+          {:ok, _} = Page.mouse_up(page_id, timeout: timeout)
+        end)
+
+      assert_receive {:login_post, 1, first_route_pid}, timeout
+      assert_receive {:half_window_elapsed, %{disabled: false, label: "Entrar"}}, timeout
+
+      conn
+      |> unwrap(fn %{page_id: page_id} ->
+        {:ok, _} = Page.mouse_down(page_id, timeout: timeout)
+        {:ok, _} = Page.mouse_up(page_id, timeout: timeout)
+
+        send(first_route_pid, :release)
+      end)
+      |> assert_path(~p"/")
+      |> assert_has("#flash-info", text: "Bem-vindo de volta!")
+      |> refute_has("#flash-error")
+      |> assert_has(~s|summary[aria-label="Conta"]|)
+      |> evaluate(
+        "Number(sessionStorage.getItem('__eligibleLoginSubmitCount'))",
+        &assert(&1 == 1)
+      )
+    after
+      unwrap(conn, fn %{page_id: page_id} ->
+        {:ok, _} = Page.unroute_all(page_id, timeout: timeout)
+      end)
+    end
+
+    assert :counters.get(app_js_counter, 1) >= 1
+    assert :counters.get(post_counter, 1) == 1
+    assert session_token_count(player) == 1
+  end
+
+  defp route_pre_connect_login(conn, app_js_counter, post_counter, test_pid, timeout) do
+    unwrap(conn, fn %{page_id: page_id} ->
+      {:ok, _} =
+        Page.route(
+          page_id,
+          "**/*",
+          &handle_pre_connect_route(&1, &2, app_js_counter, post_counter, test_pid, timeout),
+          timeout: timeout,
+          on_error: :message
+        )
+    end)
+  end
+
+  defp handle_pre_connect_route(route, request, app_js_counter, post_counter, test_pid, timeout) do
+    uri = URI.parse(request.url)
+
+    cond do
+      request.url =~ ~r|/assets/app[^/]*\.js| ->
+        :counters.add(app_js_counter, 1, 1)
+        Route.abort(route, error_code: "aborted")
+
+      uri.path == "/__half_window_elapsed" ->
+        query = URI.decode_query(uri.query || "")
+
+        send(test_pid, {
+          :half_window_elapsed,
+          %{disabled: query["disabled"] == "true", label: query["label"]}
+        })
+
+        Route.fulfill(route, status: 204, body: "")
+
+      request.method == "POST" and uri.path == "/players/log_in" ->
+        handle_login_route(route, request, post_counter, test_pid, timeout)
+
+      true ->
+        Route.continue(route)
+    end
+  end
+
+  defp track_login_submits(frame_id, timeout, opts \\ []) do
+    mark_after_ms = Keyword.get(opts, :mark_after_ms)
+
+    mark_after_js =
+      if is_integer(mark_after_ms) do
+        """
+        const btn = event.target.querySelector("button");
+        const submittedAt = window.__firstSubmitAt;
+        const waitForHalfWindow = () => {
+          if (performance.now() - submittedAt >= #{mark_after_ms}) {
+            const params = new URLSearchParams({
+              disabled: String(Boolean(btn && btn.disabled)),
+              label: (btn && btn.textContent ? btn.textContent.trim() : "")
+            });
+            fetch("/__half_window_elapsed?" + params.toString());
+          } else {
+            requestAnimationFrame(waitForHalfWindow);
+          }
+        };
+        requestAnimationFrame(waitForHalfWindow);
+        """
+      else
+        ""
+      end
+
+    {:ok, _} =
+      Frame.evaluate(
+        frame_id,
+        expression: """
+        () => {
+          sessionStorage.setItem("__eligibleLoginSubmitCount", "0");
+          window.__firstSubmitAt = null;
+          document.addEventListener("submit", (event) => {
+            if (event.target && event.target.id === "login_form" && !event.defaultPrevented) {
+              const count =
+                Number(sessionStorage.getItem("__eligibleLoginSubmitCount") || "0") + 1;
+              sessionStorage.setItem("__eligibleLoginSubmitCount", String(count));
+              if (window.__firstSubmitAt === null) {
+                window.__firstSubmitAt = performance.now();
+                #{mark_after_js}
+              }
+            }
+          });
+        }
+        """,
+        is_function: true,
+        timeout: timeout
+      )
+  end
+
   defp login_button_center(frame_id, timeout) do
     {:ok, %{"x" => x, "y" => y}} =
       Frame.evaluate(

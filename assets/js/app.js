@@ -7,7 +7,6 @@ import topbar from "../vendor/topbar"
 import { Hooks as BackpexHooks, backpexParams } from 'backpex';
 import { initThemeToggle } from "./theme"
 import GameKeyboard from "./hooks/game_keyboard"
-import PreventDoubleSubmit from "./hooks/prevent_double_submit"
 import RopeFeedback from "./hooks/rope_feedback"
 import SegmentedControl from "./hooks/segmented_control"
 import ShareInvite from "./hooks/share_invite"
@@ -16,7 +15,6 @@ initThemeToggle()
 
 const Hooks = {
   GameKeyboard,
-  PreventDoubleSubmit,
   RopeFeedback,
   SegmentedControl,
   ShareInvite
