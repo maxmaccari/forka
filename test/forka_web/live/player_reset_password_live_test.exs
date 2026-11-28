@@ -1,10 +1,13 @@
 defmodule ForkaWeb.PlayerResetPasswordLiveTest do
   use ForkaWeb.ConnCase, async: true
 
-  import Phoenix.LiveViewTest
+  import Ecto.Query
   import Forka.TestHelpers
+  import Phoenix.LiveViewTest
 
   alias Forka.Players
+  alias Forka.Players.PlayerToken
+  alias Forka.Repo
 
   setup do
     player = insert(:player)
@@ -36,7 +39,48 @@ defmodule ForkaWeb.PlayerResetPasswordLiveTest do
 
       assert to == %{
                flash: %{"error" => "O link para redefinir a senha é inválido ou expirou."},
-               to: ~p"/"
+               to: ~p"/players/reset_password"
+             }
+    end
+
+    test "EDGE-01: redirects expired reset link to request-a-new-link page with pt-BR error", %{
+      conn: conn,
+      player: player,
+      token: token
+    } do
+      past = DateTime.utc_now() |> DateTime.add(-2, :day) |> DateTime.truncate(:second)
+
+      {1, _} =
+        from(t in PlayerToken,
+          where: t.player_id == ^player.id and t.context == "reset_password"
+        )
+        |> Repo.update_all(set: [inserted_at: past])
+
+      {:error, {:redirect, to}} = live(conn, ~p"/players/reset_password/#{token}")
+
+      assert to == %{
+               flash: %{"error" => "O link para redefinir a senha é inválido ou expirou."},
+               to: ~p"/players/reset_password"
+             }
+    end
+
+    test "EDGE-01: redirects already-used reset link to request-a-new-link page with pt-BR error",
+         %{
+           conn: conn,
+           player: player,
+           token: token
+         } do
+      {:ok, _player} =
+        Players.reset_player_password(player, %{
+          password: "new valid password",
+          password_confirmation: "new valid password"
+        })
+
+      {:error, {:redirect, to}} = live(conn, ~p"/players/reset_password/#{token}")
+
+      assert to == %{
+               flash: %{"error" => "O link para redefinir a senha é inválido ou expirou."},
+               to: ~p"/players/reset_password"
              }
     end
 

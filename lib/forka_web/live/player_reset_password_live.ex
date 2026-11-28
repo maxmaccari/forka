@@ -111,7 +111,7 @@ defmodule ForkaWeb.PlayerResetPasswordLive do
     else
       socket
       |> put_flash(:error, "O link para redefinir a senha é inválido ou expirou.")
-      |> redirect(to: ~p"/")
+      |> redirect(to: ~p"/players/reset_password")
     end
   end
 
