@@ -290,10 +290,13 @@ defmodule ForkaWeb.E2E.AccountTest do
             frame_id,
             expression: """
             () => {
-              sessionStorage.setItem("__loginSubmitCount", "0");
-              document.querySelector("#login_form").addEventListener("submit", () => {
-                const count = Number(sessionStorage.getItem("__loginSubmitCount") || "0") + 1;
-                sessionStorage.setItem("__loginSubmitCount", String(count));
+              sessionStorage.setItem("__eligibleLoginSubmitCount", "0");
+              document.addEventListener("submit", (event) => {
+                if (event.target && event.target.id === "login_form" && !event.defaultPrevented) {
+                  const count =
+                    Number(sessionStorage.getItem("__eligibleLoginSubmitCount") || "0") + 1;
+                  sessionStorage.setItem("__eligibleLoginSubmitCount", String(count));
+                }
               });
             }
             """,
@@ -320,7 +323,10 @@ defmodule ForkaWeb.E2E.AccountTest do
       |> assert_has("#flash-info", text: "Bem-vindo de volta!")
       |> refute_has("#flash-error")
       |> assert_has(~s|summary[aria-label="Conta"]|)
-      |> evaluate("Number(sessionStorage.getItem('__loginSubmitCount'))", &assert(&1 == 1))
+      |> evaluate(
+        "Number(sessionStorage.getItem('__eligibleLoginSubmitCount'))",
+        &assert(&1 == 1)
+      )
     after
       unwrap(conn, fn %{page_id: page_id} ->
         {:ok, _} = Page.unroute_all(page_id, timeout: timeout)
@@ -331,9 +337,8 @@ defmodule ForkaWeb.E2E.AccountTest do
     assert session_token_count(player) == 1
   end
 
-  test "EDGE-02: stopping an in-flight sign-in restores the button so a retry signs in", %{
-    conn: conn
-  } do
+  test "EDGE-02: stopping an in-flight sign-in keeps the button usable and retries after the window",
+       %{conn: conn} do
     player = insert(:player)
     timeout = Config.global(:timeout)
     test_pid = self()
@@ -363,6 +368,28 @@ defmodule ForkaWeb.E2E.AccountTest do
     try do
       conn
       |> unwrap(fn %{page_id: page_id, frame_id: frame_id} ->
+        {:ok, _} =
+          Frame.evaluate(
+            frame_id,
+            expression: """
+            () => {
+              window.__firstSubmitAt = null;
+              document.addEventListener("submit", (event) => {
+                if (
+                  event.target &&
+                  event.target.id === "login_form" &&
+                  !event.defaultPrevented &&
+                  window.__firstSubmitAt === null
+                ) {
+                  window.__firstSubmitAt = Date.now();
+                }
+              });
+            }
+            """,
+            is_function: true,
+            timeout: timeout
+          )
+
         {x, y} = login_button_center(frame_id, timeout)
 
         {:ok, _} = Page.mouse_move(page_id, x: x, y: y, timeout: timeout)
@@ -374,8 +401,32 @@ defmodule ForkaWeb.E2E.AccountTest do
         {:ok, _} = Frame.evaluate(frame_id, expression: "window.stop()", timeout: timeout)
       end)
       |> assert_path(~p"/players/log_in")
-      |> assert_has("#login_form button[disabled]", text: "Entrando...")
-      |> assert_has("#login_form button:not([disabled])", text: "Entrar", timeout: 12_000)
+      |> assert_has("#login_form button:not([disabled])", text: "Entrar")
+      |> refute_has("#login_form button[disabled]")
+      |> unwrap(fn %{frame_id: frame_id} ->
+        {:ok, _} =
+          Frame.evaluate(
+            frame_id,
+            expression: """
+            () => {
+              const form = document.querySelector("#login_form");
+              const submittedAt = window.__firstSubmitAt || Date.now();
+              const waitForWindow = () => {
+                if (Date.now() - submittedAt >= 1100) {
+                  form.dataset.retryWindowElapsed = "true";
+                } else {
+                  requestAnimationFrame(waitForWindow);
+                }
+              };
+              requestAnimationFrame(waitForWindow);
+            }
+            """,
+            is_function: true,
+            timeout: timeout
+          )
+      end)
+      |> assert_has(~s|#login_form[data-retry-window-elapsed="true"]|, timeout: 3_000)
+      |> assert_has("#login_form button:not([disabled])", text: "Entrar")
       |> click_button("Entrar")
       |> assert_path(~p"/")
       |> assert_has("[data-phx-main].phx-connected")
