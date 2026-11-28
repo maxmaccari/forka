@@ -726,6 +726,60 @@ defmodule Forka.PlayersTest do
       refute Players.get_player_by_email_and_password(player.email, loser_password)
       refute Repo.get_by(PlayerToken, player_id: player.id)
     end
+
+    @tag sandbox: :auto
+    test "MAX-57: concurrent settings password change and reset link submit do not deadlock" do
+      player = insert(:player)
+
+      on_exit(fn ->
+        from(p in Player, where: p.id == ^player.id) |> Repo.delete_all()
+      end)
+
+      _session_token = Players.generate_player_session_token(player)
+
+      reset_token =
+        extract_token_from_email(fn url ->
+          Players.deliver_player_reset_password_instructions(player, url)
+        end)
+
+      task_supervisor = start_supervised!(Task.Supervisor)
+
+      {lock_holder, holder_pid} = hold_session_token_lock(task_supervisor, player.id)
+      on_exit(fn -> send(holder_pid, :release_lock) end)
+
+      settings_password = "SettingsPassword123!"
+      reset_password = "ResetFormPassword123!"
+
+      settings_task =
+        Task.Supervisor.async_nolink(task_supervisor, fn ->
+          Players.update_player_password(player, player.password, %{
+            password: settings_password,
+            password_confirmation: settings_password
+          })
+        end)
+
+      wait_for_pg_blockers(1, 2_000)
+
+      reset_task =
+        Task.Supervisor.async_nolink(task_supervisor, fn ->
+          Players.reset_player_password(reset_token, %{
+            password: reset_password,
+            password_confirmation: reset_password
+          })
+        end)
+
+      wait_for_pg_blockers(2, 2_000)
+      send(holder_pid, :release_lock)
+
+      assert :ok = Task.await(lock_holder, 5_000)
+      player_id = player.id
+      assert {:ok, %Player{id: ^player_id}} = Task.await(settings_task, 5_000)
+      assert {:error, :invalid_token} = Task.await(reset_task, 5_000)
+
+      assert Players.get_player_by_email_and_password(player.email, settings_password)
+      refute Players.get_player_by_email_and_password(player.email, reset_password)
+      refute Repo.get_by(PlayerToken, player_id: player.id)
+    end
   end
 
   describe "inspect/2 for the Player module" do
@@ -765,6 +819,42 @@ defmodule Forka.PlayersTest do
       {:row_locked, holder_pid} -> {task, holder_pid}
     after
       2_000 -> flunk("could not acquire PostgreSQL FOR UPDATE locks for player #{player_id}")
+    end
+  end
+
+  defp hold_session_token_lock(task_supervisor, player_id) do
+    test_pid = self()
+    {:ok, uuid_bin} = Ecto.UUID.dump(player_id)
+
+    task =
+      Task.Supervisor.async_nolink(task_supervisor, fn ->
+        {:ok, :ok} =
+          Repo.transaction(
+            fn ->
+              Repo.query!(
+                "SELECT id FROM players_tokens WHERE player_id = $1 AND context = 'session' FOR UPDATE",
+                [uuid_bin]
+              )
+
+              send(test_pid, {:row_locked, self()})
+
+              receive do
+                :release_lock -> :ok
+              end
+            end,
+            timeout: :infinity
+          )
+
+        :ok
+      end)
+
+    receive do
+      {:row_locked, holder_pid} -> {task, holder_pid}
+    after
+      2_000 ->
+        flunk(
+          "could not acquire PostgreSQL FOR UPDATE lock on session token for player #{player_id}"
+        )
     end
   end
 

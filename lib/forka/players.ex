@@ -404,10 +404,11 @@ defmodule Forka.Players do
   @doc """
   Resets the player password using the given reset token.
 
-  Re-verifies and locks the reset token inside the same transaction as the
-  password update, then deletes all tokens for the player. Returns
-  `{:error, :invalid_token}` when the token is malformed, unknown, expired,
-  already used, or invalidated by an email change.
+  Locks the player row first, then re-verifies the reset token in a fresh
+  statement inside the same transaction as the password update before deleting
+  all tokens for the player. Returns `{:error, :invalid_token}` when the token
+  is malformed, unknown, expired, already used, or invalidated by an email
+  change.
 
   ## Examples
 
@@ -426,8 +427,7 @@ defmodule Forka.Players do
   def reset_player_password(token, attrs) when is_binary(token) and is_map(attrs) do
     case PlayerToken.verify_email_token_query(token, "reset_password") do
       {:ok, query} ->
-        locked_query = lock(query, "FOR UPDATE")
-        Repo.transaction(fn -> reset_verified_player_password(locked_query, attrs) end)
+        Repo.transaction(fn -> reset_verified_player_password(query, attrs) end)
 
       :error ->
         {:error, :invalid_token}
@@ -435,13 +435,21 @@ defmodule Forka.Players do
   end
 
   defp reset_verified_player_password(query, attrs) do
-    case Repo.one(query) do
-      %Player{} = player ->
-        apply_password_reset(player, attrs)
-
+    # Lock the player row before re-reading the token so lock order matches
+    # update_player_password/3 (players first, then players_tokens).
+    with %Player{id: player_id} <- Repo.one(query),
+         %Player{} = _locked_player <- lock_player_for_update(player_id),
+         %Player{} = player <- Repo.one(query) do
+      apply_password_reset(player, attrs)
+    else
       nil ->
         Repo.rollback(:invalid_token)
     end
+  end
+
+  defp lock_player_for_update(player_id) do
+    from(p in Player, where: p.id == ^player_id, lock: "FOR UPDATE")
+    |> Repo.one()
   end
 
   defp apply_password_reset(player, attrs) do
