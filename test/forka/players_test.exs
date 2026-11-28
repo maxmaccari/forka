@@ -506,12 +506,19 @@ defmodule Forka.PlayersTest do
 
   describe "reset_player_password/2" do
     setup do
-      %{player: insert(:player)}
+      player = insert(:player)
+
+      token =
+        extract_token_from_email(fn url ->
+          Players.deliver_player_reset_password_instructions(player, url)
+        end)
+
+      %{player: player, token: token}
     end
 
-    test "validates password", %{player: player} do
+    test "validates password", %{player: player, token: token} do
       {:error, changeset} =
-        Players.reset_player_password(player, %{
+        Players.reset_player_password(token, %{
           password: "not valid",
           password_confirmation: "another"
         })
@@ -520,31 +527,203 @@ defmodule Forka.PlayersTest do
                password: ["should be at least 12 character(s)"],
                password_confirmation: ["does not match password"]
              } = errors_on(changeset)
+
+      assert Repo.get_by(PlayerToken, player_id: player.id, context: "reset_password")
     end
 
-    test "validates maximum values for password for security", %{player: player} do
+    test "validates maximum values for password for security", %{player: player, token: token} do
       too_long = String.duplicate("db", 100)
-      {:error, changeset} = Players.reset_player_password(player, %{password: too_long})
+      {:error, changeset} = Players.reset_player_password(token, %{password: too_long})
       assert "should be at most 72 character(s)" in errors_on(changeset).password
+      assert Repo.get_by(PlayerToken, player_id: player.id, context: "reset_password")
     end
 
-    test "updates the password", %{player: player} do
-      # On tests, the player password is filled by convenience through the factory,
-      # but we need to nilify it to properly test the password reset behavior.
-      # This ensures we're testing the actual reset functionality rather than
-      # just updating a player that already has a password set.
-      player = Map.put(player, :password, nil)
-
+    test "updates the password", %{player: player, token: token} do
       {:ok, updated_player} =
-        Players.reset_player_password(player, %{password: "new valid password"})
+        Players.reset_player_password(token, %{password: "new valid password"})
 
+      assert updated_player.id == player.id
       assert is_nil(updated_player.password)
       assert Players.get_player_by_email_and_password(player.email, "new valid password")
+      refute Players.get_player_by_email_and_password(player.email, player.password)
     end
 
-    test "deletes all tokens for the given player", %{player: player} do
+    test "deletes all tokens for the given player", %{player: player, token: token} do
       _ = Players.generate_player_session_token(player)
-      {:ok, _} = Players.reset_player_password(player, %{password: "new valid password"})
+      {:ok, _} = Players.reset_player_password(token, %{password: "new valid password"})
+      refute Repo.get_by(PlayerToken, player_id: player.id)
+    end
+
+    test "MAX-57: returns {:error, :invalid_token} and keeps password when token is invalid", %{
+      player: player
+    } do
+      unknown_token = Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)
+
+      # "oops!" is not valid base64url, exercising the :error branch before Repo.transaction.
+      assert {:error, :invalid_token} =
+               Players.reset_player_password("oops!", %{
+                 password: "new valid password",
+                 password_confirmation: "new valid password"
+               })
+
+      assert {:error, :invalid_token} =
+               Players.reset_player_password(unknown_token, %{
+                 password: "new valid password",
+                 password_confirmation: "new valid password"
+               })
+
+      assert Players.get_player_by_email_and_password(player.email, player.password)
+      refute Players.get_player_by_email_and_password(player.email, "new valid password")
+      assert Repo.get_by(PlayerToken, player_id: player.id, context: "reset_password")
+    end
+
+    test "MAX-57: returns {:error, :invalid_token} and keeps password when token expired", %{
+      player: player,
+      token: token
+    } do
+      {1, nil} = Repo.update_all(PlayerToken, set: [inserted_at: ~U[2020-01-01 00:00:00Z]])
+
+      assert {:error, :invalid_token} =
+               Players.reset_player_password(token, %{
+                 password: "new valid password",
+                 password_confirmation: "new valid password"
+               })
+
+      assert Players.get_player_by_email_and_password(player.email, player.password)
+      refute Players.get_player_by_email_and_password(player.email, "new valid password")
+    end
+
+    test "MAX-57: returns {:error, :invalid_token} and keeps password when token was already used",
+         %{player: player, token: token} do
+      assert {:ok, _updated_player} =
+               Players.reset_player_password(token, %{
+                 password: "first new password",
+                 password_confirmation: "first new password"
+               })
+
+      assert {:error, :invalid_token} =
+               Players.reset_player_password(token, %{
+                 password: "second new password",
+                 password_confirmation: "second new password"
+               })
+
+      assert Players.get_player_by_email_and_password(player.email, "first new password")
+      refute Players.get_player_by_email_and_password(player.email, "second new password")
+    end
+
+    test "MAX-57: returns {:error, :invalid_token} and keeps password when player email changed",
+         %{player: player, token: token} do
+      {1, nil} =
+        from(p in Player, where: p.id == ^player.id)
+        |> Repo.update_all(set: [email: "changed@example.com"])
+
+      assert {:error, :invalid_token} =
+               Players.reset_player_password(token, %{
+                 password: "new valid password",
+                 password_confirmation: "new valid password"
+               })
+
+      assert Players.get_player_by_email_and_password("changed@example.com", player.password)
+
+      refute Players.get_player_by_email_and_password(
+               "changed@example.com",
+               "new valid password"
+             )
+    end
+
+    test "MAX-57: keeps reset token usable when password validation fails", %{
+      player: player,
+      token: token
+    } do
+      assert {:error, changeset} =
+               Players.reset_player_password(token, %{
+                 password: "too short",
+                 password_confirmation: "does not match"
+               })
+
+      assert %{
+               password: ["should be at least 12 character(s)"],
+               password_confirmation: ["does not match password"]
+             } = errors_on(changeset)
+
+      assert Players.get_player_by_email_and_password(player.email, player.password)
+      player_id = player.id
+      assert %Player{id: ^player_id} = Players.get_player_by_reset_password_token(token)
+
+      assert {:ok, updated_player} =
+               Players.reset_player_password(token, %{
+                 password: "new valid password",
+                 password_confirmation: "new valid password"
+               })
+
+      assert updated_player.id == player.id
+      assert Players.get_player_by_email_and_password(player.email, "new valid password")
+      refute Repo.get_by(PlayerToken, player_id: player.id)
+    end
+  end
+
+  describe "reset_player_password/2 concurrency" do
+    @tag sandbox: :auto
+    test "MAX-57: concurrent submits of one reset link succeed only once" do
+      player = insert(:player)
+
+      on_exit(fn ->
+        from(p in Player, where: p.id == ^player.id) |> Repo.delete_all()
+      end)
+
+      token =
+        extract_token_from_email(fn url ->
+          Players.deliver_player_reset_password_instructions(player, url)
+        end)
+
+      task_supervisor = start_supervised!(Task.Supervisor)
+
+      {lock_holder, holder_pid} = hold_reset_token_and_player_lock(task_supervisor, player.id)
+      on_exit(fn -> send(holder_pid, :release_lock) end)
+
+      first_password = "FirstValidPassword123!"
+      second_password = "SecondValidPassword123!"
+
+      first_task =
+        Task.Supervisor.async_nolink(task_supervisor, fn ->
+          {:first,
+           Players.reset_player_password(token, %{
+             password: first_password,
+             password_confirmation: first_password
+           })}
+        end)
+
+      second_task =
+        Task.Supervisor.async_nolink(task_supervisor, fn ->
+          {:second,
+           Players.reset_player_password(token, %{
+             password: second_password,
+             password_confirmation: second_password
+           })}
+        end)
+
+      wait_for_pg_blockers(2, 2_000)
+      send(holder_pid, :release_lock)
+
+      assert :ok = Task.await(lock_holder, 5_000)
+      outcomes = [Task.await(first_task, 5_000), Task.await(second_task, 5_000)]
+      results = Enum.map(outcomes, fn {_tag, result} -> result end)
+
+      player_id = player.id
+      assert Enum.count(results, &match?({:ok, %Player{id: ^player_id}}, &1)) == 1
+      assert Enum.count(results, &(&1 == {:error, :invalid_token})) == 1
+
+      {winner_password, loser_password} =
+        case outcomes do
+          [{:first, {:ok, _}}, {:second, {:error, :invalid_token}}] ->
+            {first_password, second_password}
+
+          [{:first, {:error, :invalid_token}}, {:second, {:ok, _}}] ->
+            {second_password, first_password}
+        end
+
+      assert Players.get_player_by_email_and_password(player.email, winner_password)
+      refute Players.get_player_by_email_and_password(player.email, loser_password)
       refute Repo.get_by(PlayerToken, player_id: player.id)
     end
   end
@@ -552,6 +731,70 @@ defmodule Forka.PlayersTest do
   describe "inspect/2 for the Player module" do
     test "does not include password" do
       refute inspect(%Player{password: "123456"}) =~ "password: \"123456\""
+    end
+  end
+
+  defp hold_reset_token_and_player_lock(task_supervisor, player_id) do
+    test_pid = self()
+    {:ok, uuid_bin} = Ecto.UUID.dump(player_id)
+
+    task =
+      Task.Supervisor.async_nolink(task_supervisor, fn ->
+        {:ok, :ok} =
+          Repo.transaction(
+            fn ->
+              Repo.query!(
+                "SELECT id FROM players_tokens WHERE player_id = $1 AND context = 'reset_password' FOR UPDATE",
+                [uuid_bin]
+              )
+
+              Repo.query!("SELECT id FROM players WHERE id = $1 FOR UPDATE", [uuid_bin])
+              send(test_pid, {:row_locked, self()})
+
+              receive do
+                :release_lock -> :ok
+              end
+            end,
+            timeout: :infinity
+          )
+
+        :ok
+      end)
+
+    receive do
+      {:row_locked, holder_pid} -> {task, holder_pid}
+    after
+      2_000 -> flunk("could not acquire PostgreSQL FOR UPDATE locks for player #{player_id}")
+    end
+  end
+
+  defp wait_for_pg_blockers(expected_count, timeout_ms) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    do_wait_for_pg_blockers(expected_count, deadline)
+  end
+
+  # PostgreSQL queues row-lock waiters through the heavyweight tuple lock: the first
+  # waiter blocks on the holder and the second blocks on the first waiter. Count every
+  # blocked backend in the test database (Forka.PlayersTest is not async).
+  defp do_wait_for_pg_blockers(expected_count, deadline) do
+    %{rows: [[count]]} =
+      Repo.query!(
+        "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND cardinality(pg_blocking_pids(pid)) > 0",
+        []
+      )
+
+    cond do
+      count >= expected_count ->
+        :ok
+
+      System.monotonic_time(:millisecond) >= deadline ->
+        flunk("expected #{expected_count} blocked PostgreSQL backends, got #{count}")
+
+      true ->
+        receive do
+        after
+          10 -> do_wait_for_pg_blockers(expected_count, deadline)
+        end
     end
   end
 end
