@@ -67,11 +67,10 @@ defmodule ForkaWeb.PlayerResetPasswordLiveTest do
     test "EDGE-01: redirects already-used reset link to request-a-new-link page with pt-BR error",
          %{
            conn: conn,
-           player: player,
            token: token
          } do
       {:ok, _player} =
-        Players.reset_player_password(player, %{
+        Players.reset_player_password(token, %{
           password: "new valid password",
           password_confirmation: "new valid password"
         })
@@ -208,6 +207,113 @@ defmodule ForkaWeb.PlayerResetPasswordLiveTest do
 
       assert has_element?(lv, "#reset_password_form-alert")
       refute has_element?(lv, ~s|#reset_password_form-alert [role="alert"]|)
+    end
+
+    test "MAX-57: redirects to request-a-new-link page and keeps password when open form's link expired before submit",
+         %{conn: conn, player: player, token: token} do
+      {:ok, lv, _html} = live(conn, ~p"/players/reset_password/#{token}")
+
+      past = DateTime.utc_now() |> DateTime.add(-2, :day) |> DateTime.truncate(:second)
+
+      {1, _} =
+        from(t in PlayerToken,
+          where: t.player_id == ^player.id and t.context == "reset_password"
+        )
+        |> Repo.update_all(set: [inserted_at: past])
+
+      {:ok, redirect_conn} =
+        lv
+        |> form("#reset_password_form",
+          player: %{
+            "password" => "new valid password",
+            "password_confirmation" => "new valid password"
+          }
+        )
+        |> render_submit()
+        |> follow_redirect(conn, ~p"/players/reset_password")
+
+      assert Phoenix.Flash.get(redirect_conn.assigns.flash, :error) ==
+               "O link para redefinir a senha é inválido ou expirou."
+
+      assert html_response(redirect_conn, 200) =~ "Esqueceu a senha?"
+      assert Players.get_player_by_email_and_password(player.email, player.password)
+      refute Players.get_player_by_email_and_password(player.email, "new valid password")
+    end
+
+    test "MAX-57: redirects to request-a-new-link page and keeps password when open form's link was already used in another tab",
+         %{conn: conn, player: player, token: token} do
+      {:ok, first_lv, _html} = live(conn, ~p"/players/reset_password/#{token}")
+      {:ok, second_lv, _html} = live(conn, ~p"/players/reset_password/#{token}")
+
+      {:ok, _log_in_conn} =
+        second_lv
+        |> form("#reset_password_form",
+          player: %{
+            "password" => "first tab password",
+            "password_confirmation" => "first tab password"
+          }
+        )
+        |> render_submit()
+        |> follow_redirect(conn, ~p"/players/log_in")
+
+      {:ok, redirect_conn} =
+        first_lv
+        |> form("#reset_password_form",
+          player: %{
+            "password" => "second tab password",
+            "password_confirmation" => "second tab password"
+          }
+        )
+        |> render_submit()
+        |> follow_redirect(conn, ~p"/players/reset_password")
+
+      assert Phoenix.Flash.get(redirect_conn.assigns.flash, :error) ==
+               "O link para redefinir a senha é inválido ou expirou."
+
+      assert html_response(redirect_conn, 200) =~ "Esqueceu a senha?"
+      assert Players.get_player_by_email_and_password(player.email, "first tab password")
+      refute Players.get_player_by_email_and_password(player.email, "second tab password")
+    end
+
+    test "MAX-57: invalid fields on a still-valid link keep form errors and do not consume the token",
+         %{conn: conn, player: player, token: token} do
+      {:ok, lv, _html} = live(conn, ~p"/players/reset_password/#{token}")
+
+      result =
+        lv
+        |> form("#reset_password_form",
+          player: %{
+            "password" => "too short",
+            "password_confirmation" => "does not match"
+          }
+        )
+        |> render_submit()
+
+      assert has_element?(
+               lv,
+               ~s|#reset_password_form [role="alert"]|,
+               "Revise os campos abaixo para continuar."
+             )
+
+      assert result =~ "deve ter no mínimo 12 caracteres"
+      assert result =~ "não confere com a senha"
+      assert Players.get_player_by_reset_password_token(token).id == player.id
+
+      {:ok, log_in_conn} =
+        lv
+        |> form("#reset_password_form",
+          player: %{
+            "password" => "new valid password",
+            "password_confirmation" => "new valid password"
+          }
+        )
+        |> render_submit()
+        |> follow_redirect(conn, ~p"/players/log_in")
+
+      assert Phoenix.Flash.get(log_in_conn.assigns.flash, :info) ==
+               "Senha redefinida com sucesso!"
+
+      assert Players.get_player_by_email_and_password(player.email, "new valid password")
     end
   end
 

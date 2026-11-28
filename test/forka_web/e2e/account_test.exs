@@ -211,7 +211,7 @@ defmodule ForkaWeb.E2E.AccountTest do
     used_token = create_reset_token!(player)
 
     {:ok, _player} =
-      Players.reset_player_password(player, %{
+      Players.reset_player_password(used_token, %{
         password: "NovaSenhaUsada123!",
         password_confirmation: "NovaSenhaUsada123!"
       })
@@ -222,6 +222,79 @@ defmodule ForkaWeb.E2E.AccountTest do
     |> assert_has("[data-phx-main].phx-connected")
     |> assert_has("#flash-error", text: "O link para redefinir a senha é inválido ou expirou.")
     |> assert_has("#reset_password_form button", text: "Enviar instruções")
+  end
+
+  test "MAX-57: submitting an open reset form after its link expires or is used in another tab keeps the password and lets the player request a new link",
+       %{conn: conn} = context do
+    player = insert(:player, email: "open-reset@example.com")
+    expired_token = create_reset_token!(player)
+
+    conn =
+      conn
+      |> visit(~p"/players/reset_password/#{expired_token}")
+      |> assert_has("[data-phx-main].phx-connected")
+      |> assert_has("h1", text: "Redefinir senha")
+      |> fill_in("Nova senha", with: "SenhaExpirada123!")
+      |> fill_in("Confirmar nova senha", with: "SenhaExpirada123!")
+
+    backdate_reset_tokens!(player, 2)
+
+    conn =
+      conn
+      |> click_button("Redefinir senha")
+      |> assert_path(~p"/players/reset_password")
+      |> assert_has("[data-phx-main].phx-connected")
+      |> assert_has("#flash-error", text: "O link para redefinir a senha é inválido ou expirou.")
+      |> assert_has("h1", text: "Esqueceu a senha?")
+      |> assert_has("#reset_password_form button", text: "Enviar instruções")
+
+    assert Players.get_player_by_email_and_password(player.email, "Password1!456")
+    refute Players.get_player_by_email_and_password(player.email, "SenhaExpirada123!")
+
+    shared_token = create_reset_token!(player)
+
+    conn =
+      conn
+      |> visit(~p"/players/reset_password/#{shared_token}")
+      |> assert_has("[data-phx-main].phx-connected")
+      |> assert_has("h1", text: "Redefinir senha")
+
+    context
+    |> second_session()
+    |> visit(~p"/players/reset_password/#{shared_token}")
+    |> assert_has("[data-phx-main].phx-connected")
+    |> assert_has("h1", text: "Redefinir senha")
+    |> fill_in("Nova senha", with: "NovaSenhaAbaDois123!")
+    |> fill_in("Confirmar nova senha", with: "NovaSenhaAbaDois123!")
+    |> click_button("Redefinir senha")
+    |> assert_path(~p"/players/log_in")
+    |> assert_has("[data-phx-main].phx-connected")
+    |> assert_has("#flash-info", text: "Senha redefinida com sucesso!")
+
+    conn
+    |> fill_in("Nova senha", with: "NovaSenhaAbaUm123!")
+    |> fill_in("Confirmar nova senha", with: "NovaSenhaAbaUm123!")
+    |> click_button("Redefinir senha")
+    |> assert_path(~p"/players/reset_password")
+    |> assert_has("[data-phx-main].phx-connected")
+    |> assert_has("#flash-error", text: "O link para redefinir a senha é inválido ou expirou.")
+    |> assert_has("h1", text: "Esqueceu a senha?")
+    |> fill_in("E-mail", with: player.email)
+    |> click_button("Enviar instruções")
+    |> assert_path(~p"/")
+    |> assert_has("[data-phx-main].phx-connected")
+    |> assert_has(
+      "#flash-info",
+      text:
+        "Se este e-mail estiver cadastrado, você receberá as instruções para redefinir sua senha em instantes."
+    )
+
+    assert Players.get_player_by_email_and_password(player.email, "NovaSenhaAbaDois123!")
+    refute Players.get_player_by_email_and_password(player.email, "NovaSenhaAbaUm123!")
+
+    new_reset_path = receive_email_path!(player.email, "Reset password instructions")
+    assert String.starts_with?(new_reset_path, "/players/reset_password/")
+    refute new_reset_path == ~p"/players/reset_password/#{shared_token}"
   end
 
   test "AC-05: a player changes their password on the account settings screen and sees the success message",
