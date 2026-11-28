@@ -558,4 +558,71 @@ defmodule ForkaWeb.CoreComponentsTest do
                "Erro"
     end
   end
+
+  describe "flash/1 and flash_group/1" do
+    test "EDGE-01: flash_group reserves a non-sticky bounded slot below header z-index, layers disconnect errors above info/error, and uses fade-only transitions while keeping show/2 and hide/2 unchanged" do
+      long_info =
+        "Se este e-mail estiver cadastrado, você receberá as instruções para redefinir sua senha em instantes."
+
+      html =
+        render_component(&flash_group/1, %{
+          flash: %{"info" => long_info, "error" => "Algo deu errado."}
+        })
+
+      doc = LazyHTML.from_fragment(html)
+      group = LazyHTML.query(doc, "#flash-group")
+      group_class = List.first(LazyHTML.attribute(group, "class"), "")
+
+      assert group_class =~ "relative"
+      assert group_class =~ "z-10"
+      assert group_class =~ "h-24"
+      assert group_class =~ "sm:h-16"
+      refute group_class =~ "sticky"
+      refute group_class =~ "fixed"
+
+      for {id, expected_text, expected_z} <- [
+            {"#flash-info", long_info, "z-10"},
+            {"#flash-error", "Algo deu errado.", "z-10"},
+            {"#client-error", "Attempting to reconnect", "z-20"},
+            {"#server-error", "Hang in there while we get back on track", "z-20"}
+          ] do
+        el = LazyHTML.query(doc, "#flash-group > #{id}")
+        assert Enum.count(el) == 1
+        assert LazyHTML.attribute(el, "role") == ["alert"]
+        assert LazyHTML.text(el) =~ expected_text
+        assert Enum.count(LazyHTML.query(el, "button[aria-label]")) == 1
+
+        el_class = List.first(LazyHTML.attribute(el, "class"), "")
+        assert el_class =~ "absolute"
+        assert el_class =~ "inset-0"
+        assert el_class =~ "overflow-y-auto"
+        assert el_class =~ expected_z
+        refute el_class =~ "fixed"
+        refute el_class =~ "z-50"
+
+        click_js = List.first(LazyHTML.attribute(el, "phx-click"), "")
+        assert click_js =~ "motion-safe:transition-opacity"
+        assert click_js =~ "opacity-0"
+        refute click_js =~ "translate-y-4"
+        refute click_js =~ "scale-95"
+      end
+
+      for id <- ["#client-error", "#server-error"] do
+        el = LazyHTML.query(doc, id)
+        assert LazyHTML.attribute(el, "hidden") == [""]
+
+        for attr <- ["phx-disconnected", "phx-connected"] do
+          js_attr = List.first(LazyHTML.attribute(el, attr), "")
+          assert js_attr =~ "motion-safe:transition-opacity"
+          assert js_attr =~ "opacity-0"
+          refute js_attr =~ "translate-y-4"
+          refute js_attr =~ "scale-95"
+        end
+      end
+
+      # Modals still use show/2 and hide/2 with their original transitions untouched.
+      assert inspect(show("#modal-container")) =~ "translate-y-4"
+      assert inspect(hide("#modal-container")) =~ "translate-y-4"
+    end
+  end
 end

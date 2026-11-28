@@ -106,6 +106,40 @@ defmodule ForkaWeb.LayoutsTest do
     refute LazyHTML.text(header) =~ "Log out"
   end
 
+  test "EDGE-02: app layout places reserved #flash-group slot before main on player and headerless pages",
+       %{conn: conn} do
+    player_doc = home_document(conn)
+
+    assert Enum.empty?(LazyHTML.query(player_doc, "main #flash-group"))
+    assert Enum.count(LazyHTML.query(player_doc, "#flash-group + main")) == 1
+
+    header_class =
+      List.first(LazyHTML.attribute(LazyHTML.query(player_doc, "header"), "class"), "")
+
+    player_group_class =
+      List.first(LazyHTML.attribute(LazyHTML.query(player_doc, "#flash-group"), "class"), "")
+
+    assert header_class =~ "z-30"
+    assert player_group_class =~ "relative"
+    assert player_group_class =~ "z-10"
+    assert player_group_class =~ "h-24"
+    assert player_group_class =~ "sm:h-16"
+    refute player_group_class =~ "sticky"
+    refute player_group_class =~ "top-16"
+
+    admin_login_doc =
+      conn |> get(~p"/admin/log_in") |> html_response(200) |> LazyHTML.from_document()
+
+    assert Enum.empty?(LazyHTML.query(admin_login_doc, "main #flash-group"))
+    assert Enum.count(LazyHTML.query(admin_login_doc, "#flash-group + main")) == 1
+
+    admin_group_class =
+      List.first(LazyHTML.attribute(LazyHTML.query(admin_login_doc, "#flash-group"), "class"), "")
+
+    refute admin_group_class =~ "sticky"
+    refute admin_group_class =~ "top-16"
+  end
+
   defp home_document(conn) do
     conn |> get(~p"/") |> html_response(200) |> LazyHTML.from_document()
   end

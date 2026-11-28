@@ -207,6 +207,7 @@ defmodule ForkaWeb.CoreComponents do
   attr :flash, :map, default: %{}, doc: "the map of flash messages to display"
   attr :title, :string, default: nil
   attr :kind, :atom, values: [:info, :error], doc: "used for styling and flash lookup"
+  attr :class, :any, default: nil, doc: "layout classes (e.g. stacking order inside flash_group)"
   attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
 
   slot :inner_block, doc: "the optional inner block that renders the flash message"
@@ -218,34 +219,42 @@ defmodule ForkaWeb.CoreComponents do
     <div
       :if={msg = render_slot(@inner_block) || Phoenix.Flash.get(@flash, @kind)}
       id={@id}
-      phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
+      phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide_flash("##{@id}")}
       role="alert"
       class={[
-        "fixed top-3 right-3 z-50 w-80 rounded-lg p-4 shadow-3 ring-2 ring-inset dark:shadow-none sm:w-96",
-        @kind == :info && "bg-success-soft text-success-ink ring-success-ink",
-        @kind == :error && "bg-danger-soft text-danger-ink ring-danger-ink"
+        "absolute inset-0 cursor-pointer overflow-y-auto border-b px-4 sm:px-6",
+        @kind == :info && "border-success-ink/30 bg-success-soft text-success-ink",
+        @kind == :error && "border-danger-ink/30 bg-danger-soft text-danger-ink",
+        @class
       ]}
       {@rest}
     >
-      <p :if={@title} class="flex items-center gap-2 pr-8 text-sm font-bold leading-6">
-        <.icon :if={@kind == :info} name="hero-information-circle-mini" class="size-5 shrink-0" />
-        <.icon :if={@kind == :error} name="hero-exclamation-circle-mini" class="size-5 shrink-0" />
-        {@title}
-      </p>
-      <p class="mt-1 pr-8 text-sm leading-6">{msg}</p>
-      <button
-        type="button"
-        class="group absolute top-1 right-1 inline-flex size-11 items-center justify-center rounded-md opacity-70 hover:opacity-100"
-        aria-label={gettext("close")}
-      >
-        <.icon name="hero-x-mark-solid" class="size-5" />
-      </button>
+      <div class="mx-auto flex min-h-full max-w-5xl items-center justify-between gap-2 py-1 sm:py-2">
+        <div class="flex min-w-0 flex-1 items-center gap-2 text-sm leading-5">
+          <.icon :if={@kind == :info} name="hero-information-circle-mini" class="size-5 shrink-0" />
+          <.icon
+            :if={@kind == :error}
+            name="hero-exclamation-circle-mini"
+            class="size-5 shrink-0"
+          />
+          <p class="min-w-0 flex-1">
+            <span :if={@title} class="font-bold">{@title}</span>{if @title, do: " "}<span>{msg}</span>
+          </p>
+        </div>
+        <button
+          type="button"
+          class="inline-flex size-11 shrink-0 items-center justify-center rounded-md transition-colors hover:ring-1 hover:ring-inset hover:ring-current"
+          aria-label={gettext("close")}
+        >
+          <.icon name="hero-x-mark-solid" class="size-5" />
+        </button>
+      </div>
     </div>
     """
   end
 
   @doc """
-  Shows the flash group with standard titles and content.
+  Shows the flash group with standard titles and content in a reserved slot below the header.
 
   ## Examples
 
@@ -256,15 +265,16 @@ defmodule ForkaWeb.CoreComponents do
 
   def flash_group(assigns) do
     ~H"""
-    <div id={@id}>
-      <.flash kind={:info} title={gettext("Success!")} flash={@flash} />
-      <.flash kind={:error} title={gettext("Error!")} flash={@flash} />
+    <div id={@id} class="relative z-10 h-24 w-full sm:h-16">
+      <.flash kind={:info} title={gettext("Success!")} flash={@flash} class="z-10" />
+      <.flash kind={:error} title={gettext("Error!")} flash={@flash} class="z-10" />
       <.flash
         id="client-error"
         kind={:error}
         title={gettext("We can't find the internet")}
-        phx-disconnected={show(".phx-client-error #client-error")}
-        phx-connected={hide("#client-error")}
+        class="z-20"
+        phx-disconnected={show_flash(".phx-client-error #client-error")}
+        phx-connected={hide_flash("#client-error")}
         hidden
       >
         {gettext("Attempting to reconnect")}
@@ -275,8 +285,9 @@ defmodule ForkaWeb.CoreComponents do
         id="server-error"
         kind={:error}
         title={gettext("Something went wrong!")}
-        phx-disconnected={show(".phx-server-error #server-error")}
-        phx-connected={hide("#server-error")}
+        class="z-20"
+        phx-disconnected={show_flash(".phx-server-error #server-error")}
+        phx-connected={hide_flash("#server-error")}
         hidden
       >
         {gettext("Hang in there while we get back on track")}
@@ -1251,6 +1262,24 @@ defmodule ForkaWeb.CoreComponents do
         {"transition-all transform ease-in duration-200",
          "opacity-100 translate-y-0 sm:scale-100",
          "opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"}
+    )
+  end
+
+  defp show_flash(selector) do
+    JS.show(%JS{},
+      to: selector,
+      time: 200,
+      transition:
+        {"motion-safe:transition-opacity ease-out duration-200", "opacity-0", "opacity-100"}
+    )
+  end
+
+  defp hide_flash(js \\ %JS{}, selector) do
+    JS.hide(js,
+      to: selector,
+      time: 150,
+      transition:
+        {"motion-safe:transition-opacity ease-in duration-150", "opacity-100", "opacity-0"}
     )
   end
 
