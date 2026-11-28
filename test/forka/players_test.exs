@@ -728,6 +728,59 @@ defmodule Forka.PlayersTest do
     end
 
     @tag sandbox: :auto
+    test "MAX-57: rejects reset when token expires while waiting for player lock" do
+      player = insert(:player)
+
+      on_exit(fn ->
+        from(p in Player, where: p.id == ^player.id) |> Repo.delete_all()
+      end)
+
+      token =
+        extract_token_from_email(fn url ->
+          Players.deliver_player_reset_password_instructions(player, url)
+        end)
+
+      # PlayerToken.inserted_at uses second precision (:utc_datetime); placing the 1-day
+      # expiry 2 seconds ahead ensures discovery succeeds and the lock wait crosses it.
+      expires_at = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.add(2, :second)
+      nearly_expired_at = DateTime.add(expires_at, -1, :day)
+
+      {1, _} =
+        from(t in PlayerToken,
+          where: t.player_id == ^player.id and t.context == "reset_password"
+        )
+        |> Repo.update_all(set: [inserted_at: nearly_expired_at])
+
+      task_supervisor = start_supervised!(Task.Supervisor)
+
+      {lock_holder, holder_pid, holder_pg_pid} =
+        hold_player_lock(task_supervisor, player.id)
+
+      on_exit(fn -> send(holder_pid, :release_lock) end)
+
+      reset_password = "ExpiredDuringWait123!"
+
+      reset_task =
+        Task.Supervisor.async_nolink(task_supervisor, fn ->
+          Players.reset_player_password(token, %{
+            password: reset_password,
+            password_confirmation: reset_password
+          })
+        end)
+
+      reset_pg_pid = wait_for_blocked_backend(holder_pg_pid, 2_000)
+      assert backend_query(reset_pg_pid) =~ ~r/FROM "players".*FOR UPDATE/i
+
+      wait_until_after(expires_at, 5_000)
+      send(holder_pid, :release_lock)
+
+      assert :ok = Task.await(lock_holder, 5_000)
+      assert {:error, :invalid_token} = Task.await(reset_task, 5_000)
+      assert Players.get_player_by_email_and_password(player.email, player.password)
+      refute Players.get_player_by_email_and_password(player.email, reset_password)
+    end
+
+    @tag sandbox: :auto
     test "MAX-57: concurrent settings password change and reset link submit do not deadlock" do
       player = insert(:player)
 
@@ -742,9 +795,14 @@ defmodule Forka.PlayersTest do
           Players.deliver_player_reset_password_instructions(player, url)
         end)
 
+      %{id: reset_token_id} =
+        Repo.get_by!(PlayerToken, player_id: player.id, context: "reset_password")
+
       task_supervisor = start_supervised!(Task.Supervisor)
 
-      {lock_holder, holder_pid} = hold_session_token_lock(task_supervisor, player.id)
+      {lock_holder, holder_pid, holder_pg_pid} =
+        hold_session_token_lock(task_supervisor, player.id)
+
       on_exit(fn -> send(holder_pid, :release_lock) end)
 
       settings_password = "SettingsPassword123!"
@@ -758,7 +816,7 @@ defmodule Forka.PlayersTest do
           })
         end)
 
-      wait_for_pg_blockers(1, 2_000)
+      settings_pg_pid = wait_for_blocked_backend(holder_pg_pid, 2_000)
 
       reset_task =
         Task.Supervisor.async_nolink(task_supervisor, fn ->
@@ -768,7 +826,10 @@ defmodule Forka.PlayersTest do
           })
         end)
 
-      wait_for_pg_blockers(2, 2_000)
+      reset_pg_pid = wait_for_blocked_backend(settings_pg_pid, 2_000)
+      assert reset_token_unlocked?(reset_token_id)
+      assert backend_query(reset_pg_pid) =~ ~r/FROM "players".*FOR UPDATE/i
+
       send(holder_pid, :release_lock)
 
       assert :ok = Task.await(lock_holder, 5_000)
@@ -822,7 +883,19 @@ defmodule Forka.PlayersTest do
     end
   end
 
+  defp hold_player_lock(task_supervisor, player_id) do
+    hold_lock(task_supervisor, player_id, "SELECT id FROM players WHERE id = $1 FOR UPDATE")
+  end
+
   defp hold_session_token_lock(task_supervisor, player_id) do
+    hold_lock(
+      task_supervisor,
+      player_id,
+      "SELECT id FROM players_tokens WHERE player_id = $1 AND context = 'session' FOR UPDATE"
+    )
+  end
+
+  defp hold_lock(task_supervisor, player_id, sql) do
     test_pid = self()
     {:ok, uuid_bin} = Ecto.UUID.dump(player_id)
 
@@ -831,12 +904,9 @@ defmodule Forka.PlayersTest do
         {:ok, :ok} =
           Repo.transaction(
             fn ->
-              Repo.query!(
-                "SELECT id FROM players_tokens WHERE player_id = $1 AND context = 'session' FOR UPDATE",
-                [uuid_bin]
-              )
-
-              send(test_pid, {:row_locked, self()})
+              %{rows: [[pg_pid]]} = Repo.query!("SELECT pg_backend_pid()", [])
+              Repo.query!(sql, [uuid_bin])
+              send(test_pid, {:row_locked, self(), pg_pid})
 
               receive do
                 :release_lock -> :ok
@@ -849,12 +919,79 @@ defmodule Forka.PlayersTest do
       end)
 
     receive do
-      {:row_locked, holder_pid} -> {task, holder_pid}
+      {:row_locked, holder_pid, pg_pid} -> {task, holder_pid, pg_pid}
     after
-      2_000 ->
-        flunk(
-          "could not acquire PostgreSQL FOR UPDATE lock on session token for player #{player_id}"
-        )
+      2_000 -> flunk("could not acquire PostgreSQL FOR UPDATE lock for player #{player_id}")
+    end
+  end
+
+  defp wait_for_blocked_backend(blocker_pg_pid, timeout_ms) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    do_wait_for_blocked_backend(blocker_pg_pid, deadline)
+  end
+
+  defp do_wait_for_blocked_backend(blocker_pg_pid, deadline) do
+    %{rows: rows} =
+      Repo.query!(
+        "SELECT pid FROM pg_stat_activity WHERE datname = current_database() AND $1 = ANY(pg_blocking_pids(pid))",
+        [blocker_pg_pid]
+      )
+
+    case rows do
+      [[blocked_pg_pid]] ->
+        blocked_pg_pid
+
+      _ ->
+        if System.monotonic_time(:millisecond) >= deadline do
+          flunk(
+            "expected a PostgreSQL backend blocked by #{blocker_pg_pid}, got #{inspect(rows)}"
+          )
+        else
+          receive do
+          after
+            10 -> do_wait_for_blocked_backend(blocker_pg_pid, deadline)
+          end
+        end
+    end
+  end
+
+  defp backend_query(pg_pid) do
+    %{rows: [[query]]} =
+      Repo.query!("SELECT query FROM pg_stat_activity WHERE pid = $1", [pg_pid])
+
+    query
+  end
+
+  defp reset_token_unlocked?(token_id) do
+    {:ok, uuid_bin} = Ecto.UUID.dump(token_id)
+
+    case Repo.query(
+           "SELECT id FROM players_tokens WHERE id = $1 FOR UPDATE NOWAIT",
+           [uuid_bin]
+         ) do
+      {:ok, %{num_rows: 1}} -> true
+      {:error, %Postgrex.Error{postgres: %{code: :lock_not_available}}} -> false
+    end
+  end
+
+  defp wait_until_after(cutoff, timeout_ms) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    do_wait_until_after(cutoff, deadline)
+  end
+
+  defp do_wait_until_after(cutoff, deadline) do
+    cond do
+      DateTime.compare(DateTime.utc_now(), cutoff) == :gt ->
+        :ok
+
+      System.monotonic_time(:millisecond) >= deadline ->
+        flunk("clock did not advance past #{DateTime.to_iso8601(cutoff)}")
+
+      true ->
+        receive do
+        after
+          20 -> do_wait_until_after(cutoff, deadline)
+        end
     end
   end
 

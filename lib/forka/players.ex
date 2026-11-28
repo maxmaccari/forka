@@ -404,11 +404,10 @@ defmodule Forka.Players do
   @doc """
   Resets the player password using the given reset token.
 
-  Locks the player row first, then re-verifies the reset token in a fresh
-  statement inside the same transaction as the password update before deleting
-  all tokens for the player. Returns `{:error, :invalid_token}` when the token
-  is malformed, unknown, expired, already used, or invalidated by an email
-  change.
+  Locks the player row first, then rebuilds and re-runs token verification
+  inside the same transaction as the password update before deleting all tokens
+  for the player. Returns `{:error, :invalid_token}` when the token is
+  malformed, unknown, expired, already used, or invalidated by an email change.
 
   ## Examples
 
@@ -426,23 +425,25 @@ defmodule Forka.Players do
           {:ok, Player.t()} | {:error, :invalid_token | Ecto.Changeset.t(Player.t())}
   def reset_player_password(token, attrs) when is_binary(token) and is_map(attrs) do
     case PlayerToken.verify_email_token_query(token, "reset_password") do
-      {:ok, query} ->
-        Repo.transaction(fn -> reset_verified_player_password(query, attrs) end)
+      {:ok, discovery_query} ->
+        Repo.transaction(fn -> reset_verified_player_password(token, discovery_query, attrs) end)
 
       :error ->
         {:error, :invalid_token}
     end
   end
 
-  defp reset_verified_player_password(query, attrs) do
-    # Lock the player row before re-reading the token so lock order matches
-    # update_player_password/3 (players first, then players_tokens).
-    with %Player{id: player_id} <- Repo.one(query),
+  defp reset_verified_player_password(token, discovery_query, attrs) do
+    # Lock the player row first (matching update_player_password/3 lock order),
+    # then rebuild and run the verification query so expiry and sent_to are
+    # evaluated after any lock wait.
+    with %Player{id: player_id} <- Repo.one(discovery_query),
          %Player{} = _locked_player <- lock_player_for_update(player_id),
-         %Player{} = player <- Repo.one(query) do
+         {:ok, verified_query} <- PlayerToken.verify_email_token_query(token, "reset_password"),
+         %Player{} = player <- Repo.one(verified_query) do
       apply_password_reset(player, attrs)
     else
-      nil ->
+      _ ->
         Repo.rollback(:invalid_token)
     end
   end
